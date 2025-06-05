@@ -18,7 +18,7 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
         
         onAddOffer({ 
             name: name.trim(), 
-            link: link.trim() || null, 
+            link: link.trim() || '', // Changed from null to empty string
             tags: tags.split(',')
                 .map(t => t.trim())
                 .filter(t => t).length > 0 
