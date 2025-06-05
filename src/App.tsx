@@ -8,6 +8,7 @@ import OfferDetailScreen from './components/screens/OfferDetailScreen';
 import ComparativeAnalysisScreen from './components/screens/ComparativeAnalysisScreen';
 import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
+import AuthForm from './components/auth/AuthForm';
 import { Database, LayoutGrid, ChevronsLeftRight } from 'lucide-react';
 
 function App() {
@@ -31,11 +32,6 @@ function App() {
         onConfirm: () => {} 
     });
     const [activeSupabaseClient, setActiveSupabaseClient] = useState(null);
-    const [authForm, setAuthForm] = useState({ 
-        email: '', 
-        password: '',
-        isRegistering: false 
-    });
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -63,36 +59,42 @@ function App() {
         }); 
     };
 
-    const handleAuth = async (e) => {
-        e.preventDefault();
+    const handleLogin = async (email, password) => {
         try {
-            if (authForm.isRegistering) {
-                const { data, error } = await supabaseClient.auth.signUp({
-                    email: authForm.email,
-                    password: authForm.password
-                });
-                
-                if (error) {
-                    showToast(`Erro no registro: ${error.message}`, "error");
-                } else {
-                    showToast("Conta criada com sucesso! Faça login para continuar.", "success");
-                    setAuthForm(prev => ({ ...prev, isRegistering: false }));
-                }
-            } else {
-                const { data, error } = await supabaseClient.auth.signInWithPassword({
-                    email: authForm.email,
-                    password: authForm.password
-                });
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email,
+                password
+            });
 
-                if (error) {
-                    showToast(`Erro no login: ${error.message}`, "error");
-                } else if (data?.user) {
-                    setUserId(data.user.id);
-                    showToast("Login realizado com sucesso!", "success");
-                }
+            if (error) {
+                showToast(`Erro no login: ${error.message}`, "error");
+            } else if (data?.user) {
+                setUserId(data.user.id);
+                showToast("Login realizado com sucesso!", "success");
             }
         } catch (error) {
-            showToast(`Erro na autenticação: ${error.message}`, "error");
+            showToast("Erro ao tentar fazer login", "error");
+        }
+    };
+
+    const handleRegister = async (email, password) => {
+        try {
+            const { data, error } = await supabaseClient.auth.signUp({
+                email,
+                password,
+                options: {
+                    emailRedirectTo: window.location.origin
+                }
+            });
+
+            if (error) {
+                showToast(`Erro no registro: ${error.message}`, "error");
+            } else if (data?.user) {
+                showToast("Conta criada com sucesso! Faça login para continuar.", "success");
+                setUserId(null);
+            }
+        } catch (error) {
+            showToast("Erro ao tentar criar conta", "error");
         }
     };
 
@@ -355,53 +357,11 @@ function App() {
     
     if (!userId) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono`}>
-                <div className="text-center p-8 rounded-lg border-2 backdrop-blur-sm bg-black/30 w-96">
-                    <h1 className="text-2xl mb-6">ACESSO RESTRITO</h1>
-                    <form onSubmit={handleAuth} className="space-y-4">
-                        <div className="space-y-2">
-                            <input
-                                type="email"
-                                placeholder="Email"
-                                value={authForm.email}
-                                onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
-                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <input
-                                type="password"
-                                placeholder="Senha"
-                                value={authForm.password}
-                                onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
-                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
-                                required
-                            />
-                        </div>
-                        <button 
-                            type="submit"
-                            className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon} hover:bg-cyan-600`}
-                        >
-                            {authForm.isRegistering ? 'CRIAR CONTA' : 'LOGIN'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setAuthForm(prev => ({ ...prev, isRegistering: !prev.isRegistering }))}
-                            className="w-full text-sm text-cyan-400 hover:text-cyan-300 mt-2"
-                        >
-                            {authForm.isRegistering ? 'Já tem uma conta? Fazer login' : 'Não tem uma conta? Criar conta'}
-                        </button>
-                    </form>
-                    <p className="text-xs mt-4 opacity-60">O acesso anônimo está desativado.</p>
+            <div className={`${HACKER_COLORS.background} min-h-screen flex items-center justify-center font-mono`}>
+                <div className="w-full max-w-md">
+                    <h1 className={`text-2xl mb-6 text-center ${HACKER_COLORS.primaryNeon}`}>ACESSO AO SISTEMA</h1>
+                    <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
                 </div>
-                {toast.message && (
-                    <Toast 
-                        message={toast.message}
-                        type={toast.type}
-                        onClose={closeToast}
-                    />
-                )}
             </div>
         );
     }
