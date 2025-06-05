@@ -31,6 +31,7 @@ function App() {
         onConfirm: () => {} 
     });
     const [activeSupabaseClient, setActiveSupabaseClient] = useState(null);
+    const [loginForm, setLoginForm] = useState({ email: '', password: '' });
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -61,8 +62,8 @@ function App() {
     const handleLogin = async () => {
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: 'demo@example.com',  // Replace with your login form values
-                password: 'password123'      // Replace with your login form values
+                email: loginForm.email,
+                password: loginForm.password
             });
 
             if (error) {
@@ -336,16 +337,37 @@ function App() {
     if (!userId) {
         return (
             <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono`}>
-                <div className="text-center">
-                    <h1 className="text-2xl mb-4">ACESSO RESTRITO</h1>
-                    <p className="text-sm mb-4">Por favor, faça login para acessar o sistema.</p>
-                    <p className="text-xs mb-4">O acesso anônimo está desativado.</p>
-                    <button 
-                        onClick={handleLogin}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}`}
-                    >
-                        LOGIN
-                    </button>
+                <div className="text-center p-8 rounded-lg border-2 backdrop-blur-sm bg-black/30">
+                    <h1 className="text-2xl mb-6">ACESSO RESTRITO</h1>
+                    <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="space-y-4">
+                        <div className="space-y-2">
+                            <input
+                                type="email"
+                                placeholder="Email"
+                                value={loginForm.email}
+                                onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
+                                required
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <input
+                                type="password"
+                                placeholder="Senha"
+                                value={loginForm.password}
+                                onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
+                                required
+                            />
+                        </div>
+                        <button 
+                            type="submit"
+                            className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon} hover:bg-cyan-600`}
+                        >
+                            LOGIN
+                        </button>
+                    </form>
+                    <p className="text-xs mt-4 opacity-60">O acesso anônimo está desativado.</p>
                 </div>
             </div>
         );
