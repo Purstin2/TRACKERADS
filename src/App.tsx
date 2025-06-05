@@ -8,6 +8,7 @@ import OfferDetailScreen from './components/screens/OfferDetailScreen';
 import ComparativeAnalysisScreen from './components/screens/ComparativeAnalysisScreen';
 import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
+import AuthForm from './components/auth/AuthForm';
 import { Database, LayoutGrid, ChevronsLeftRight } from 'lucide-react';
 
 function App() {
@@ -31,7 +32,6 @@ function App() {
         onConfirm: () => {} 
     });
     const [activeSupabaseClient, setActiveSupabaseClient] = useState(null);
-    const [loginForm, setLoginForm] = useState({ email: '', password: '' });
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -59,11 +59,11 @@ function App() {
         }); 
     };
 
-    const handleLogin = async () => {
+    const handleLogin = async (email, password) => {
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: loginForm.email,
-                password: loginForm.password
+                email,
+                password
             });
 
             if (error) {
@@ -74,6 +74,24 @@ function App() {
             }
         } catch (error) {
             showToast("Erro ao tentar fazer login", "error");
+        }
+    };
+
+    const handleRegister = async (email, password) => {
+        try {
+            const { data, error } = await supabaseClient.auth.signUp({
+                email,
+                password
+            });
+
+            if (error) {
+                showToast(`Erro no registro: ${error.message}`, "error");
+            } else if (data?.user) {
+                setUserId(data.user.id);
+                showToast("Conta criada com sucesso!", "success");
+            }
+        } catch (error) {
+            showToast("Erro ao tentar criar conta", "error");
         }
     };
 
@@ -336,38 +354,10 @@ function App() {
     
     if (!userId) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono`}>
-                <div className="text-center p-8 rounded-lg border-2 backdrop-blur-sm bg-black/30">
-                    <h1 className="text-2xl mb-6">ACESSO RESTRITO</h1>
-                    <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="space-y-4">
-                        <div className="space-y-2">
-                            <input
-                                type="email"
-                                placeholder="Email"
-                                value={loginForm.email}
-                                onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
-                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
-                                required
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <input
-                                type="password"
-                                placeholder="Senha"
-                                value={loginForm.password}
-                                onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-                                className={`w-full px-4 py-2 rounded-md text-sm bg-black/50 border ${HACKER_COLORS.borderNeon} focus:outline-none focus:ring-2 focus:ring-cyan-500`}
-                                required
-                            />
-                        </div>
-                        <button 
-                            type="submit"
-                            className={`w-full px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon} hover:bg-cyan-600`}
-                        >
-                            LOGIN
-                        </button>
-                    </form>
-                    <p className="text-xs mt-4 opacity-60">O acesso anônimo está desativado.</p>
+            <div className={`${HACKER_COLORS.background} min-h-screen flex items-center justify-center font-mono`}>
+                <div className="w-full max-w-md">
+                    <h1 className={`text-2xl mb-6 text-center ${HACKER_COLORS.primaryNeon}`}>ACESSO AO SISTEMA</h1>
+                    <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
                 </div>
             </div>
         );
