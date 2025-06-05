@@ -58,6 +58,24 @@ function App() {
         }); 
     };
 
+    const handleLogin = async () => {
+        try {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: 'demo@example.com',  // Replace with your login form values
+                password: 'password123'      // Replace with your login form values
+            });
+
+            if (error) {
+                showToast(`Erro no login: ${error.message}`, "error");
+            } else if (data?.user) {
+                setUserId(data.user.id);
+                showToast("Login realizado com sucesso!", "success");
+            }
+        } catch (error) {
+            showToast("Erro ao tentar fazer login", "error");
+        }
+    };
+
     useEffect(() => {
         setActiveSupabaseClient(supabaseClient);
     }, []);
@@ -323,7 +341,7 @@ function App() {
                     <p className="text-sm mb-4">Por favor, faça login para acessar o sistema.</p>
                     <p className="text-xs mb-4">O acesso anônimo está desativado.</p>
                     <button 
-                        onClick={() => window.location.href = '/auth/login'} 
+                        onClick={handleLogin}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}`}
                     >
                         LOGIN
