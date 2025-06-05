@@ -83,17 +83,23 @@ function App() {
             try {
                 const { data: { user }, error: getUserError } = await activeSupabaseClient.auth.getUser();
                 
-                if (getUserError) { 
-                    console.error("App Auth Effect: Supabase Get User Error:", getUserError);
-                    showToast("Por favor, faça login para continuar.", "error");
-                }
-
-                if (user) {
+                if (getUserError || !user) {
+                    console.log("App Auth Effect: Usuário não encontrado, tentando autenticação anônima...");
+                    const { data: { user: anonUser }, error: signInError } = await activeSupabaseClient.auth.signInAnonymously();
+                    
+                    if (signInError) {
+                        console.error("App Auth Effect: Erro na autenticação anônima:", signInError);
+                        showToast("Erro ao criar sessão anônima.", "error");
+                        return;
+                    }
+                    
+                    if (anonUser) {
+                        setUserId(anonUser.id);
+                        console.log("App Auth Effect: Usuário anônimo criado:", anonUser.id);
+                    }
+                } else {
                     setUserId(user.id);
                     console.log("App Auth Effect: Usuário existente encontrado:", user.id);
-                } else {
-                    console.log("App Auth Effect: Nenhum usuário encontrado. Login necessário.");
-                    showToast("Por favor, faça login para acessar o sistema.", "info");
                 }
             } catch (e) {
                 console.error("App Auth Effect: Exceção no getSession:", e);
