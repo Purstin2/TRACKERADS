@@ -84,19 +84,8 @@ function App() {
                 const { data: { user }, error: getUserError } = await activeSupabaseClient.auth.getUser();
                 
                 if (getUserError || !user) {
-                    console.log("App Auth Effect: Usuário não encontrado, tentando autenticação anônima...");
-                    const { data: { user: anonUser }, error: signInError } = await activeSupabaseClient.auth.signInAnonymously();
-                    
-                    if (signInError) {
-                        console.error("App Auth Effect: Erro na autenticação anônima:", signInError);
-                        showToast("Erro ao criar sessão anônima.", "error");
-                        return;
-                    }
-                    
-                    if (anonUser) {
-                        setUserId(anonUser.id);
-                        console.log("App Auth Effect: Usuário anônimo criado:", anonUser.id);
-                    }
+                    console.log("App Auth Effect: Usuário não encontrado.");
+                    setUserId(null);
                 } else {
                     setUserId(user.id);
                     console.log("App Auth Effect: Usuário existente encontrado:", user.id);
@@ -104,6 +93,7 @@ function App() {
             } catch (e) {
                 console.error("App Auth Effect: Exceção no getSession:", e);
                 showToast("Erro ao verificar autenticação.", "error");
+                setUserId(null);
             } finally {
                 setIsAuthReady(true);
             }
@@ -330,7 +320,14 @@ function App() {
             <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono`}>
                 <div className="text-center">
                     <h1 className="text-2xl mb-4">ACESSO RESTRITO</h1>
-                    <p className="text-sm mb-4">Faça login para acessar o sistema</p>
+                    <p className="text-sm mb-4">Por favor, faça login para acessar o sistema.</p>
+                    <p className="text-xs mb-4">O acesso anônimo está desativado.</p>
+                    <button 
+                        onClick={() => window.location.href = '/auth/login'} 
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all border ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}`}
+                    >
+                        LOGIN
+                    </button>
                 </div>
             </div>
         );
