@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase credentials
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ojzcfzxyfijprglbvigm.supabase.co"; 
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0ZGZrZWxkbXRleG5jdm94cWN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg4Mjk2MTAsImV4cCI6MjA2NDQwNTYxMH0.DnHlTRqggGLsAcXfJVpuv5iuQbKKuALuHckPRi0fiCE"; 
+// Supabase credentials from environment variables only
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Check for environment injected variables
 const effectiveSupabaseUrl = typeof __supabase_url !== 'undefined' ? __supabase_url : supabaseUrl;
@@ -129,9 +129,8 @@ try {
     if (typeof createClient === 'function') {
         console.log("[Supabase Init Attempt] 'createClient' FOI importado com sucesso.");
         
-        // Check if credentials are not generic placeholders
-        if (effectiveSupabaseUrl && effectiveSupabaseUrl !== 'YOUR_SUPABASE_URL' && 
-            effectiveSupabaseAnonKey && effectiveSupabaseAnonKey !== 'YOUR_SUPABASE_ANON_KEY') {
+        // Simplified check for credentials
+        if (effectiveSupabaseUrl && effectiveSupabaseAnonKey) {
             console.log("[Supabase Init Attempt] Tentando inicializar cliente Supabase REAL com URL:", 
                 effectiveSupabaseUrl.substring(0,30) + "...");
             
@@ -144,8 +143,7 @@ try {
                 throw new Error("[Supabase Init Attempt] createClient foi chamado mas retornou um valor 'falsy'.");
             }
         } else {
-            console.warn("!!! [Supabase Init Attempt] CREDENCIAIS SUPABASE SÃO PLACEHOLDERS GENÉRICOS " + 
-                "(YOUR_SUPABASE_URL/KEY) OU NÃO FORNECIDAS. O cliente real não será inicializado.");
+            console.warn("!!! [Supabase Init Attempt] CREDENCIAIS SUPABASE NÃO FORNECIDAS. O cliente real não será inicializado.");
             supabaseClient = null;
         }
     } else {
