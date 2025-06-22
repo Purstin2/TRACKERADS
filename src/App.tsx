@@ -248,10 +248,17 @@ function App() {
         }
     };
     
-    const handleDeleteOffer = async (offerId) => {
+    const handleDeleteOffer = useCallback(async (offerId) => {
+        console.log("App: handleDeleteOffer chamado para ID:", offerId);
+        
         if (!userId || !activeSupabaseClient || !activeSupabaseClient.from) { 
             showToast("Não autenticado ou Supabase não configurado.", "error"); 
             return; 
+        }
+        
+        if (!offerId) {
+            showToast("ID da oferta inválido.", "error");
+            return;
         }
         
         openConfirmationModal(
@@ -259,6 +266,9 @@ function App() {
             "CONFIRMA EXCLUSÃO DESTE TARGET E TODOS OS SEUS DADOS?", 
             async () => {
                 try {
+                    console.log("App: Iniciando exclusão do target ID:", offerId);
+                    
+                    // Delete related ad_counts first
                     const { error: adCountsError } = await activeSupabaseClient
                         .from('ad_counts')
                         .delete()
@@ -268,6 +278,7 @@ function App() {
                         console.warn("App: Supabase delete ad_counts warning (continuando):", adCountsError);
                     }
                     
+                    // Delete related comments
                     const { error: commentsError } = await activeSupabaseClient
                         .from('comments')
                         .delete()
@@ -277,16 +288,22 @@ function App() {
                         console.warn("App: Supabase delete comments warning (continuando):", commentsError);
                     }
                     
+                    // Delete the offer itself
                     const { error: offerError } = await activeSupabaseClient
                         .from('offers')
                         .delete()
                         .eq('id', offerId);
                     
-                    if (offerError) throw offerError;
+                    if (offerError) {
+                        console.error("App: Erro ao excluir offer:", offerError);
+                        throw offerError;
+                    }
                     
+                    console.log("App: Target excluído com sucesso:", offerId);
                     showToast("TARGET EXCLUÍDO!", "success");
                     fetchOffers(); 
                     
+                    // If we're currently viewing this offer, go back to grid
                     if (selectedOfferId === offerId) { 
                         setCurrentScreen('grid'); 
                         setSelectedOfferId(null); 
@@ -297,7 +314,7 @@ function App() {
                 }
             }
         );
-    };
+    }, [userId, activeSupabaseClient, showToast, openConfirmationModal, fetchOffers, selectedOfferId]);
 
     const handleToggleArchiveOffer = async (offerId, currentArchivedStatus) => {
         if (!userId || !activeSupabaseClient || !activeSupabaseClient.from) { 

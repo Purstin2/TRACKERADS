@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, Trash2, Edit3, ExternalLink, Archive, ArchiveRestore } from 'lucide-react';
+import { Eye, Trash2, Edit3, ExternalLink, Archive, ArchiveRestore, CheckSquare, XSquare, TrendingDown, Zap, Activity } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
@@ -53,31 +53,37 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         }
     }
 
+    // Handle delete with proper error handling and confirmation
+    const handleDeleteClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (typeof onDeleteOffer === 'function') {
+            console.log('OfferCard: Chamando onDeleteOffer para offer ID:', offer.id);
+            onDeleteOffer(offer.id);
+        } else {
+            console.error('OfferCard: onDeleteOffer não é uma função válida');
+        }
+    };
+
     // Import icons dynamically based on performance analysis status
     const renderPerformanceIcon = () => {
-        if (!performanceAnalysis.Icon) {
-            // You'll need to import and use the appropriate icon based on the status
-            switch (performanceAnalysis.status) {
-                case 'TEST':
-                    return <CheckSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'EXCLUDE_RISK':
-                    return <XSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'OBSERVE':
-                    return <Eye size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'RECENT_START':
-                    return <Zap size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'LOW_PERFORMANCE':
-                    return <TrendingDown size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'NO_DATA':
-                    return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                default:
-                    return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-            }
+        switch (performanceAnalysis.status) {
+            case 'TEST':
+                return <CheckSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            case 'EXCLUDE_RISK':
+                return <XSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            case 'OBSERVE':
+                return <Eye size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            case 'RECENT_START':
+                return <Zap size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            case 'LOW_PERFORMANCE':
+                return <TrendingDown size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            case 'NO_DATA':
+                return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
+            default:
+                return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
         }
-        
-        // This isn't actually used since we handle icon rendering above
-        const IconComponent = performanceAnalysis.Icon;
-        return <IconComponent size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
     };
 
     return (
@@ -167,8 +173,9 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 </button>
                 
                 <button 
-                    onClick={() => onDeleteOffer(offer.id)} 
-                    className={`flex-1 bg-gray-700 hover:${HACKER_COLORS.buttonDestructiveBg} ${HACKER_COLORS.textDim} hover:text-white px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 border border-black/50`}
+                    onClick={handleDeleteClick}
+                    className={`flex-1 ${HACKER_COLORS.buttonDestructiveBg} ${HACKER_COLORS.buttonDestructiveText} hover:bg-red-500 px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center space-x-1.5 border border-black/50 transition-colors`}
+                    title="Excluir Target"
                 >
                     <Trash2 size={14} /><span>EXCLUIR</span>
                 </button>
@@ -176,8 +183,5 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         </div>
     );
 };
-
-// Add these imports at the top of the file
-import { CheckSquare, XSquare, TrendingDown, Zap, Activity } from 'lucide-react';
 
 export default OfferCard;
