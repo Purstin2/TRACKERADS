@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import OfferCard from '../targets/OfferCard';
@@ -21,8 +21,29 @@ const OfferGridScreen = ({
     isAuthReady, 
     supabaseClient 
 }) => {
+    // Estado para controlar a aba selecionada
+    const [selectedCategory, setSelectedCategory] = useState('infoproduto');
+
+    // Filtra as ofertas pela categoria selecionada
+    const filteredOffers = offers.filter(offer => offer.category === selectedCategory);
+
     return (
         <div>
+            {/* Abas de categoria */}
+            <div className="flex mb-4 gap-2">
+                <button
+                    className={`px-4 py-2 rounded-t-md font-semibold border-b-2 transition-colors ${selectedCategory === 'infoproduto' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('infoproduto')}
+                >
+                    Infoprodutos
+                </button>
+                <button
+                    className={`px-4 py-2 rounded-t-md font-semibold border-b-2 transition-colors ${selectedCategory === 'dropshipping' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('dropshipping')}
+                >
+                    Dropshipping
+                </button>
+            </div>
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className={`text-2xl font-semibold ${HACKER_COLORS.primaryNeon}`}>GRID DE TARGETS</h2>
                 <div className="flex items-center space-x-2 flex-wrap gap-2">
@@ -85,7 +106,7 @@ const OfferGridScreen = ({
                 </div>
             )}
             
-            {userId && offers.length === 0 && !searchTerm && (
+            {userId && filteredOffers.length === 0 && !searchTerm && (
                 <div className="text-center py-10">
                     <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
                         NENHUM TARGET {showArchived ? 'ARQUIVADO' : 'ATIVO'} ENCONTRADO.
@@ -94,7 +115,7 @@ const OfferGridScreen = ({
                 </div>
             )}
             
-            {userId && offers.length === 0 && searchTerm && (
+            {userId && filteredOffers.length === 0 && searchTerm && (
                 <div className="text-center py-10">
                     <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
                         NENHUM TARGET PARA "{searchTerm}".
@@ -105,7 +126,7 @@ const OfferGridScreen = ({
 
             {userId && viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                    {offers.map(offer => (
+                    {filteredOffers.map(offer => (
                         <OfferCard 
                             key={offer.id} 
                             offer={offer} 
@@ -120,7 +141,7 @@ const OfferGridScreen = ({
                 </div>
             ) : userId && (
                 <OfferList 
-                    offers={offers} 
+                    offers={filteredOffers} 
                     onViewDetails={onViewDetails} 
                     onEditOffer={onEditOffer} 
                     onToggleArchive={onToggleArchive} 

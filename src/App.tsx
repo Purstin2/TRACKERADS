@@ -284,6 +284,8 @@ function App() {
                     
                     if (offerError) throw offerError;
                     
+                    // Atualiza o estado local imediatamente
+                    setOffers(prev => prev.filter(o => o.id !== offerId));
                     showToast("TARGET EXCLUÍDO!", "success");
                     fetchOffers(); 
                     

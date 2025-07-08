@@ -276,7 +276,7 @@ const OfferDetailScreen = ({
 
     if (isLoading) {
         return (
-            <div className="text-center py-10 text-xl text-green-400 animate-pulse">
+            <div className="text-center py-10 text-xl text-green-400">
                 ANALISANDO DADOS DO TARGET (SUPABASE)...
             </div>
         );
