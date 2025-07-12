@@ -7,6 +7,7 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
     const [name, setName] = useState('');
     const [link, setLink] = useState('');
     const [tags, setTags] = useState('');
+    const [category, setCategory] = useState('');
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -14,6 +15,10 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
         if (!name.trim()) { 
             showToast("NOME É OBRIGATÓRIO.", "error"); 
             return; 
+        }
+        if (!category.trim()) {
+            showToast("CATEGORIA É OBRIGATÓRIA.", "error");
+            return;
         }
         
         onAddOffer({ 
@@ -23,12 +28,14 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
                 .map(t => t.trim())
                 .filter(t => t).length > 0 
                     ? tags.split(',').map(t => t.trim()).filter(t => t) 
-                    : null 
+                    : null,
+            category: category.trim()
         });
         
         setName(''); 
         setLink(''); 
         setTags('');
+        setCategory('');
     };
 
     return (
@@ -46,6 +53,22 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
                         id="offerNameAdd" 
                         value={name} 
                         onChange={(e) => setName(e.target.value)} 
+                        required 
+                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`} 
+                    />
+                </div>
+                
+                <div>
+                    <label 
+                        htmlFor="offerCategoryAdd" 
+                        className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}
+                    >
+                        CATEGORIA *</label>
+                    <input 
+                        type="text" 
+                        id="offerCategoryAdd" 
+                        value={category} 
+                        onChange={(e) => setCategory(e.target.value)} 
                         required 
                         className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`} 
                     />
