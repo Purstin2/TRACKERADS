@@ -363,24 +363,27 @@ function App() {
     }, [offers, searchTerm, showArchived]);
 
     // --- SUPABASE NOTES INTEGRATION ---
+    // Função para buscar notas do Supabase
+    const fetchNotes = useCallback(async () => {
+        if (!userId || !activeSupabaseClient) return;
+        const { data, error } = await activeSupabaseClient
+            .from('notes')
+            .select('*')
+            .eq('user_id', userId)
+            .order('date', { ascending: false });
+        if (error) {
+            showToast('Erro ao carregar notas: ' + error.message, 'error');
+            setNotes([]);
+        } else {
+            setNotes(data || []);
+        }
+    }, [userId, activeSupabaseClient, showToast]);
+
     // Carrega notas do Supabase ao abrir o bloco de notas
     useEffect(() => {
         if (!showNotes || !userId || !activeSupabaseClient) return;
-        const fetchNotes = async () => {
-            const { data, error } = await activeSupabaseClient
-                .from('notes')
-                .select('*')
-                .eq('user_id', userId)
-                .order('date', { ascending: false });
-            if (error) {
-                showToast('Erro ao carregar notas: ' + error.message, 'error');
-                setNotes([]);
-            } else {
-                setNotes(data || []);
-            }
-        };
         fetchNotes();
-    }, [showNotes, userId, activeSupabaseClient, showToast]);
+    }, [showNotes, userId, activeSupabaseClient, fetchNotes]);
 
     // Adiciona nova nota no Supabase
     const handleAddNote = async (e) => {
@@ -393,11 +396,12 @@ function App() {
             .from('notes')
             .insert([{ user_id: userId, text }])
             .select();
+        console.log('Add note:', { data, error });
         if (error) {
             showToast('Erro ao adicionar nota: ' + error.message, 'error');
-        } else {
-            setNotes(prev => [data[0], ...prev]);
         }
+        // Sempre recarrega do Supabase
+        fetchNotes();
     };
 
     // Edita nota no Supabase
@@ -410,12 +414,13 @@ function App() {
             .eq('id', noteId)
             .eq('user_id', userId)
             .select();
+        console.log('Edit note:', { data, error });
         if (error) {
             showToast('Erro ao editar nota: ' + error.message, 'error');
-        } else {
-            setNotes(prev => prev.map(n => n.id === noteId ? { ...n, text: editingNoteText, updated_at: data[0].updated_at } : n));
-            setEditingNoteId(null);
         }
+        setEditingNoteId(null);
+        // Sempre recarrega do Supabase
+        fetchNotes();
     };
 
     // Exclui nota no Supabase
@@ -426,11 +431,12 @@ function App() {
             .delete()
             .eq('id', noteId)
             .eq('user_id', userId);
+        console.log('Delete note:', { noteId, error });
         if (error) {
             showToast('Erro ao excluir nota: ' + error.message, 'error');
-        } else {
-            setNotes(prev => prev.filter(n => n.id !== noteId));
         }
+        // Sempre recarrega do Supabase
+        fetchNotes();
     };
 
     if (!isAuthReady) {
