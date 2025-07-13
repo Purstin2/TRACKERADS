@@ -26,7 +26,7 @@ const OfferGridScreen = ({
     setActiveOfferIds
 }) => {
     // Estado para controlar a aba selecionada
-    const [selectedCategory, setSelectedCategory] = useState('infoproduto');
+    const [selectedCategory, setSelectedCategory] = useState('Infoproduto');
 
     // Filtra as ofertas pela categoria selecionada
     const filteredOffers = offers.filter(offer => offer.category === selectedCategory);
@@ -43,16 +43,34 @@ const OfferGridScreen = ({
             {/* Abas de categoria */}
             <div className="flex mb-6 gap-4 border-b-2 border-blue-800/30 pb-2">
                 <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'infoproduto' ? `bg-gradient-to-r from-blue-900/60 to-blue-800/60 ${HACKER_COLORS.primary} border-blue-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('infoproduto')}
+                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Infoproduto' ? `bg-gradient-to-r from-blue-900/60 to-blue-800/60 ${HACKER_COLORS.primary} border-blue-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('Infoproduto')}
                 >
-                    Infoprodutos
+                    Infoproduto
                 </button>
                 <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'dropshipping' ? `bg-gradient-to-r from-purple-900/60 to-purple-800/60 ${HACKER_COLORS.secondary} border-purple-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('dropshipping')}
+                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Dropshipping' ? `bg-gradient-to-r from-purple-900/60 to-purple-800/60 ${HACKER_COLORS.secondary} border-purple-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('Dropshipping')}
                 >
                     Dropshipping
+                </button>
+                <button
+                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'SaaS' ? `bg-gradient-to-r from-cyan-900/60 to-cyan-800/60 text-cyan-300 border-cyan-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('SaaS')}
+                >
+                    SaaS
+                </button>
+                <button
+                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Serviços' ? `bg-gradient-to-r from-yellow-900/60 to-yellow-800/60 text-yellow-300 border-yellow-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('Serviços')}
+                >
+                    Serviços
+                </button>
+                <button
+                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Outros' ? `bg-gradient-to-r from-gray-700/60 to-gray-800/60 text-slate-300 border-gray-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
+                    onClick={() => setSelectedCategory('Outros')}
+                >
+                    Outros
                 </button>
             </div>
             <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
