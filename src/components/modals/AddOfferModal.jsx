@@ -7,7 +7,7 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
     const [name, setName] = useState('');
     const [link, setLink] = useState('');
     const [tags, setTags] = useState('');
-    const [category, setCategory] = useState('');
+    const [category, setCategory] = useState('Infoproduto');
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -64,14 +64,19 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
                         className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}
                     >
                         CATEGORIA *</label>
-                    <input 
-                        type="text" 
-                        id="offerCategoryAdd" 
-                        value={category} 
-                        onChange={(e) => setCategory(e.target.value)} 
-                        required 
-                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`} 
-                    />
+                    <select
+                        id="offerCategoryAdd"
+                        value={category}
+                        onChange={e => setCategory(e.target.value)}
+                        required
+                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`}
+                    >
+                        <option value="Infoproduto">Infoproduto</option>
+                        <option value="Dropshipping">Dropshipping</option>
+                        <option value="SaaS">SaaS</option>
+                        <option value="Serviços">Serviços</option>
+                        <option value="Outros">Outros</option>
+                    </select>
                 </div>
                 
                 <div>

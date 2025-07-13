@@ -32,6 +32,17 @@ function App() {
         onConfirm: () => {} 
     });
     const [activeSupabaseClient, setActiveSupabaseClient] = useState(null);
+    const [pinnedOfferId, setPinnedOfferId] = useState(null);
+    const [showNotes, setShowNotes] = useState(false);
+    const [showActiveOffers, setShowActiveOffers] = useState(false);
+    const [notes, setNotes] = useState([]);
+    const [newNote, setNewNote] = useState('');
+    const [editingNoteId, setEditingNoteId] = useState(null);
+    const [editingNoteText, setEditingNoteText] = useState('');
+    const [activeOfferIds, setActiveOfferIds] = useState([]);
+    const [activeOfferNotes, setActiveOfferNotes] = useState({}); // { offerId: [ {id, text, date} ] }
+    const [newActiveNote, setNewActiveNote] = useState('');
+    const [activeNoteOfferId, setActiveNoteOfferId] = useState(null);
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -352,7 +363,7 @@ function App() {
 
     if (!isAuthReady) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
+            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
                 INICIALIZANDO SISTEMA...
             </div>
         );
@@ -362,7 +373,7 @@ function App() {
         return (
             <div className={`${HACKER_COLORS.background} min-h-screen flex items-center justify-center font-mono`}>
                 <div className="w-full max-w-md">
-                    <h1 className={`text-2xl mb-6 text-center ${HACKER_COLORS.primaryNeon}`}>ACESSO AO SISTEMA</h1>
+                    <h1 className={`text-2xl mb-6 text-center ${HACKER_COLORS.primary}`}>ACESSO AO SISTEMA</h1>
                     <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
                 </div>
             </div>
@@ -371,119 +382,238 @@ function App() {
     
     if (isAuthReady && isLoading && userId && activeSupabaseClient) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primaryNeon} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
-                CARREGANDO MATRIX DE DADOS...
+            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
+                CARREGANDO PURSTINLAB...
             </div>
         );
     }
 
     return (
-        <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-col`}>
-            {isSupabaseMockActive && (
-                <div className={`w-full p-2 text-center ${HACKER_COLORS.warningNeon} bg-yellow-900/50 border-b-2 ${HACKER_COLORS.borderNeon} text-xs font-semibold z-50 sticky top-0`}>
-                    ATENÇÃO: MODO DE SIMULAÇÃO SUPABASE ATIVO! OS DADOS NÃO SERÃO SALVOS. VERIFIQUE A IMPORTAÇÃO DA BIBLIOTECA E AS CREDENCIAIS.
-                </div>
-            )}
-            
-            <header className={`${HACKER_COLORS.surface} border-b-2 ${HACKER_COLORS.borderNeon} p-4 ${HACKER_COLORS.primaryNeonGlow}`}>
-                <div className="container mx-auto flex justify-between items-center">
-                    <div 
-                        className="flex items-center space-x-2 cursor-pointer" 
-                        onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); }}
-                    >
-                        <Database size={32} className={`${HACKER_COLORS.primaryNeon}`} /> 
-                        <h1 className={`text-3xl font-bold tracking-wider ${HACKER_COLORS.primaryNeon}`}>
-                            AdIntel Matrix
-                        </h1>
+        <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-row`}>
+            {/* Sidebar lateral */}
+            <aside className={`h-screen w-64 flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.surface} border-r-2 ${HACKER_COLORS.borderPrimary} shadow-2xl`}>
+                <div>
+                    <div className="flex items-center gap-3 px-6 py-6 cursor-pointer select-none" onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
+                        <Database size={36} className={`${HACKER_COLORS.primary}`} />
+                        <span className={`text-3xl font-extrabold tracking-wider ${HACKER_COLORS.primary}`}>PURSTINLAB</span>
                     </div>
-                    
-                    <nav className="space-x-2 sm:space-x-3 flex items-center">
+                    <nav className="flex flex-col gap-2 mt-8 px-4">
                         <button 
-                            onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); }} 
-                            className={`px-3 py-2 rounded-md text-sm font-medium transition-all border ${
-                                currentScreen === 'grid' 
-                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderNeon}` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryNeon} ${HACKER_COLORS.borderDim}`
-                            }`}
+                            onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }} 
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
                         >
-                            <LayoutGrid size={16} className="inline mr-1.5" />GRID
+                            <LayoutGrid size={20} className="inline" /> GRID
                         </button>
-                        
                         <button 
                             onClick={navigateToCompare} 
-                            className={`px-3 py-2 rounded-md text-sm font-medium transition-all border ${
-                                currentScreen === 'compare' 
-                                    ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} border-cyan-500` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondaryNeon} ${HACKER_COLORS.borderDim}`
-                            }`}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'compare' ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.borderSecondary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} ${HACKER_COLORS.borderDim}`}`}
                         >
-                            <ChevronsLeftRight size={16} className="inline mr-1.5" />COMPARAR
+                            <ChevronsLeftRight size={20} className="inline" /> COMPARAR
                         </button>
-                        
-                        {userId && (
-                            <span className={`text-xs ${HACKER_COLORS.textDim} hidden md:block`}>
-                                UID: {userId.substring(0,6)}..
-                            </span>
-                        )}
+                        <button
+                            onClick={() => { setShowNotes(true); setShowActiveOffers(false); setCurrentScreen(''); }}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showNotes ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.borderSecondary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} ${HACKER_COLORS.borderDim}`}`}
+                        >
+                            <span className="inline-block w-5 h-5 bg-blue-400 rounded-full mr-1.5" /> BLOCO DE NOTAS
+                        </button>
+                        <button
+                            onClick={() => { setShowActiveOffers(true); setShowNotes(false); setCurrentScreen(''); }}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                        >
+                            <span className="inline-block w-5 h-5 bg-purple-400 rounded-full mr-1.5" /> MINHAS OFERTAS ATIVAS
+                        </button>
                     </nav>
                 </div>
-            </header>
-
-            <main className="container mx-auto p-4 sm:p-6 flex-grow">
-                {currentScreen === 'grid' && (
-                    <OfferGridScreen
-                        offers={filteredOffers}
-                        onViewDetails={navigateToDetail}
-                        onAddOffer={() => setIsAddOfferModalOpen(true)}
-                        onEditOffer={handleEditOffer}
-                        onToggleArchive={handleToggleArchiveOffer}
-                        searchTerm={searchTerm}
-                        setSearchTerm={setSearchTerm}
-                        viewMode={viewMode}
-                        setViewMode={setViewMode}
-                        showArchived={showArchived}
-                        setShowArchived={setShowArchived}
-                        onDeleteOffer={handleDeleteOffer}
-                        userId={userId}
-                        isAuthReady={isAuthReady}
-                        supabaseClient={activeSupabaseClient}
-                    />
-                )}
-                
-                {currentScreen === 'detail' && selectedOfferId && (
-                    <OfferDetailScreen 
-                        offerId={selectedOfferId}
-                        userId={userId}
-                        showToast={showToast}
-                        onDeleteOffer={handleDeleteOffer}
-                        openConfirmationModal={openConfirmationModal}
-                        onToggleArchive={handleToggleArchiveOffer}
-                        fetchOffers={fetchOffers}
-                        supabaseClient={activeSupabaseClient}
-                    />
-                )}
-                
-                {currentScreen === 'compare' && (
-                    <ComparativeAnalysisScreen 
-                        offers={offers.filter(o => !o.is_archived)}
-                        userId={userId}
-                        showToast={showToast}
-                        supabaseClient={activeSupabaseClient}
-                    />
-                )}
+                <div className="px-6 py-4 text-xs text-right text-slate-500">
+                    <div className="mb-1 font-semibold text-slate-400">UID:</div>
+                    <div className="font-mono text-slate-400">{userId.substring(0, 12)}...</div>
+                </div>
+            </aside>
+            {/* Conteúdo principal com padding lateral */}
+            <main className="flex-1 ml-64 min-h-screen flex flex-col">
+                <div className="flex-1">
+                    {showNotes && (
+                        <div className="max-w-2xl mx-auto py-12">
+                            <h2 className="text-2xl font-bold mb-6 text-blue-400">Bloco de Notas</h2>
+                            <form onSubmit={e => {
+                                e.preventDefault();
+                                if (!newNote.trim()) return;
+                                setNotes(prev => [
+                                    { id: Date.now(), text: newNote.trim(), date: new Date().toLocaleString() },
+                                    ...prev
+                                ]);
+                                setNewNote('');
+                            }} className="mb-6 flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newNote}
+                                    onChange={e => setNewNote(e.target.value)}
+                                    placeholder="Digite uma nova nota..."
+                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-4 py-2 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
+                                />
+                                <button type="submit" className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-5 py-2 rounded-lg font-semibold`}>Adicionar</button>
+                            </form>
+                            <ul className="space-y-4">
+                                {notes.length === 0 && (
+                                    <li className="text-slate-500 text-center">Nenhuma nota ainda.</li>
+                                )}
+                                {notes.map(note => (
+                                    <li key={note.id} className={`p-4 rounded-lg border-2 ${HACKER_COLORS.borderPrimary} bg-[#23262F]/80 flex flex-col gap-2`}>
+                                        <div className="flex justify-between items-center">
+                                            {editingNoteId === note.id ? (
+                                                <input
+                                                    type="text"
+                                                    value={editingNoteText}
+                                                    onChange={e => setEditingNoteText(e.target.value)}
+                                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
+                                                />
+                                            ) : (
+                                                <span className="text-base text-slate-200">{note.text}</span>
+                                            )}
+                                            <div className="flex gap-2 ml-2">
+                                                {editingNoteId === note.id ? (
+                                                    <>
+                                                        <button onClick={() => {
+                                                            setNotes(prev => prev.map(n => n.id === note.id ? { ...n, text: editingNoteText } : n));
+                                                            setEditingNoteId(null);
+                                                        }} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Salvar</button>
+                                                        <button onClick={() => setEditingNoteId(null)} className="px-2 py-1 rounded bg-gray-700 text-white">Cancelar</button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Editar</button>
+                                                        <button onClick={() => setNotes(prev => prev.filter(n => n.id !== note.id))} className="px-2 py-1 rounded bg-red-600 text-white font-semibold">Excluir</button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-slate-400 text-right">{note.date}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {showActiveOffers && (
+                        <div className="max-w-2xl mx-auto py-12">
+                            <h2 className="text-2xl font-bold mb-6 text-purple-400">Minhas Ofertas Ativas</h2>
+                            {activeOfferIds.length === 0 && (
+                                <div className="text-slate-500 text-center">Nenhuma oferta ativa no momento.</div>
+                            )}
+                            {activeOfferIds.map(oid => {
+                                const offer = offers.find(o => o.id === oid);
+                                if (!offer) return null;
+                                return (
+                                    <div key={oid} className="mb-8 p-5 rounded-xl border-2 border-purple-500 bg-[#23262F]/80 shadow-lg">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <div>
+                                                <div className="text-lg font-bold text-purple-300">{offer.name}</div>
+                                                <div className="text-xs text-slate-400">Categoria: {offer.category || 'N/A'}</div>
+                                            </div>
+                                            <button
+                                                onClick={() => setActiveOfferIds(activeOfferIds.filter(id => id !== oid))}
+                                                className="px-3 py-1 rounded-full text-xs font-bold border-2 bg-gray-800 border-gray-600 text-purple-300 hover:bg-purple-900 hover:border-purple-400 transition-all duration-200"
+                                            >
+                                                Remover da lista
+                                            </button>
+                                        </div>
+                                        <div className="mb-2 text-sm text-slate-300">{offer.link && <a href={offer.link} target="_blank" rel="noopener noreferrer" className="underline text-blue-400">{offer.link}</a>}</div>
+                                        <div className="mb-2 text-xs text-slate-400">Última atualização: {offer.updated_at ? new Date(offer.updated_at).toLocaleString() : 'N/A'}</div>
+                                        {/* Notas específicas da oferta ativa */}
+                                        <div className="mt-4">
+                                            <div className="font-semibold text-purple-200 mb-2">Notas desta oferta</div>
+                                            <form onSubmit={e => {
+                                                e.preventDefault();
+                                                if (!newActiveNote.trim() || activeNoteOfferId !== oid) return;
+                                                setActiveOfferNotes(prev => ({
+                                                    ...prev,
+                                                    [oid]: [
+                                                        { id: Date.now(), text: newActiveNote.trim(), date: new Date().toLocaleString() },
+                                                        ...(prev[oid] || [])
+                                                    ]
+                                                }));
+                                                setNewActiveNote('');
+                                                setActiveNoteOfferId(null);
+                                            }} className="flex gap-2 mb-3">
+                                                <input
+                                                    type="text"
+                                                    value={activeNoteOfferId === oid ? newActiveNote : ''}
+                                                    onChange={e => { setActiveNoteOfferId(oid); setNewActiveNote(e.target.value); }}
+                                                    placeholder="Adicionar nota para esta oferta..."
+                                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderSecondary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderSecondary} outline-none`}
+                                                />
+                                                <button type="submit" className={`${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} px-4 py-1 rounded-lg font-semibold`}>Adicionar</button>
+                                            </form>
+                                            <ul className="space-y-2">
+                                                {(activeOfferNotes[oid] || []).length === 0 && (
+                                                    <li className="text-slate-500 text-xs">Nenhuma nota para esta oferta.</li>
+                                                )}
+                                                {(activeOfferNotes[oid] || []).map(note => (
+                                                    <li key={note.id} className="p-2 rounded border border-purple-700 bg-[#23262F]/90 flex justify-between items-center">
+                                                        <span className="text-sm text-slate-200">{note.text}</span>
+                                                        <span className="text-xs text-slate-400 ml-3">{note.date}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {!showNotes && !showActiveOffers && currentScreen === 'grid' && (
+                        <OfferGridScreen
+                            offers={filteredOffers}
+                            onViewDetails={navigateToDetail}
+                            onAddOffer={() => setIsAddOfferModalOpen(true)}
+                            onEditOffer={handleEditOffer}
+                            onToggleArchive={handleToggleArchiveOffer}
+                            searchTerm={searchTerm}
+                            setSearchTerm={setSearchTerm}
+                            viewMode={viewMode}
+                            setViewMode={setViewMode}
+                            showArchived={showArchived}
+                            setShowArchived={setShowArchived}
+                            onDeleteOffer={handleDeleteOffer}
+                            userId={userId}
+                            isAuthReady={isAuthReady}
+                            supabaseClient={activeSupabaseClient}
+                            pinnedOfferId={pinnedOfferId}
+                            setPinnedOfferId={setPinnedOfferId}
+                            activeOfferIds={activeOfferIds}
+                            setActiveOfferIds={setActiveOfferIds}
+                        />
+                    )}
+                    {!showNotes && !showActiveOffers && currentScreen === 'detail' && selectedOfferId && (
+                        <OfferDetailScreen 
+                            offerId={selectedOfferId}
+                            userId={userId}
+                            showToast={showToast}
+                            onDeleteOffer={handleDeleteOffer}
+                            openConfirmationModal={openConfirmationModal}
+                            onToggleArchive={handleToggleArchiveOffer}
+                            fetchOffers={fetchOffers}
+                            supabaseClient={activeSupabaseClient}
+                        />
+                    )}
+                    {!showNotes && !showActiveOffers && currentScreen === 'compare' && (
+                        <ComparativeAnalysisScreen 
+                            offers={offers.filter(o => !o.is_archived)}
+                            userId={userId}
+                            showToast={showToast}
+                            supabaseClient={activeSupabaseClient}
+                        />
+                    )}
+                </div>
+                <footer className={`${HACKER_COLORS.surface} border-t-2 ${HACKER_COLORS.borderPrimary} p-4 text-center text-xs ${HACKER_COLORS.textDim}`}>
+                    PURSTINLAB // Supabase Edition © {new Date().getFullYear()} // Status: ONLINE
+                </footer>
             </main>
-
-            <footer className={`${HACKER_COLORS.surface} border-t-2 ${HACKER_COLORS.borderNeon} p-4 text-center text-xs ${HACKER_COLORS.textDim}`}>
-                AdIntel Matrix // Supabase Edition © {new Date().getFullYear()} // Status: ONLINE
-            </footer>
-
             <AddOfferModal 
                 isOpen={isAddOfferModalOpen}
                 onClose={() => setIsAddOfferModalOpen(false)}
                 onAddOffer={handleAddOffer}
                 showToast={showToast}
             />
-            
             {offerToEdit && (
                 <EditOfferModal 
                     isOpen={isEditOfferModalOpen}
@@ -493,7 +623,6 @@ function App() {
                     showToast={showToast}
                 />
             )}
-            
             <ConfirmationModal 
                 isOpen={confirmationModal.isOpen}
                 onClose={closeConfirmationModal}
@@ -501,7 +630,6 @@ function App() {
                 title={confirmationModal.title}
                 message={confirmationModal.message}
             />
-            
             {toast.message && (
                 <Toast 
                     message={toast.message}
