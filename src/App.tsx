@@ -10,6 +10,7 @@ import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
 import AuthForm from './components/auth/AuthForm';
 import { Database, LayoutGrid, ChevronsLeftRight } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 function App() {
     const [currentScreen, setCurrentScreen] = useState('grid'); 
@@ -444,13 +445,48 @@ function App() {
                                 ]);
                                 setNewNote('');
                             }} className="mb-6 flex gap-2">
-                                <input
-                                    type="text"
-                                    value={newNote}
-                                    onChange={e => setNewNote(e.target.value)}
-                                    placeholder="Digite uma nova nota..."
-                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-4 py-2 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
-                                />
+                                <div className="flex-1 flex flex-col gap-1">
+                                    <div className="flex gap-1 mb-1">
+                                        <button type="button" title="Negrito (Ctrl+B)" onClick={e => {
+                                            e.preventDefault();
+                                            const textarea = document.getElementById('noteTextarea');
+                                            if (!textarea) return;
+                                            const start = textarea.selectionStart;
+                                            const end = textarea.selectionEnd;
+                                            setNewNote(prev => prev.substring(0, start) + '**' + prev.substring(start, end) + '**' + prev.substring(end));
+                                            setTimeout(() => textarea.focus(), 0);
+                                        }} className="px-2 py-1 rounded bg-blue-700 text-white font-bold">B</button>
+                                        <button type="button" title="Itálico (Ctrl+I)" onClick={e => {
+                                            e.preventDefault();
+                                            const textarea = document.getElementById('noteTextarea');
+                                            if (!textarea) return;
+                                            const start = textarea.selectionStart;
+                                            const end = textarea.selectionEnd;
+                                            setNewNote(prev => prev.substring(0, start) + '_' + prev.substring(start, end) + '_' + prev.substring(end));
+                                            setTimeout(() => textarea.focus(), 0);
+                                        }} className="px-2 py-1 rounded bg-blue-700 text-white font-bold italic">I</button>
+                                    </div>
+                                    <textarea
+                                        id="noteTextarea"
+                                        value={newNote}
+                                        onChange={e => setNewNote(e.target.value)}
+                                        placeholder="Digite uma nova nota..."
+                                        rows={2}
+                                        className={`flex-1 resize-y ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-4 py-2 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && e.ctrlKey) {
+                                                e.preventDefault();
+                                                const textarea = e.target;
+                                                const start = textarea.selectionStart;
+                                                const end = textarea.selectionEnd;
+                                                setNewNote(prev => prev.substring(0, start) + '\n' + prev.substring(end));
+                                                setTimeout(() => textarea.setSelectionRange(start + 1, start + 1), 0);
+                                            } else if (e.key === 'Enter' && !e.ctrlKey) {
+                                                // submit
+                                            }
+                                        }}
+                                    />
+                                </div>
                                 <button type="submit" className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-5 py-2 rounded-lg font-semibold`}>Adicionar</button>
                             </form>
                             <ul className="space-y-4">
@@ -461,14 +497,14 @@ function App() {
                                     <li key={note.id} className={`p-4 rounded-lg border-2 ${HACKER_COLORS.borderPrimary} bg-[#23262F]/80 flex flex-col gap-2`}>
                                         <div className="flex justify-between items-center">
                                             {editingNoteId === note.id ? (
-                                                <input
-                                                    type="text"
+                                                <textarea
                                                     value={editingNoteText}
                                                     onChange={e => setEditingNoteText(e.target.value)}
-                                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
+                                                    rows={2}
+                                                    className={`flex-1 resize-y ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
                                                 />
                                             ) : (
-                                                <span className="text-base text-slate-200">{note.text}</span>
+                                                <span className="text-base text-slate-200"><ReactMarkdown>{note.text}</ReactMarkdown></span>
                                             )}
                                             <div className="flex gap-2 ml-2">
                                                 {editingNoteId === note.id ? (
@@ -549,7 +585,7 @@ function App() {
                                                 )}
                                                 {(activeOfferNotes[oid] || []).map(note => (
                                                     <li key={note.id} className="p-2 rounded border border-purple-700 bg-[#23262F]/90 flex justify-between items-center">
-                                                        <span className="text-sm text-slate-200">{note.text}</span>
+                                                        <span className="text-sm text-slate-200"><ReactMarkdown>{note.text}</ReactMarkdown></span>
                                                         <span className="text-xs text-slate-400 ml-3">{note.date}</span>
                                                     </li>
                                                 ))}
