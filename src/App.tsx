@@ -362,6 +362,77 @@ function App() {
             );
     }, [offers, searchTerm, showArchived]);
 
+    // --- SUPABASE NOTES INTEGRATION ---
+    // Carrega notas do Supabase ao abrir o bloco de notas
+    useEffect(() => {
+        if (!showNotes || !userId || !activeSupabaseClient) return;
+        const fetchNotes = async () => {
+            const { data, error } = await activeSupabaseClient
+                .from('notes')
+                .select('*')
+                .eq('user_id', userId)
+                .order('date', { ascending: false });
+            if (error) {
+                showToast('Erro ao carregar notas: ' + error.message, 'error');
+                setNotes([]);
+            } else {
+                setNotes(data || []);
+            }
+        };
+        fetchNotes();
+    }, [showNotes, userId, activeSupabaseClient, showToast]);
+
+    // Adiciona nova nota no Supabase
+    const handleAddNote = async (e) => {
+        e.preventDefault();
+        if (!newNote.trim()) return;
+        if (!userId || !activeSupabaseClient) return;
+        const text = newNote.trim();
+        setNewNote('');
+        const { data, error } = await activeSupabaseClient
+            .from('notes')
+            .insert([{ user_id: userId, text }])
+            .select();
+        if (error) {
+            showToast('Erro ao adicionar nota: ' + error.message, 'error');
+        } else {
+            setNotes(prev => [data[0], ...prev]);
+        }
+    };
+
+    // Edita nota no Supabase
+    const handleSaveEditNote = async (noteId) => {
+        if (!editingNoteText.trim()) return;
+        if (!userId || !activeSupabaseClient) return;
+        const { data, error } = await activeSupabaseClient
+            .from('notes')
+            .update({ text: editingNoteText })
+            .eq('id', noteId)
+            .eq('user_id', userId)
+            .select();
+        if (error) {
+            showToast('Erro ao editar nota: ' + error.message, 'error');
+        } else {
+            setNotes(prev => prev.map(n => n.id === noteId ? { ...n, text: editingNoteText, updated_at: data[0].updated_at } : n));
+            setEditingNoteId(null);
+        }
+    };
+
+    // Exclui nota no Supabase
+    const handleDeleteNote = async (noteId) => {
+        if (!userId || !activeSupabaseClient) return;
+        const { error } = await activeSupabaseClient
+            .from('notes')
+            .delete()
+            .eq('id', noteId)
+            .eq('user_id', userId);
+        if (error) {
+            showToast('Erro ao excluir nota: ' + error.message, 'error');
+        } else {
+            setNotes(prev => prev.filter(n => n.id !== noteId));
+        }
+    };
+
     if (!isAuthReady) {
         return (
             <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
@@ -436,15 +507,7 @@ function App() {
                     {showNotes && (
                         <div className="max-w-2xl mx-auto py-12">
                             <h2 className="text-2xl font-bold mb-6 text-blue-400">Bloco de Notas</h2>
-                            <form onSubmit={e => {
-                                e.preventDefault();
-                                if (!newNote.trim()) return;
-                                setNotes(prev => [
-                                    { id: Date.now(), text: newNote.trim(), date: new Date().toLocaleString() },
-                                    ...prev
-                                ]);
-                                setNewNote('');
-                            }} className="mb-6 flex gap-2">
+                            <form onSubmit={handleAddNote} className="mb-6 flex gap-2">
                                 <div className="flex-1 flex flex-col gap-1">
                                     <div className="flex gap-1 mb-1">
                                         <button type="button" title="Negrito (Ctrl+B)" onClick={e => {
@@ -481,8 +544,6 @@ function App() {
                                                 const end = textarea.selectionEnd;
                                                 setNewNote(prev => prev.substring(0, start) + '\n' + prev.substring(end));
                                                 setTimeout(() => textarea.setSelectionRange(start + 1, start + 1), 0);
-                                            } else if (e.key === 'Enter' && !e.ctrlKey) {
-                                                // submit
                                             }
                                         }}
                                     />
@@ -509,21 +570,18 @@ function App() {
                                             <div className="flex gap-2 ml-2">
                                                 {editingNoteId === note.id ? (
                                                     <>
-                                                        <button onClick={() => {
-                                                            setNotes(prev => prev.map(n => n.id === note.id ? { ...n, text: editingNoteText } : n));
-                                                            setEditingNoteId(null);
-                                                        }} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Salvar</button>
+                                                        <button onClick={() => handleSaveEditNote(note.id)} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Salvar</button>
                                                         <button onClick={() => setEditingNoteId(null)} className="px-2 py-1 rounded bg-gray-700 text-white">Cancelar</button>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <button onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Editar</button>
-                                                        <button onClick={() => setNotes(prev => prev.filter(n => n.id !== note.id))} className="px-2 py-1 rounded bg-red-600 text-white font-semibold">Excluir</button>
+                                                        <button onClick={() => handleDeleteNote(note.id)} className="px-2 py-1 rounded bg-red-600 text-white font-semibold">Excluir</button>
                                                     </>
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="text-xs text-slate-400 text-right">{note.date}</div>
+                                        <div className="text-xs text-slate-400 text-right">{note.updated_at ? new Date(note.updated_at).toLocaleString() : (note.date ? new Date(note.date).toLocaleString() : '')}</div>
                                     </li>
                                 ))}
                             </ul>
