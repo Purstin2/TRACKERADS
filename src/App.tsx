@@ -439,6 +439,21 @@ function App() {
         fetchNotes();
     };
 
+    // Carregar pinnedOfferIds do localStorage ao iniciar
+    useEffect(() => {
+        const saved = localStorage.getItem('pinnedOfferIds');
+        if (saved) {
+            try {
+                setPinnedOfferIds(JSON.parse(saved));
+            } catch {}
+        }
+    }, []);
+
+    // Salvar pinnedOfferIds no localStorage sempre que mudar
+    useEffect(() => {
+        localStorage.setItem('pinnedOfferIds', JSON.stringify(pinnedOfferIds));
+    }, [pinnedOfferIds]);
+
     if (!isAuthReady) {
         return (
             <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
