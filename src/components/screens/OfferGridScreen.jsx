@@ -20,8 +20,8 @@ const OfferGridScreen = ({
     userId, 
     isAuthReady, 
     supabaseClient, 
-    pinnedOfferId, 
-    setPinnedOfferId,
+    pinnedOfferIds, 
+    setPinnedOfferIds,
     activeOfferIds,
     setActiveOfferIds
 }) => {
@@ -33,8 +33,13 @@ const OfferGridScreen = ({
 
     // Cards fixados no topo
     const sortedOffers = [...filteredOffers].sort((a, b) => {
-        if (a.id === pinnedOfferId) return -1;
-        if (b.id === pinnedOfferId) return 1;
+        const aPinnedIdx = pinnedOfferIds.indexOf(a.id);
+        const bPinnedIdx = pinnedOfferIds.indexOf(b.id);
+        if (aPinnedIdx !== -1 && bPinnedIdx !== -1) {
+            return aPinnedIdx - bPinnedIdx; // mantém ordem de fixação
+        }
+        if (aPinnedIdx !== -1) return -1;
+        if (bPinnedIdx !== -1) return 1;
         return 0;
     });
 
@@ -158,9 +163,9 @@ const OfferGridScreen = ({
                             onDeleteOffer={onDeleteOffer} 
                             userId={userId} 
                             supabaseClient={supabaseClient} 
-                            isPinned={offer.id === pinnedOfferId}
-                            onPin={() => setPinnedOfferId(offer.id)}
-                            onUnpin={() => setPinnedOfferId(null)}
+                            isPinned={pinnedOfferIds.includes(offer.id)}
+                            onPin={() => setPinnedOfferIds(prev => prev.includes(offer.id) ? prev : [...prev, offer.id])}
+                            onUnpin={() => setPinnedOfferIds(prev => prev.filter(id => id !== offer.id))}
                             isActive={activeOfferIds?.includes(offer.id)}
                             onToggleActive={id => {
                                 if (activeOfferIds?.includes(id)) {

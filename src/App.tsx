@@ -33,7 +33,7 @@ function App() {
         onConfirm: () => {} 
     });
     const [activeSupabaseClient, setActiveSupabaseClient] = useState(null);
-    const [pinnedOfferId, setPinnedOfferId] = useState(null);
+    const [pinnedOfferIds, setPinnedOfferIds] = useState([]); // agora array
     const [showNotes, setShowNotes] = useState(false);
     const [showActiveOffers, setShowActiveOffers] = useState(false);
     const [notes, setNotes] = useState([]);
@@ -677,8 +677,8 @@ function App() {
                             userId={userId}
                             isAuthReady={isAuthReady}
                             supabaseClient={activeSupabaseClient}
-                            pinnedOfferId={pinnedOfferId}
-                            setPinnedOfferId={setPinnedOfferId}
+                            pinnedOfferIds={pinnedOfferIds}
+                            setPinnedOfferIds={setPinnedOfferIds}
                             activeOfferIds={activeOfferIds}
                             setActiveOfferIds={setActiveOfferIds}
                         />
