@@ -276,24 +276,7 @@ function App() {
             "CONFIRMA EXCLUSÃO DESTE TARGET E TODOS OS SEUS DADOS?", 
             async () => {
                 try {
-                    const { error: adCountsError } = await activeSupabaseClient
-                        .from('ad_counts')
-                        .delete()
-                        .eq('offer_id', offerId);
-                    
-                    if (adCountsError) {
-                        console.warn("App: Supabase delete ad_counts warning (continuando):", adCountsError);
-                    }
-                    
-                    const { error: commentsError } = await activeSupabaseClient
-                        .from('comments')
-                        .delete()
-                        .eq('offer_id', offerId);
-                    
-                    if (commentsError) {
-                        console.warn("App: Supabase delete comments warning (continuando):", commentsError);
-                    }
-                    
+                    // Delete the offer - CASCADE will handle related data
                     const { error: offerError } = await activeSupabaseClient
                         .from('offers')
                         .delete()
@@ -303,8 +286,14 @@ function App() {
                     
                     // Atualiza o estado local imediatamente
                     setOffers(prev => prev.filter(o => o.id !== offerId));
+                    
+                    // Remove from pinned offers if it was pinned
+                    setPinnedOfferIds(prev => prev.filter(id => id !== offerId));
+                    
+                    // Remove from active offers if it was active
+                    setActiveOfferIds(prev => prev.filter(id => id !== offerId));
+                    
                     showToast("TARGET EXCLUÍDO!", "success");
-                    fetchOffers(); 
                     
                     if (selectedOfferId === offerId) { 
                         setCurrentScreen('grid'); 
