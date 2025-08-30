@@ -100,7 +100,11 @@ function App() {
             });
 
             if (error) {
-                showToast(`Erro no registro: ${error.message}`, "error");
+                if (error.message === "User already registered") {
+                    showToast("Erro no registro: Usuário já registrado. Por favor, faça login ou use outro email.", "error");
+                } else {
+                    showToast(`Erro no registro: ${error.message}`, "error");
+                }
             } else if (data?.user) {
                 showToast("Conta criada com sucesso! Faça login para continuar.", "success");
                 setUserId(null);
