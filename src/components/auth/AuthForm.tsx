@@ -15,7 +15,15 @@ const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return emailRegex.test(email);
+    if (!emailRegex.test(email)) {
+      return false;
+    }
+    
+    // Check for test domains that Supabase rejects
+    const testDomains = ['test.com', 'example.com', 'localhost'];
+    const domain = email.split('@')[1]?.toLowerCase();
+    
+    return !testDomains.includes(domain);
   };
 
   const validatePassword = (password: string) => {
