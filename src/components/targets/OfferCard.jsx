@@ -131,8 +131,9 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         </button>
                     </div>
                 </div>
-                {/* Botão de rodar/ativar oferta */}
-                <div className="mb-2 flex justify-end">
+                
+                {/* Botão de rodar/ativar oferta - movido para dentro do card */}
+                <div className="mb-4 flex justify-end">
                     <button
                         onClick={() => onToggleActive(offer.id)}
                         className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-all duration-200 ${isActive ? 'bg-blue-600 border-blue-400 text-white shadow' : 'bg-gray-800 border-gray-600 text-blue-300 hover:bg-blue-900 hover:border-blue-400'}`}
@@ -140,6 +141,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         {isActive ? 'ATIVA (RODANDO)' : 'ATIVAR'}
                     </button>
                 </div>
+                
                 {/* Badge de recomendação visual */}
                 <div className={`flex items-center text-sm p-2 rounded-lg mb-3 border-2 ${HACKER_COLORS.borderPrimary} ${isPinned ? 'bg-blue-900/40' : 'bg-black/40'} shadow-inner gap-2`}> 
                     {renderPerformanceIcon()}
