@@ -210,8 +210,7 @@ function App() {
                 user_id: userId, 
                 last_ad_count: 0, 
                 last_ad_count_timestamp: null, 
-                is_archived: false,
-                category: offerData.category // garantir que category está presente
+                is_archived: false
             };
             
             const { data, error } = await activeSupabaseClient

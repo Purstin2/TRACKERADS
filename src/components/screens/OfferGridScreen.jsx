@@ -25,14 +25,8 @@ const OfferGridScreen = ({
     activeOfferIds,
     setActiveOfferIds
 }) => {
-    // Estado para controlar a aba selecionada
-    const [selectedCategory, setSelectedCategory] = useState('Infoproduto');
-
-    // Filtra as ofertas pela categoria selecionada
-    const filteredOffers = offers.filter(offer => offer.category === selectedCategory);
-
     // Cards fixados no topo
-    const sortedOffers = [...filteredOffers].sort((a, b) => {
+    const sortedOffers = [...offers].sort((a, b) => {
         const aPinnedIdx = pinnedOfferIds.indexOf(a.id);
         const bPinnedIdx = pinnedOfferIds.indexOf(b.id);
         if (aPinnedIdx !== -1 && bPinnedIdx !== -1) {
@@ -45,39 +39,6 @@ const OfferGridScreen = ({
 
     return (
         <div className="px-2 sm:px-6 md:px-12 max-w-7xl mx-auto">
-            {/* Abas de categoria */}
-            <div className="flex mb-6 gap-4 border-b-2 border-blue-800/30 pb-2">
-                <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Infoproduto' ? `bg-gradient-to-r from-blue-900/60 to-blue-800/60 ${HACKER_COLORS.primary} border-blue-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('Infoproduto')}
-                >
-                    Infoproduto
-                </button>
-                <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Dropshipping' ? `bg-gradient-to-r from-purple-900/60 to-purple-800/60 ${HACKER_COLORS.secondary} border-purple-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('Dropshipping')}
-                >
-                    Dropshipping
-                </button>
-                <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'SaaS' ? `bg-gradient-to-r from-cyan-900/60 to-cyan-800/60 text-cyan-300 border-cyan-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('SaaS')}
-                >
-                    SaaS
-                </button>
-                <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Serviços' ? `bg-gradient-to-r from-yellow-900/60 to-yellow-800/60 text-yellow-300 border-yellow-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('Serviços')}
-                >
-                    Serviços
-                </button>
-                <button
-                    className={`px-6 py-2 rounded-t-lg font-bold text-lg tracking-wide border-b-4 transition-all duration-200 ${selectedCategory === 'Outros' ? `bg-gradient-to-r from-gray-700/60 to-gray-800/60 text-slate-300 border-gray-400 shadow-md` : `bg-[#23262F]/60 ${HACKER_COLORS.textDim} border-transparent`}`}
-                    onClick={() => setSelectedCategory('Outros')}
-                >
-                    Outros
-                </button>
-            </div>
             <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
                 <h2 className={`text-3xl font-extrabold tracking-tight ${HACKER_COLORS.primary} drop-shadow-lg`}>GRID DE TARGETS</h2>
                 <div className="flex items-center space-x-3 flex-wrap gap-2">
@@ -133,7 +94,7 @@ const OfferGridScreen = ({
                 </div>
             )}
             
-            {userId && filteredOffers.length === 0 && !searchTerm && (
+            {userId && offers.length === 0 && !searchTerm && (
                 <div className="text-center py-10">
                     <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
                         NENHUM TARGET {showArchived ? 'ARQUIVADO' : 'ATIVO'} ENCONTRADO.
@@ -142,7 +103,7 @@ const OfferGridScreen = ({
                 </div>
             )}
             
-            {userId && filteredOffers.length === 0 && searchTerm && (
+            {userId && offers.length === 0 && searchTerm && (
                 <div className="text-center py-10">
                     <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
                         NENHUM TARGET PARA "{searchTerm}".
@@ -178,8 +139,8 @@ const OfferGridScreen = ({
                     ))}
                 </div>
             ) : userId && (
-                <OfferList 
-                    offers={filteredOffers} 
+                <OfferList
+                    offers={sortedOffers}
                     onViewDetails={onViewDetails} 
                     onEditOffer={onEditOffer} 
                     onToggleArchive={onToggleArchive} 
