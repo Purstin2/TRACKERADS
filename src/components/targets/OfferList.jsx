@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Trash2, Edit3, ExternalLink, Archive, ArchiveRestore } from 'lucide-react';
+import { Eye, Trash2, CreditCard as Edit3, ExternalLink, Archive, ArchiveRestore } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp } from '../../utils/helpers';
 
