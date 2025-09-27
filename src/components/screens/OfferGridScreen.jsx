@@ -34,19 +34,23 @@ const OfferGridScreen = ({
         { value: 'oldest', label: 'Mais Antigos' },
         { value: 'alphabetical', label: 'Ordem Alfabética' },
         { value: 'most_ads_7d', label: 'Mais Anúncios (7 dias)' },
+        { value: 'most_ads_14d', label: 'Mais Anúncios (14 dias)' },
+        { value: 'most_ads_30d', label: 'Mais Anúncios (30 dias)' },
         { value: 'consistency_7d', label: 'Maior Consistência (7 dias)' },
+        { value: 'consistency_14d', label: 'Maior Consistência (14 dias)' },
+        { value: 'consistency_30d', label: 'Maior Consistência (30 dias)' },
         { value: 'trending_up', label: 'Em Alta (crescimento)' },
         { value: 'trending_down', label: 'Em Queda (decrescimento)' },
         { value: 'most_active', label: 'Mais Ativos Recentemente' }
     ];
 
     // Function to calculate 7-day metrics for sorting
-    const calculateMetrics = (offer, adCounts) => {
+    const calculateMetrics = (offer, adCounts, days = 7) => {
         const now = new Date();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const daysAgo = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         
         const recentCounts = adCounts.filter(ac => 
-            new Date(ac.timestamp) >= sevenDaysAgo
+            new Date(ac.timestamp) >= daysAgo
         ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
         if (recentCounts.length === 0) {
@@ -97,24 +101,40 @@ const OfferGridScreen = ({
             case 'alphabetical':
                 return a.name.localeCompare(b.name);
             case 'most_ads_7d':
-                const aMaxAds = calculateMetrics(a, []).maxAds;
-                const bMaxAds = calculateMetrics(b, []).maxAds;
-                return bMaxAds - aMaxAds;
+                const aMaxAds7 = calculateMetrics(a, [], 7).maxAds;
+                const bMaxAds7 = calculateMetrics(b, [], 7).maxAds;
+                return bMaxAds7 - aMaxAds7;
+            case 'most_ads_14d':
+                const aMaxAds14 = calculateMetrics(a, [], 14).maxAds;
+                const bMaxAds14 = calculateMetrics(b, [], 14).maxAds;
+                return bMaxAds14 - aMaxAds14;
+            case 'most_ads_30d':
+                const aMaxAds30 = calculateMetrics(a, [], 30).maxAds;
+                const bMaxAds30 = calculateMetrics(b, [], 30).maxAds;
+                return bMaxAds30 - aMaxAds30;
             case 'consistency_7d':
-                const aConsistency = calculateMetrics(a, []).consistency;
-                const bConsistency = calculateMetrics(b, []).consistency;
-                return bConsistency - aConsistency;
+                const aConsistency7 = calculateMetrics(a, [], 7).consistency;
+                const bConsistency7 = calculateMetrics(b, [], 7).consistency;
+                return bConsistency7 - aConsistency7;
+            case 'consistency_14d':
+                const aConsistency14 = calculateMetrics(a, [], 14).consistency;
+                const bConsistency14 = calculateMetrics(b, [], 14).consistency;
+                return bConsistency14 - aConsistency14;
+            case 'consistency_30d':
+                const aConsistency30 = calculateMetrics(a, [], 30).consistency;
+                const bConsistency30 = calculateMetrics(b, [], 30).consistency;
+                return bConsistency30 - aConsistency30;
             case 'trending_up':
-                const aTrendUp = calculateMetrics(a, []).trend;
-                const bTrendUp = calculateMetrics(b, []).trend;
+                const aTrendUp = calculateMetrics(a, [], 7).trend;
+                const bTrendUp = calculateMetrics(b, [], 7).trend;
                 return bTrendUp - aTrendUp;
             case 'trending_down':
-                const aTrendDown = calculateMetrics(a, []).trend;
-                const bTrendDown = calculateMetrics(b, []).trend;
+                const aTrendDown = calculateMetrics(a, [], 7).trend;
+                const bTrendDown = calculateMetrics(b, [], 7).trend;
                 return aTrendDown - bTrendDown;
             case 'most_active':
-                const aActivity = calculateMetrics(a, []).lastActivity;
-                const bActivity = calculateMetrics(b, []).lastActivity;
+                const aActivity = calculateMetrics(a, [], 7).lastActivity;
+                const bActivity = calculateMetrics(b, [], 7).lastActivity;
                 return bActivity - aActivity;
             default:
                 return 0;
@@ -122,9 +142,9 @@ const OfferGridScreen = ({
     });
 
     return (
-        <div className="px-2 sm:px-6 md:px-12 max-w-7xl mx-auto">
+        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
             <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
-                <h2 className={`text-3xl font-extrabold tracking-tight ${HACKER_COLORS.primary} drop-shadow-lg`}>GRID DE TARGETS</h2>
+                <h2 className="text-3xl font-bold text-white">GRID DE TARGETS</h2>
                 <div className="flex items-center space-x-3 flex-wrap gap-2">
                     <div className="relative">
                         <input 
@@ -132,25 +152,25 @@ const OfferGridScreen = ({
                             placeholder="BUSCAR TARGET..." 
                             value={searchTerm} 
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`w-56 sm:w-64 md:w-80 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} ${HACKER_COLORS.primary} placeholder-blue-700 rounded-lg py-2 px-4 pl-12 focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none text-base shadow-md`} 
+                            className="w-56 sm:w-64 md:w-80 bg-gray-800 border border-gray-600 text-white placeholder-gray-400 rounded-lg py-2 px-4 pl-12 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
                         />
                         <Search 
                             size={20} 
-                            className={`absolute left-4 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.primary}`} 
+                            className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
                         />
                     </div>
                     <div className="relative">
                         <button
                             onClick={() => setShowSortDropdown(!showSortDropdown)}
-                            className={`flex items-center space-x-2 px-4 py-2 border-2 ${HACKER_COLORS.borderPrimary} rounded-lg group hover:${HACKER_COLORS.surfaceLighter} transition-all duration-200 ${HACKER_COLORS.textBase}`}
+                            className="flex items-center space-x-2 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg hover:bg-gray-700 transition-all duration-200 text-white"
                         >
-                            <Filter size={20} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary}`} />
+                            <Filter size={20} className="text-gray-400" />
                             <span className="text-sm font-medium">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
-                            <ChevronDown size={16} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary} transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+                            <ChevronDown size={16} className={`text-gray-400 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
                         </button>
                         
                         {showSortDropdown && (
-                            <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.surface} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg shadow-xl z-50 ${HACKER_COLORS.primaryGlow}`}>
+                            <div className="absolute top-full left-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
                                 {sortOptions.map(option => (
                                     <button
                                         key={option.value}
@@ -158,10 +178,10 @@ const OfferGridScreen = ({
                                             setSortBy(option.value);
                                             setShowSortDropdown(false);
                                         }}
-                                        className={`w-full text-left px-4 py-3 text-sm transition-colors border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
+                                        className={`w-full text-left px-4 py-3 text-sm transition-colors border-b border-gray-700 last:border-b-0 ${
                                             sortBy === option.value 
-                                                ? `${HACKER_COLORS.primary} bg-blue-900/30` 
-                                                : `${HACKER_COLORS.textBase} hover:${HACKER_COLORS.primary} hover:bg-gray-800/50`
+                                                ? 'text-blue-400 bg-blue-900/30' 
+                                                : 'text-white hover:text-blue-400 hover:bg-gray-700'
                                         }`}
                                     >
                                         {option.label}
@@ -173,26 +193,26 @@ const OfferGridScreen = ({
                     <button 
                         onClick={() => setShowArchived(!showArchived)} 
                         title={showArchived ? "Ver Ativas" : "Ver Arquivadas"}
-                        className={`p-2 border-2 ${HACKER_COLORS.borderPrimary} rounded-lg group transition-all duration-200 ${showArchived ? `bg-yellow-800/60 ${HACKER_COLORS.warning}` : `hover:${HACKER_COLORS.surfaceLighter}`}`}
+                        className={`p-2 border border-gray-600 rounded-lg transition-all duration-200 ${showArchived ? 'bg-yellow-800/60 text-yellow-300' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
                     >
                         {showArchived 
                             ? <ArchiveRestore size={22} className="text-yellow-300" /> 
-                            : <Archive size={22} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary}`} />
+                            : <Archive size={22} />
                         }
                     </button>
                     <button 
                         onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
                         title="Alternar Visualização"
-                        className={`p-2 border-2 ${HACKER_COLORS.borderPrimary} rounded-lg group hover:${HACKER_COLORS.surfaceLighter} transition-all duration-200`}
+                        className="p-2 bg-gray-800 border border-gray-600 rounded-lg hover:bg-gray-700 transition-all duration-200 text-gray-400"
                     >
                         {viewMode === 'grid' 
-                            ? <List size={22} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary}`} /> 
-                            : <LayoutGrid size={22} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary}`} />
+                            ? <List size={22} /> 
+                            : <LayoutGrid size={22} />
                         }
                     </button>
                     <button 
                         onClick={onAddOffer} 
-                        className={`ml-2 ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-6 py-2 rounded-lg shadow-lg hover:scale-105 active:scale-95 transition-transform flex items-center space-x-2 text-base font-semibold border border-black/50`}
+                        className="ml-2 bg-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-base font-semibold"
                     >
                         <PlusCircle size={20} />
                         <span>NOVO TARGET</span>
@@ -236,7 +256,7 @@ const OfferGridScreen = ({
             )}
 
             {userId && viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
                     {sortedOffers.map(offer => (
                         <OfferCard 
                             key={offer.id} 

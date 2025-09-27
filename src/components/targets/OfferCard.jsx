@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Eye, Trash2, CreditCard as Edit3, ExternalLink, Archive, ArchiveRestore } from 'lucide-react';
+import { Eye, Trash2, Edit3, ExternalLink, Archive, ArchiveRestore, Pin, PinOff } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp, getSafeDate } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
@@ -36,20 +36,22 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     const latestAdCount = adCountsHistory[0]?.count ?? offer.last_ad_count ?? 0; 
     
     const previousEntryCount = adCountsHistory[1]?.count;
-    let dailyPercentageChangeDisplay = "N/A";
+    let dailyPercentageChangeDisplay = null;
     let dailyChangeColor = HACKER_COLORS.textDim;
 
     if (typeof previousEntryCount === 'number' && previousEntryCount !== null) {
         if (previousEntryCount === 0 && latestAdCount > 0) {
-            dailyPercentageChangeDisplay = "+INF"; 
-            dailyChangeColor = HACKER_COLORS.primaryNeon;
+            dailyPercentageChangeDisplay = "+∞"; 
+            dailyChangeColor = "text-green-400";
         } else if (previousEntryCount > 0) {
             const change = ((latestAdCount - previousEntryCount) / previousEntryCount) * 100;
             dailyPercentageChangeDisplay = `${change > 0 ? '+' : ''}${change.toFixed(1)}%`;
-            if (change > 0) dailyChangeColor = HACKER_COLORS.primaryNeon;
-            else if (change < 0) dailyChangeColor = HACKER_COLORS.destructiveNeon;
+            if (change > 0) dailyChangeColor = "text-green-400";
+            else if (change < 0) dailyChangeColor = "text-red-400";
+            else dailyChangeColor = "text-gray-400";
         } else if (previousEntryCount === 0 && latestAdCount === 0) {
-            dailyPercentageChangeDisplay = "0.0%";
+            dailyPercentageChangeDisplay = "0%";
+            dailyChangeColor = "text-gray-400";
         }
     }
 
@@ -64,157 +66,169 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         
         if (diffDays === 1) return 'Hoje';
         if (diffDays === 2) return 'Ontem';
-        if (diffDays <= 7) return `${diffDays - 1} dias atrás`;
-        if (diffDays <= 30) return `${Math.floor(diffDays / 7)} sem. atrás`;
-        if (diffDays <= 365) return `${Math.floor(diffDays / 30)} mês(es) atrás`;
-        return `${Math.floor(diffDays / 365)} ano(s) atrás`;
+        if (diffDays <= 7) return `${diffDays - 1}d`;
+        if (diffDays <= 30) return `${Math.floor(diffDays / 7)}sem`;
+        if (diffDays <= 365) return `${Math.floor(diffDays / 30)}m`;
+        return `${Math.floor(diffDays / 365)}a`;
     };
 
-    // Import icons dynamically based on performance analysis status
-    const renderPerformanceIcon = () => {
-        if (!performanceAnalysis.Icon) {
-            // You'll need to import and use the appropriate icon based on the status
-            switch (performanceAnalysis.status) {
-                case 'TEST':
-                    return <CheckSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'EXCLUDE_RISK':
-                    return <XSquare size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'OBSERVE':
-                    return <Eye size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'RECENT_START':
-                    return <Zap size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'LOW_PERFORMANCE':
-                    return <TrendingDown size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                case 'NO_DATA':
-                    return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-                default:
-                    return <Activity size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
-            }
+    // Get status color and icon
+    const getStatusInfo = () => {
+        switch (performanceAnalysis.status) {
+            case 'TEST':
+                return { color: 'text-green-400', bgColor: 'bg-green-900/30', borderColor: 'border-green-500/50', label: 'TESTE' };
+            case 'EXCLUDE_RISK':
+                return { color: 'text-red-400', bgColor: 'bg-red-900/30', borderColor: 'border-red-500/50', label: 'RISCO' };
+            case 'OBSERVE':
+                return { color: 'text-cyan-400', bgColor: 'bg-cyan-900/30', borderColor: 'border-cyan-500/50', label: 'OBSERVAR' };
+            case 'RECENT_START':
+                return { color: 'text-purple-400', bgColor: 'bg-purple-900/30', borderColor: 'border-purple-500/50', label: 'NOVO' };
+            case 'LOW_PERFORMANCE':
+                return { color: 'text-yellow-400', bgColor: 'bg-yellow-900/30', borderColor: 'border-yellow-500/50', label: 'BAIXO' };
+            default:
+                return { color: 'text-gray-400', bgColor: 'bg-gray-900/30', borderColor: 'border-gray-500/50', label: 'SEM DADOS' };
         }
-        
-        // This isn't actually used since we handle icon rendering above
-        const IconComponent = performanceAnalysis.Icon;
-        return <IconComponent size={20} className={`mr-2 mt-0.5 flex-shrink-0 ${performanceAnalysis.color}`} />;
     };
+
+    const statusInfo = getStatusInfo();
 
     return (
-        <div className={
-            `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.cardShadow} border-2 ` +
-            (isPinned
-                ? 'border-blue-400 ring-2 ring-blue-300 bg-gradient-to-br from-blue-900/40 to-gray-900/80 '
-                : offer.is_archived
-                    ? HACKER_COLORS.borderDim + ' opacity-60 '
-                    : HACKER_COLORS.borderPrimary + ' '
-            ) +
-            'rounded-2xl p-6 shadow-xl hover:scale-[1.025] hover:' + HACKER_COLORS.primaryGlow + ' transition-all duration-300 flex flex-col justify-between min-h-[320px]' 
-        }>
-            <div>
-                <div className="flex justify-between items-start mb-4">
-                    <h3 className={`text-xl font-bold tracking-wide break-all ${isPinned ? 'text-blue-300 drop-shadow' : HACKER_COLORS.primary}`}>{offer.name}</h3>
-                    <div className="flex space-x-2">
-                        <div className={`text-xs ${HACKER_COLORS.textDim} bg-gray-800/60 px-2 py-1 rounded-full border ${HACKER_COLORS.borderDim}`}>
+        <div className={`
+            relative bg-gray-900/80 backdrop-blur-sm border rounded-xl p-5 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl
+            ${isPinned 
+                ? 'border-blue-400 shadow-blue-400/20 shadow-lg bg-gradient-to-br from-blue-900/20 to-gray-900/80' 
+                : offer.is_archived 
+                    ? 'border-gray-600 opacity-60' 
+                    : 'border-gray-700 hover:border-blue-400/50'
+            }
+        `}>
+            {/* Header with title and actions */}
+            <div className="flex items-start justify-between mb-4">
+                <div className="flex-1 min-w-0">
+                    <h3 className={`text-lg font-semibold truncate ${isPinned ? 'text-blue-300' : 'text-white'}`} title={offer.name}>
+                        {offer.name}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-gray-400 bg-gray-800/60 px-2 py-1 rounded-full">
                             {formatCreationDate(offer.created_at)}
-                        </div>
-                        {offer.link && (
-                            <a 
-                                href={offer.link} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className={`${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} transition-colors`} 
-                                title="Link"
-                            >
-                                <ExternalLink size={18} />
-                            </a>
+                        </span>
+                        {isActive && (
+                            <span className="text-xs text-blue-300 bg-blue-900/40 px-2 py-1 rounded-full font-medium">
+                                ATIVA
+                            </span>
                         )}
-                        <button 
-                            onClick={isPinned ? onUnpin : onPin} 
-                            className={
-                                `${isPinned ? 'text-blue-300' : HACKER_COLORS.textDim} hover:text-blue-400 transition-colors` 
-                            }
-                            title={isPinned ? 'Desafixar do topo' : 'Fixar no topo'}
-                        >
-                            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><path d="M12 2v7.5M12 2c-2.5 0-4.5 2-4.5 4.5V10l-2 2v1h13v-1l-2-2V6.5C16.5 4 14.5 2 12 2Z"/></svg>
-                        </button>
-                        <button 
-                            onClick={() => onEditOffer(offer)} 
-                            className={`${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} transition-colors`} 
-                            title="Editar"
-                        >
-                            <Edit3 size={18} />
-                        </button>
-                        <button 
-                            onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
-                            className={`${HACKER_COLORS.textDim} hover:${offer.is_archived ? HACKER_COLORS.primary : 'text-slate-600'} transition-colors`} 
-                            title={offer.is_archived ? "Restaurar" : "Arquivar"}
-                        >
-                            {offer.is_archived ? <ArchiveRestore size={18}/> : <Archive size={18}/>} 
-                        </button>
                     </div>
                 </div>
                 
-                {/* Botão de rodar/ativar oferta - movido para dentro do card */}
-                <div className="mb-4 flex justify-end">
-                    <button
-                        onClick={() => onToggleActive(offer.id)}
-                        className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-all duration-200 ${isActive ? 'bg-blue-600 border-blue-400 text-white shadow' : 'bg-gray-800 border-gray-600 text-blue-300 hover:bg-blue-900 hover:border-blue-400'}`}
+                <div className="flex items-center gap-1 ml-3">
+                    {offer.link && (
+                        <a 
+                            href={offer.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                            title="Abrir link"
+                        >
+                            <ExternalLink size={16} />
+                        </a>
+                    )}
+                    <button 
+                        onClick={isPinned ? onUnpin : onPin} 
+                        className={`p-1.5 transition-colors rounded-md hover:bg-gray-800/50 ${isPinned ? 'text-blue-400' : 'text-gray-400 hover:text-blue-400'}`}
+                        title={isPinned ? 'Desafixar' : 'Fixar no topo'}
                     >
-                        {isActive ? 'ATIVA (RODANDO)' : 'ATIVAR'}
+                        {isPinned ? <PinOff size={16} /> : <Pin size={16} />}
+                    </button>
+                    <button 
+                        onClick={() => onEditOffer(offer)} 
+                        className="p-1.5 text-gray-400 hover:text-yellow-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                        title="Editar"
+                    >
+                        <Edit3 size={16} />
+                    </button>
+                    <button 
+                        onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
+                        className="p-1.5 text-gray-400 hover:text-orange-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                        title={offer.is_archived ? "Restaurar" : "Arquivar"}
+                    >
+                        {offer.is_archived ? <ArchiveRestore size={16}/> : <Archive size={16}/>} 
                     </button>
                 </div>
-                
-                {/* Badge de recomendação visual */}
-                <div className={`flex items-center text-sm p-2 rounded-lg mb-3 border-2 ${HACKER_COLORS.borderPrimary} ${isPinned ? 'bg-blue-900/40' : 'bg-black/40'} shadow-inner gap-2`}> 
-                    {renderPerformanceIcon()}
-                    <div>
-                        <span className={`font-bold text-base ${performanceAnalysis.status === 'TEST' ? 'text-blue-400' : performanceAnalysis.status === 'EXCLUDE_RISK' ? 'text-red-400' : performanceAnalysis.status === 'LOW_PERFORMANCE' ? 'text-yellow-300' : performanceAnalysis.status === 'OBSERVE' ? 'text-purple-400' : 'text-cyan-300'}`}>{performanceAnalysis.label}</span>
-                        <p className={`${HACKER_COLORS.textDim} text-xs leading-tight mt-0.5`}>{performanceAnalysis.details}</p>
-                        {performanceAnalysis.weeklyChange !== "N/A" && (
-                            <p className={`${HACKER_COLORS.textDim} text-xs leading-tight`}>
-                                SEMANAL: <span className={parseFloat(performanceAnalysis.weeklyChange) > 0 
-                                    ? 'text-blue-400' 
-                                    : parseFloat(performanceAnalysis.weeklyChange) < 0 
-                                        ? 'text-red-400' 
-                                        : ''}>{performanceAnalysis.weeklyChange}</span>
-                            </p>
-                        )}
-                    </div>
-                </div>
-                <div className="mb-4">
-                    <p className={`${HACKER_COLORS.textDim} text-xs`}>ANÚNCIOS ATIVOS:</p>
-                    <div className="flex items-baseline space-x-2">
-                        <span className={`text-5xl font-extrabold ${HACKER_COLORS.textBase}`}>{latestAdCount}</span>
-                        {dailyPercentageChangeDisplay !== "N/A" && (
-                            <span className={`text-xl font-semibold ${dailyChangeColor}`}>{dailyPercentageChangeDisplay}</span>
-                        )}
-                    </div>
-                </div>
-                <p className={`text-xs ${HACKER_COLORS.textDim}`}>ÚLTIMA ATUALIZAÇÃO: {getSafeTimestamp(offer.last_ad_count_timestamp)}</p>
             </div>
-            <div className="mt-6 flex space-x-3">
+
+            {/* Status badge */}
+            <div className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-sm font-medium mb-4 ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
+                {statusInfo.label}
+            </div>
+
+            {/* Main metrics */}
+            <div className="mb-4">
+                <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-3xl font-bold text-white">{latestAdCount}</span>
+                    {dailyPercentageChangeDisplay && (
+                        <span className={`text-lg font-semibold ${dailyChangeColor}`}>
+                            {dailyPercentageChangeDisplay}
+                        </span>
+                    )}
+                </div>
+                <p className="text-xs text-gray-400">ANÚNCIOS ATIVOS</p>
+            </div>
+
+            {/* Performance details */}
+            {performanceAnalysis.weeklyChange !== "N/A" && (
+                <div className="mb-4 text-sm">
+                    <span className="text-gray-400">Variação 7d: </span>
+                    <span className={
+                        parseFloat(performanceAnalysis.weeklyChange) > 0 
+                            ? 'text-green-400' 
+                            : parseFloat(performanceAnalysis.weeklyChange) < 0 
+                                ? 'text-red-400' 
+                                : 'text-gray-400'
+                    }>
+                        {performanceAnalysis.weeklyChange}
+                    </span>
+                </div>
+            )}
+
+            {/* Last update */}
+            <div className="mb-4 text-xs text-gray-500">
+                Atualizado: {getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
+                <button 
+                    onClick={() => onToggleActive(offer.id)}
+                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                        isActive 
+                            ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                            : 'bg-gray-800 text-blue-300 border border-gray-600 hover:bg-blue-900/30 hover:border-blue-500'
+                    }`}
+                >
+                    {isActive ? 'RODANDO' : 'ATIVAR'}
+                </button>
                 <button 
                     onClick={(e) => {
                         e.preventDefault();
-                        // Open in new tab by constructing URL with offer ID
                         const currentUrl = window.location.origin + window.location.pathname;
                         const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
                         window.open(newUrl, '_blank');
                     }}
-                    className={`flex-1 ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-4 py-2 rounded-lg shadow-md hover:scale-105 active:scale-95 transition-transform text-sm font-semibold flex items-center justify-center space-x-2 border border-black/50`}
+                    className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
                 >
-                    <Eye size={16} /><span>ANALISAR</span>
+                    <Eye size={16} />
+                    ANALISAR
                 </button>
                 <button 
                     onClick={() => onDeleteOffer(offer.id)} 
-                    className={`flex-1 ${HACKER_COLORS.buttonDestructiveBg} ${HACKER_COLORS.buttonDestructiveText} px-4 py-2 rounded-lg shadow-md hover:scale-105 active:scale-95 transition-transform text-sm font-semibold flex items-center justify-center space-x-2 border border-black/50`}
+                    className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                    title="Excluir"
                 >
-                    <Trash2 size={16} /><span>EXCLUIR</span>
+                    <Trash2 size={16} />
                 </button>
             </div>
         </div>
     );
 };
-
-// Add these imports at the top of the file
-import { CheckSquare, XSquare, TrendingDown, Zap, Activity } from 'lucide-react';
 
 export default OfferCard;

@@ -65,6 +65,7 @@ function App() {
     const [activeOfferNotes, setActiveOfferNotes] = useState({}); // { offerId: [ {id, text, date} ] }
     const [newActiveNote, setNewActiveNote] = useState('');
     const [activeNoteOfferId, setActiveNoteOfferId] = useState(null);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -510,12 +511,24 @@ function App() {
     return (
         <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-row`}>
             {/* Sidebar lateral */}
-            <aside className={`h-screen w-64 flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.surface} border-r-2 ${HACKER_COLORS.borderPrimary} shadow-2xl`}>
+            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.surface} border-r-2 ${HACKER_COLORS.borderPrimary} shadow-2xl transition-all duration-300`}>
                 <div>
                     <div className="flex items-center gap-3 px-6 py-6 cursor-pointer select-none" onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
                         <Database size={36} className={`${HACKER_COLORS.primary}`} />
-                        <span className={`text-3xl font-extrabold tracking-wider ${HACKER_COLORS.primary}`}>PURSTINLAB</span>
+                        {!sidebarCollapsed && <span className={`text-3xl font-extrabold tracking-wider ${HACKER_COLORS.primary}`}>PURSTINLAB</span>}
                     </div>
+                    
+                    {/* Collapse button */}
+                    <div className="px-4 mb-4">
+                        <button
+                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border-2 ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary}`}
+                        >
+                            {sidebarCollapsed ? '→' : '←'}
+                            {!sidebarCollapsed && <span>MINIMIZAR</span>}
+                        </button>
+                    </div>
+                    
                     <nav className="flex flex-col gap-2 mt-8 px-4">
                         <button 
                             onClick={() => { 
@@ -525,199 +538,24 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('grid');
                             }} 
-                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
                         >
-                            <LayoutGrid size={20} className="inline" /> GRID
-                        </button>
-                        <button 
-                            onClick={navigateToCompare} 
-                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'compare' ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.borderSecondary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} ${HACKER_COLORS.borderDim}`}`}
-                        >
-                            <ChevronsLeftRight size={20} className="inline" /> COMPARAR
-                        </button>
-                        <button
-                            onClick={() => { 
-                                setShowNotes(true); 
-                                setShowActiveOffers(false); 
-                                setCurrentScreen('');
-                                updateUrl('notes');
-                            }}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showNotes ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.borderSecondary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} ${HACKER_COLORS.borderDim}`}`}
-                        >
-                            <span className="inline-block w-5 h-5 bg-blue-400 rounded-full mr-1.5" /> BLOCO DE NOTAS
-                        </button>
-                        <button
-                            onClick={() => { 
-                                setShowActiveOffers(true); 
-                                setShowNotes(false); 
-                                setCurrentScreen('');
-                                updateUrl('active');
-                            }}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
-                        >
-                            <span className="inline-block w-5 h-5 bg-purple-400 rounded-full mr-1.5" /> MINHAS OFERTAS ATIVAS
+                            <LayoutGrid size={20} className="inline" /> 
+                            {!sidebarCollapsed && <span>GRID</span>}
                         </button>
                     </nav>
                 </div>
-                <div className="px-6 py-4 text-xs text-right text-slate-500">
-                    <div className="mb-1 font-semibold text-slate-400">UID:</div>
-                    <div className="font-mono text-slate-400">{userId.substring(0, 12)}...</div>
-                </div>
+                {!sidebarCollapsed && (
+                    <div className="px-6 py-4 text-xs text-right text-slate-500">
+                        <div className="mb-1 font-semibold text-slate-400">UID:</div>
+                        <div className="font-mono text-slate-400">{userId.substring(0, 12)}...</div>
+                    </div>
+                )}
             </aside>
             {/* Conteúdo principal com padding lateral */}
-            <main className="flex-1 ml-64 min-h-screen flex flex-col">
+            <main className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} min-h-screen flex flex-col transition-all duration-300`}>
                 <div className="flex-1">
-                    {showNotes && (
-                        <div className="max-w-2xl mx-auto py-12">
-                            <h2 className="text-2xl font-bold mb-6 text-blue-400">Bloco de Notas</h2>
-                            <form onSubmit={handleAddNote} className="mb-6 flex gap-2">
-                                <div className="flex-1 flex flex-col gap-1">
-                                    <div className="flex gap-1 mb-1">
-                                        <button type="button" title="Negrito (Ctrl+B)" onClick={e => {
-                                            e.preventDefault();
-                                            const textarea = document.getElementById('noteTextarea');
-                                            if (!textarea) return;
-                                            const start = textarea.selectionStart;
-                                            const end = textarea.selectionEnd;
-                                            setNewNote(prev => prev.substring(0, start) + '**' + prev.substring(start, end) + '**' + prev.substring(end));
-                                            setTimeout(() => textarea.focus(), 0);
-                                        }} className="px-2 py-1 rounded bg-blue-700 text-white font-bold">B</button>
-                                        <button type="button" title="Itálico (Ctrl+I)" onClick={e => {
-                                            e.preventDefault();
-                                            const textarea = document.getElementById('noteTextarea');
-                                            if (!textarea) return;
-                                            const start = textarea.selectionStart;
-                                            const end = textarea.selectionEnd;
-                                            setNewNote(prev => prev.substring(0, start) + '_' + prev.substring(start, end) + '_' + prev.substring(end));
-                                            setTimeout(() => textarea.focus(), 0);
-                                        }} className="px-2 py-1 rounded bg-blue-700 text-white font-bold italic">I</button>
-                                    </div>
-                                    <textarea
-                                        id="noteTextarea"
-                                        value={newNote}
-                                        onChange={e => setNewNote(e.target.value)}
-                                        placeholder="Digite uma nova nota..."
-                                        rows={2}
-                                        className={`flex-1 resize-y ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-4 py-2 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && e.ctrlKey) {
-                                                e.preventDefault();
-                                                const textarea = e.target;
-                                                const start = textarea.selectionStart;
-                                                const end = textarea.selectionEnd;
-                                                setNewNote(prev => prev.substring(0, start) + '\n' + prev.substring(end));
-                                                setTimeout(() => textarea.setSelectionRange(start + 1, start + 1), 0);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                <button type="submit" className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-5 py-2 rounded-lg font-semibold`}>Adicionar</button>
-                            </form>
-                            <ul className="space-y-4">
-                                {notes.length === 0 && (
-                                    <li className="text-slate-500 text-center">Nenhuma nota ainda.</li>
-                                )}
-                                {notes.map(note => (
-                                    <li key={note.id} className={`p-4 rounded-lg border-2 ${HACKER_COLORS.borderPrimary} bg-[#23262F]/80 flex flex-col gap-2`}>
-                                        <div className="flex justify-between items-center">
-                                            {editingNoteId === note.id ? (
-                                                <textarea
-                                                    value={editingNoteText}
-                                                    onChange={e => setEditingNoteText(e.target.value)}
-                                                    rows={2}
-                                                    className={`flex-1 resize-y ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderPrimary} outline-none`}
-                                                />
-                                            ) : (
-                                                <span className="text-base text-slate-200"><ReactMarkdown>{note.text}</ReactMarkdown></span>
-                                            )}
-                                            <div className="flex gap-2 ml-2">
-                                                {editingNoteId === note.id ? (
-                                                    <>
-                                                        <button onClick={() => handleSaveEditNote(note.id)} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Salvar</button>
-                                                        <button onClick={() => setEditingNoteId(null)} className="px-2 py-1 rounded bg-gray-700 text-white">Cancelar</button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }} className="px-2 py-1 rounded bg-blue-600 text-white font-semibold">Editar</button>
-                                                        <button onClick={() => handleDeleteNote(note.id)} className="px-2 py-1 rounded bg-red-600 text-white font-semibold">Excluir</button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-slate-400 text-right">{note.updated_at ? new Date(note.updated_at).toLocaleString() : (note.date ? new Date(note.date).toLocaleString() : '')}</div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                    {showActiveOffers && (
-                        <div className="max-w-2xl mx-auto py-12">
-                            <h2 className="text-2xl font-bold mb-6 text-purple-400">Minhas Ofertas Ativas</h2>
-                            {activeOfferIds.length === 0 && (
-                                <div className="text-slate-500 text-center">Nenhuma oferta ativa no momento.</div>
-                            )}
-                            {activeOfferIds.map(oid => {
-                                const offer = offers.find(o => o.id === oid);
-                                if (!offer) return null;
-                                return (
-                                    <div key={oid} className="mb-8 p-5 rounded-xl border-2 border-purple-500 bg-[#23262F]/80 shadow-lg">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <div>
-                                                <div className="text-lg font-bold text-purple-300">{offer.name}</div>
-                                                <div className="text-xs text-slate-400">Categoria: {offer.category || 'N/A'}</div>
-                                            </div>
-                                            <button
-                                                onClick={() => setActiveOfferIds(activeOfferIds.filter(id => id !== oid))}
-                                                className="px-3 py-1 rounded-full text-xs font-bold border-2 bg-gray-800 border-gray-600 text-purple-300 hover:bg-purple-900 hover:border-purple-400 transition-all duration-200"
-                                            >
-                                                Remover da lista
-                                            </button>
-                                        </div>
-                                        <div className="mb-2 text-sm text-slate-300">{offer.link && <a href={offer.link} target="_blank" rel="noopener noreferrer" className="underline text-blue-400">{offer.link}</a>}</div>
-                                        <div className="mb-2 text-xs text-slate-400">Última atualização: {offer.updated_at ? new Date(offer.updated_at).toLocaleString() : 'N/A'}</div>
-                                        {/* Notas específicas da oferta ativa */}
-                                        <div className="mt-4">
-                                            <div className="font-semibold text-purple-200 mb-2">Notas desta oferta</div>
-                                            <form onSubmit={e => {
-                                                e.preventDefault();
-                                                if (!newActiveNote.trim() || activeNoteOfferId !== oid) return;
-                                                setActiveOfferNotes(prev => ({
-                                                    ...prev,
-                                                    [oid]: [
-                                                        { id: Date.now(), text: newActiveNote.trim(), date: new Date().toLocaleString() },
-                                                        ...(prev[oid] || [])
-                                                    ]
-                                                }));
-                                                setNewActiveNote('');
-                                                setActiveNoteOfferId(null);
-                                            }} className="flex gap-2 mb-3">
-                                                <input
-                                                    type="text"
-                                                    value={activeNoteOfferId === oid ? newActiveNote : ''}
-                                                    onChange={e => { setActiveNoteOfferId(oid); setNewActiveNote(e.target.value); }}
-                                                    placeholder="Adicionar nota para esta oferta..."
-                                                    className={`flex-1 ${HACKER_COLORS.surfaceLighter} border-2 ${HACKER_COLORS.borderSecondary} rounded-lg px-3 py-1 text-base focus:ring-2 focus:${HACKER_COLORS.borderSecondary} outline-none`}
-                                                />
-                                                <button type="submit" className={`${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} px-4 py-1 rounded-lg font-semibold`}>Adicionar</button>
-                                            </form>
-                                            <ul className="space-y-2">
-                                                {(activeOfferNotes[oid] || []).length === 0 && (
-                                                    <li className="text-slate-500 text-xs">Nenhuma nota para esta oferta.</li>
-                                                )}
-                                                {(activeOfferNotes[oid] || []).map(note => (
-                                                    <li key={note.id} className="p-2 rounded border border-purple-700 bg-[#23262F]/90 flex justify-between items-center">
-                                                        <span className="text-sm text-slate-200"><ReactMarkdown>{note.text}</ReactMarkdown></span>
-                                                        <span className="text-xs text-slate-400 ml-3">{note.date}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    {!showNotes && !showActiveOffers && currentScreen === 'grid' && (
+                    {currentScreen === 'grid' && (
                         <OfferGridScreen
                             offers={filteredOffers}
                             onViewDetails={navigateToDetail}
@@ -740,7 +578,7 @@ function App() {
                             setActiveOfferIds={setActiveOfferIds}
                         />
                     )}
-                    {!showNotes && !showActiveOffers && currentScreen === 'detail' && selectedOfferId && (
+                    {currentScreen === 'detail' && selectedOfferId && (
                         <OfferDetailScreen 
                             offerId={selectedOfferId}
                             userId={userId}
@@ -749,14 +587,6 @@ function App() {
                             openConfirmationModal={openConfirmationModal}
                             onToggleArchive={handleToggleArchiveOffer}
                             fetchOffers={fetchOffers}
-                            supabaseClient={activeSupabaseClient}
-                        />
-                    )}
-                    {!showNotes && !showActiveOffers && currentScreen === 'compare' && (
-                        <ComparativeAnalysisScreen 
-                            offers={offers.filter(o => !o.is_archived)}
-                            userId={userId}
-                            showToast={showToast}
                             supabaseClient={activeSupabaseClient}
                         />
                     )}
