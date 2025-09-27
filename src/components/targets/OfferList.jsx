@@ -51,7 +51,12 @@ const OfferList = ({ offers, onViewDetails, onEditOffer, onToggleArchive, onDele
                             <td className="p-3">
                                 <div className="flex space-x-2">
                                     <button 
-                                        onClick={() => onViewDetails(offer.id)} 
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            const currentUrl = window.location.origin + window.location.pathname;
+                                            const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
+                                            window.open(newUrl, '_blank');
+                                        }}
                                         className={`${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryNeon}`} 
                                         title="Analisar"
                                     >

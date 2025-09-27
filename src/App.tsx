@@ -12,8 +12,29 @@ import AuthForm from './components/auth/AuthForm';
 import { Database, LayoutGrid, ChevronsLeftRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
+// URL parameter handling for deep linking
+const getUrlParams = () => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        view: params.get('view'),
+        id: params.get('id')
+    };
+};
+
+const updateUrl = (view, id = null) => {
+    const url = new URL(window.location);
+    if (view && view !== 'grid') {
+        url.searchParams.set('view', view);
+        if (id) url.searchParams.set('id', id);
+    } else {
+        url.searchParams.delete('view');
+        url.searchParams.delete('id');
+    }
+    window.history.replaceState({}, '', url);
+};
+
 function App() {
-    const [currentScreen, setCurrentScreen] = useState('grid'); 
+    const [currentScreen, setCurrentScreen] = useState('grid');
     const [selectedOfferId, setSelectedOfferId] = useState(null);
     const [offerToEdit, setOfferToEdit] = useState(null);
     const [offers, setOffers] = useState([]);
@@ -116,6 +137,17 @@ function App() {
 
     useEffect(() => {
         setActiveSupabaseClient(supabaseClient);
+    }, []);
+
+    useEffect(() => {
+        // Handle URL parameters on load
+        const { view, id } = getUrlParams();
+        if (view === 'detail' && id) {
+            setCurrentScreen('detail');
+            setSelectedOfferId(id);
+        } else if (view === 'compare') {
+            setCurrentScreen('compare');
+        }
     }, []);
 
     useEffect(() => {
@@ -336,11 +368,13 @@ function App() {
 
     const navigateToDetail = (offerId) => { 
         setSelectedOfferId(offerId); 
-        setCurrentScreen('detail'); 
+        setCurrentScreen('detail');
+        updateUrl('detail', offerId);
     };
     
     const navigateToCompare = () => { 
-        setCurrentScreen('compare'); 
+        setCurrentScreen('compare');
+        updateUrl('compare');
     };
     
     const filteredOffers = useMemo(() => {
@@ -484,7 +518,13 @@ function App() {
                     </div>
                     <nav className="flex flex-col gap-2 mt-8 px-4">
                         <button 
-                            onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }} 
+                            onClick={() => { 
+                                setCurrentScreen('grid'); 
+                                setSelectedOfferId(null); 
+                                setShowNotes(false); 
+                                setShowActiveOffers(false);
+                                updateUrl('grid');
+                            }} 
                             className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
                         >
                             <LayoutGrid size={20} className="inline" /> GRID
@@ -496,13 +536,23 @@ function App() {
                             <ChevronsLeftRight size={20} className="inline" /> COMPARAR
                         </button>
                         <button
-                            onClick={() => { setShowNotes(true); setShowActiveOffers(false); setCurrentScreen(''); }}
+                            onClick={() => { 
+                                setShowNotes(true); 
+                                setShowActiveOffers(false); 
+                                setCurrentScreen('');
+                                updateUrl('notes');
+                            }}
                             className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showNotes ? `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.borderSecondary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.secondary} ${HACKER_COLORS.borderDim}`}`}
                         >
                             <span className="inline-block w-5 h-5 bg-blue-400 rounded-full mr-1.5" /> BLOCO DE NOTAS
                         </button>
                         <button
-                            onClick={() => { setShowActiveOffers(true); setShowNotes(false); setCurrentScreen(''); }}
+                            onClick={() => { 
+                                setShowActiveOffers(true); 
+                                setShowNotes(false); 
+                                setCurrentScreen('');
+                                updateUrl('active');
+                            }}
                             className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
                         >
                             <span className="inline-block w-5 h-5 bg-purple-400 rounded-full mr-1.5" /> MINHAS OFERTAS ATIVAS

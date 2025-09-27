@@ -30,7 +30,7 @@ export const formatDateForAxis = (timestampField) => {
 
 export const analyzeOfferPerformance = (
     adCountsHistory = [], 
-    daysToAnalyze = 7, 
+    daysToAnalyze = 7,
     minAdsThreshold = 10, 
     maxDropPercentage = 20
 ) => { 
@@ -174,6 +174,8 @@ export const analyzeOfferPerformance = (
         ...suggestion, 
         weeklyChange, 
         periodPercentageChange, 
-        daysAnalyzed: entriesInPeriod.length > 0 ? daysToAnalyze : 0 
+        daysAnalyzed: entriesInPeriod.length > 0 ? daysToAnalyze : 0,
+        maxAdsInPeriod: entriesInPeriod.length > 0 ? Math.max(...entriesInPeriod.map(e => e.count)) : 0,
+        avgAdsInPeriod: entriesInPeriod.length > 0 ? entriesInPeriod.reduce((sum, e) => sum + e.count, 0) / entriesInPeriod.length : 0
     };
 };

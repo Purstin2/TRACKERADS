@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
@@ -25,16 +25,100 @@ const OfferGridScreen = ({
     activeOfferIds,
     setActiveOfferIds
 }) => {
+    const [sortBy, setSortBy] = useState('newest');
+    const [showSortDropdown, setShowSortDropdown] = useState(false);
+
+    // Sort options
+    const sortOptions = [
+        { value: 'newest', label: 'Recém Adicionados' },
+        { value: 'oldest', label: 'Mais Antigos' },
+        { value: 'alphabetical', label: 'Ordem Alfabética' },
+        { value: 'most_ads_7d', label: 'Mais Anúncios (7 dias)' },
+        { value: 'consistency_7d', label: 'Maior Consistência (7 dias)' },
+        { value: 'trending_up', label: 'Em Alta (crescimento)' },
+        { value: 'trending_down', label: 'Em Queda (decrescimento)' },
+        { value: 'most_active', label: 'Mais Ativos Recentemente' }
+    ];
+
+    // Function to calculate 7-day metrics for sorting
+    const calculateMetrics = (offer, adCounts) => {
+        const now = new Date();
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const recentCounts = adCounts.filter(ac => 
+            new Date(ac.timestamp) >= sevenDaysAgo
+        ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        if (recentCounts.length === 0) {
+            return {
+                maxAds: offer.last_ad_count || 0,
+                consistency: 0,
+                trend: 0,
+                lastActivity: offer.last_ad_count_timestamp ? new Date(offer.last_ad_count_timestamp) : new Date(0)
+            };
+        }
+        
+        const maxAds = Math.max(...recentCounts.map(ac => ac.count));
+        
+        // Consistency: how stable the ad count is (lower variance = higher consistency)
+        const counts = recentCounts.map(ac => ac.count);
+        const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+        const variance = counts.reduce((acc, count) => acc + Math.pow(count - avg, 2), 0) / counts.length;
+        const consistency = avg > 0 ? Math.max(0, 100 - (variance / avg) * 10) : 0;
+        
+        // Trend: compare first and last values
+        const firstCount = recentCounts[recentCounts.length - 1]?.count || 0;
+        const lastCount = recentCounts[0]?.count || 0;
+        const trend = firstCount > 0 ? ((lastCount - firstCount) / firstCount) * 100 : 0;
+        
+        const lastActivity = new Date(recentCounts[0].timestamp);
+        
+        return { maxAds, consistency, trend, lastActivity };
+    };
+
     // Cards fixados no topo
     const sortedOffers = [...offers].sort((a, b) => {
         const aPinnedIdx = pinnedOfferIds.indexOf(a.id);
         const bPinnedIdx = pinnedOfferIds.indexOf(b.id);
+        
+        // Pinned offers always come first
         if (aPinnedIdx !== -1 && bPinnedIdx !== -1) {
             return aPinnedIdx - bPinnedIdx; // mantém ordem de fixação
         }
         if (aPinnedIdx !== -1) return -1;
         if (bPinnedIdx !== -1) return 1;
-        return 0;
+        
+        // Apply sorting to non-pinned offers
+        switch (sortBy) {
+            case 'newest':
+                return new Date(b.created_at) - new Date(a.created_at);
+            case 'oldest':
+                return new Date(a.created_at) - new Date(b.created_at);
+            case 'alphabetical':
+                return a.name.localeCompare(b.name);
+            case 'most_ads_7d':
+                const aMaxAds = calculateMetrics(a, []).maxAds;
+                const bMaxAds = calculateMetrics(b, []).maxAds;
+                return bMaxAds - aMaxAds;
+            case 'consistency_7d':
+                const aConsistency = calculateMetrics(a, []).consistency;
+                const bConsistency = calculateMetrics(b, []).consistency;
+                return bConsistency - aConsistency;
+            case 'trending_up':
+                const aTrendUp = calculateMetrics(a, []).trend;
+                const bTrendUp = calculateMetrics(b, []).trend;
+                return bTrendUp - aTrendUp;
+            case 'trending_down':
+                const aTrendDown = calculateMetrics(a, []).trend;
+                const bTrendDown = calculateMetrics(b, []).trend;
+                return aTrendDown - bTrendDown;
+            case 'most_active':
+                const aActivity = calculateMetrics(a, []).lastActivity;
+                const bActivity = calculateMetrics(b, []).lastActivity;
+                return bActivity - aActivity;
+            default:
+                return 0;
+        }
     });
 
     return (
@@ -54,6 +138,37 @@ const OfferGridScreen = ({
                             size={20} 
                             className={`absolute left-4 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.primary}`} 
                         />
+                    </div>
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowSortDropdown(!showSortDropdown)}
+                            className={`flex items-center space-x-2 px-4 py-2 border-2 ${HACKER_COLORS.borderPrimary} rounded-lg group hover:${HACKER_COLORS.surfaceLighter} transition-all duration-200 ${HACKER_COLORS.textBase}`}
+                        >
+                            <Filter size={20} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary}`} />
+                            <span className="text-sm font-medium">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
+                            <ChevronDown size={16} className={`${HACKER_COLORS.textDim} group-hover:${HACKER_COLORS.primary} transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {showSortDropdown && (
+                            <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.surface} border-2 ${HACKER_COLORS.borderPrimary} rounded-lg shadow-xl z-50 ${HACKER_COLORS.primaryGlow}`}>
+                                {sortOptions.map(option => (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => {
+                                            setSortBy(option.value);
+                                            setShowSortDropdown(false);
+                                        }}
+                                        className={`w-full text-left px-4 py-3 text-sm transition-colors border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
+                                            sortBy === option.value 
+                                                ? `${HACKER_COLORS.primary} bg-blue-900/30` 
+                                                : `${HACKER_COLORS.textBase} hover:${HACKER_COLORS.primary} hover:bg-gray-800/50`
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <button 
                         onClick={() => setShowArchived(!showArchived)} 
@@ -84,6 +199,14 @@ const OfferGridScreen = ({
                     </button>
                 </div>
             </div>
+
+            {/* Click outside to close dropdown */}
+            {showSortDropdown && (
+                <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowSortDropdown(false)}
+                />
+            )}
 
             {!userId && isAuthReady && (
                 <div className="text-center py-10">

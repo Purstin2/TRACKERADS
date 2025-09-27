@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Eye, Trash2, Edit3, ExternalLink, Archive, ArchiveRestore } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
-import { getSafeTimestamp } from '../../utils/helpers';
+import { getSafeTimestamp, getSafeDate } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 
 const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive }) => {
@@ -53,6 +53,23 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         }
     }
 
+    // Format creation date for display
+    const formatCreationDate = (dateString) => {
+        const date = getSafeDate(dateString);
+        if (!date) return 'N/A';
+        
+        const now = new Date();
+        const diffTime = Math.abs(now - date);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 1) return 'Hoje';
+        if (diffDays === 2) return 'Ontem';
+        if (diffDays <= 7) return `${diffDays - 1} dias atrás`;
+        if (diffDays <= 30) return `${Math.floor(diffDays / 7)} sem. atrás`;
+        if (diffDays <= 365) return `${Math.floor(diffDays / 30)} mês(es) atrás`;
+        return `${Math.floor(diffDays / 365)} ano(s) atrás`;
+    };
+
     // Import icons dynamically based on performance analysis status
     const renderPerformanceIcon = () => {
         if (!performanceAnalysis.Icon) {
@@ -95,6 +112,9 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 <div className="flex justify-between items-start mb-4">
                     <h3 className={`text-xl font-bold tracking-wide break-all ${isPinned ? 'text-blue-300 drop-shadow' : HACKER_COLORS.primary}`}>{offer.name}</h3>
                     <div className="flex space-x-2">
+                        <div className={`text-xs ${HACKER_COLORS.textDim} bg-gray-800/60 px-2 py-1 rounded-full border ${HACKER_COLORS.borderDim}`}>
+                            {formatCreationDate(offer.created_at)}
+                        </div>
                         {offer.link && (
                             <a 
                                 href={offer.link} 
@@ -172,7 +192,13 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             </div>
             <div className="mt-6 flex space-x-3">
                 <button 
-                    onClick={() => onViewDetails(offer.id)} 
+                    onClick={(e) => {
+                        e.preventDefault();
+                        // Open in new tab by constructing URL with offer ID
+                        const currentUrl = window.location.origin + window.location.pathname;
+                        const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
+                        window.open(newUrl, '_blank');
+                    }}
                     className={`flex-1 ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-4 py-2 rounded-lg shadow-md hover:scale-105 active:scale-95 transition-transform text-sm font-semibold flex items-center justify-center space-x-2 border border-black/50`}
                 >
                     <Eye size={16} /><span>ANALISAR</span>
