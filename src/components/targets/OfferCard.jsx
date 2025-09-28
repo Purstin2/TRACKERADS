@@ -94,138 +94,144 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
     return (
         <div className={`
-            relative bg-gray-900/80 backdrop-blur-sm border rounded-xl p-5 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl
+            relative bg-gray-900/80 backdrop-blur-sm border rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-xl
             ${isPinned 
                 ? 'border-blue-400 shadow-blue-400/20 shadow-lg bg-gradient-to-br from-blue-900/20 to-gray-900/80' 
                 : offer.is_archived 
                     ? 'border-gray-600 opacity-60' 
                     : 'border-gray-700 hover:border-blue-400/50'
             }
+            w-full h-full flex flex-col
         `}>
-            {/* Header with title and actions */}
-            <div className="flex items-start justify-between mb-4">
-                <div className="flex-1 min-w-0">
-                    <h3 className={`text-lg font-semibold truncate ${isPinned ? 'text-blue-300' : 'text-white'}`} title={offer.name}>
+            {/* Header with title and creation date */}
+            <div className="p-4 pb-3 flex-shrink-0">
+                <div className="flex items-start justify-between mb-2">
+                    <h3 className={`text-base font-semibold truncate pr-2 ${isPinned ? 'text-blue-300' : 'text-white'}`} title={offer.name}>
                         {offer.name}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-400 bg-gray-800/60 px-2 py-1 rounded-full">
-                            {formatCreationDate(offer.created_at)}
-                        </span>
-                        {isActive && (
-                            <span className="text-xs text-blue-300 bg-blue-900/40 px-2 py-1 rounded-full font-medium">
-                                ATIVA
-                            </span>
-                        )}
-                    </div>
+                    <span className="text-xs text-gray-400 bg-gray-800/60 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+                        {formatCreationDate(offer.created_at)}
+                    </span>
                 </div>
                 
-                <div className="flex items-center gap-1 ml-3">
-                    {offer.link && (
-                        <a 
-                            href={offer.link} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded-md hover:bg-gray-800/50" 
-                            title="Abrir link"
-                        >
-                            <ExternalLink size={16} />
-                        </a>
+                {/* Status and Active badges */}
+                <div className="flex items-center gap-2 mb-3">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
+                        {statusInfo.label}
+                    </span>
+                    {isActive && (
+                        <span className="text-xs text-blue-300 bg-blue-900/40 px-2 py-1 rounded-md font-medium">
+                            ATIVA
+                        </span>
                     )}
-                    <button 
-                        onClick={isPinned ? onUnpin : onPin} 
-                        className={`p-1.5 transition-colors rounded-md hover:bg-gray-800/50 ${isPinned ? 'text-blue-400' : 'text-gray-400 hover:text-blue-400'}`}
-                        title={isPinned ? 'Desafixar' : 'Fixar no topo'}
-                    >
-                        {isPinned ? <PinOff size={16} /> : <Pin size={16} />}
-                    </button>
-                    <button 
-                        onClick={() => onEditOffer(offer)} 
-                        className="p-1.5 text-gray-400 hover:text-yellow-400 transition-colors rounded-md hover:bg-gray-800/50" 
-                        title="Editar"
-                    >
-                        <Edit3 size={16} />
-                    </button>
-                    <button 
-                        onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
-                        className="p-1.5 text-gray-400 hover:text-orange-400 transition-colors rounded-md hover:bg-gray-800/50" 
-                        title={offer.is_archived ? "Restaurar" : "Arquivar"}
-                    >
-                        {offer.is_archived ? <ArchiveRestore size={16}/> : <Archive size={16}/>} 
-                    </button>
                 </div>
-            </div>
-
-            {/* Status badge */}
-            <div className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-sm font-medium mb-4 ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
-                {statusInfo.label}
             </div>
 
             {/* Main metrics */}
-            <div className="mb-4">
+            <div className="px-4 pb-3 flex-shrink-0">
                 <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-3xl font-bold text-white">{latestAdCount}</span>
+                    <span className="text-2xl font-bold text-white">{latestAdCount}</span>
                     {dailyPercentageChangeDisplay && (
-                        <span className={`text-lg font-semibold ${dailyChangeColor}`}>
+                        <span className={`text-sm font-semibold ${dailyChangeColor}`}>
                             {dailyPercentageChangeDisplay}
                         </span>
                     )}
                 </div>
-                <p className="text-xs text-gray-400">ANÚNCIOS ATIVOS</p>
+                <p className="text-xs text-gray-400 mb-2">ANÚNCIOS ATIVOS</p>
+                
+                {/* Performance details */}
+                {performanceAnalysis.weeklyChange !== "N/A" && (
+                    <div className="text-xs">
+                        <span className="text-gray-400">Variação 7d: </span>
+                        <span className={
+                            parseFloat(performanceAnalysis.weeklyChange) > 0 
+                                ? 'text-green-400' 
+                                : parseFloat(performanceAnalysis.weeklyChange) < 0 
+                                    ? 'text-red-400' 
+                                    : 'text-gray-400'
+                        }>
+                            {performanceAnalysis.weeklyChange}
+                        </span>
+                    </div>
+                )}
             </div>
 
-            {/* Performance details */}
-            {performanceAnalysis.weeklyChange !== "N/A" && (
-                <div className="mb-4 text-sm">
-                    <span className="text-gray-400">Variação 7d: </span>
-                    <span className={
-                        parseFloat(performanceAnalysis.weeklyChange) > 0 
-                            ? 'text-green-400' 
-                            : parseFloat(performanceAnalysis.weeklyChange) < 0 
-                                ? 'text-red-400' 
-                                : 'text-gray-400'
-                    }>
-                        {performanceAnalysis.weeklyChange}
-                    </span>
-                </div>
-            )}
-
             {/* Last update */}
-            <div className="mb-4 text-xs text-gray-500">
+            <div className="px-4 pb-3 text-xs text-gray-500 flex-shrink-0">
                 Atualizado: {getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}
             </div>
 
-            {/* Action buttons */}
-            <div className="flex gap-2">
-                <button 
-                    onClick={() => onToggleActive(offer.id)}
-                    className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        isActive 
-                            ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                            : 'bg-gray-800 text-blue-300 border border-gray-600 hover:bg-blue-900/30 hover:border-blue-500'
-                    }`}
-                >
-                    {isActive ? 'RODANDO' : 'ATIVAR'}
-                </button>
-                <button 
-                    onClick={(e) => {
-                        e.preventDefault();
-                        const currentUrl = window.location.origin + window.location.pathname;
-                        const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
-                        window.open(newUrl, '_blank');
-                    }}
-                    className="flex-1 bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-                >
-                    <Eye size={16} />
-                    ANALISAR
-                </button>
-                <button 
-                    onClick={() => onDeleteOffer(offer.id)} 
-                    className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
-                    title="Excluir"
-                >
-                    <Trash2 size={16} />
-                </button>
+            {/* Action buttons - always at bottom */}
+            <div className="mt-auto p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                    <button 
+                        onClick={() => onToggleActive(offer.id)}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                            isActive 
+                                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                : 'bg-gray-800 text-blue-300 border border-gray-600 hover:bg-blue-900/30 hover:border-blue-500'
+                        }`}
+                    >
+                        {isActive ? 'RODANDO' : 'ATIVAR'}
+                    </button>
+                    <button 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            const currentUrl = window.location.origin + window.location.pathname;
+                            const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
+                            window.open(newUrl, '_blank');
+                        }}
+                        className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                    >
+                        <Eye size={14} />
+                        ANALISAR
+                    </button>
+                </div>
+                
+                {/* Secondary actions */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                        {offer.link && (
+                            <a 
+                                href={offer.link} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                                title="Abrir link"
+                            >
+                                <ExternalLink size={14} />
+                            </a>
+                        )}
+                        <button 
+                            onClick={isPinned ? onUnpin : onPin} 
+                            className={`p-1.5 transition-colors rounded-md hover:bg-gray-800/50 ${isPinned ? 'text-blue-400' : 'text-gray-400 hover:text-blue-400'}`}
+                            title={isPinned ? 'Desafixar' : 'Fixar no topo'}
+                        >
+                            {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+                        </button>
+                        <button 
+                            onClick={() => onEditOffer(offer)} 
+                            className="p-1.5 text-gray-400 hover:text-yellow-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                            title="Editar"
+                        >
+                            <Edit3 size={14} />
+                        </button>
+                        <button 
+                            onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
+                            className="p-1.5 text-gray-400 hover:text-orange-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                            title={offer.is_archived ? "Restaurar" : "Arquivar"}
+                        >
+                            {offer.is_archived ? <ArchiveRestore size={14}/> : <Archive size={14}/>} 
+                        </button>
+                    </div>
+                    <button 
+                        onClick={() => onDeleteOffer(offer.id)} 
+                        className="p-1.5 text-gray-400 hover:text-red-400 transition-colors rounded-md hover:bg-gray-800/50"
+                        title="Excluir"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
             </div>
         </div>
     );
