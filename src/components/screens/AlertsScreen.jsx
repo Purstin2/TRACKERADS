@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Plus, Trash2, Edit3, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, TrendingDown, Target, Clock } from 'lucide-react';
+import { Bell, Plus, Trash2, CreditCard as Edit3, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, TrendingDown, Target, Clock } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 
 const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
