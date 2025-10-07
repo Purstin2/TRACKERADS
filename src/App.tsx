@@ -6,10 +6,14 @@ import { Modal, ConfirmationModal } from './components/ui/Modal';
 import OfferGridScreen from './components/screens/OfferGridScreen';
 import OfferDetailScreen from './components/screens/OfferDetailScreen';
 import ComparativeAnalysisScreen from './components/screens/ComparativeAnalysisScreen';
+import DashboardScreen from './components/screens/DashboardScreen';
+import AlertsScreen from './components/screens/AlertsScreen';
 import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
 import AuthForm from './components/auth/AuthForm';
-import { Database, LayoutGrid, ChevronsLeftRight } from 'lucide-react';
+import AdvancedFilters from './components/ui/AdvancedFilters';
+import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter } from 'lucide-react';
+import { exportToCSV, exportToJSON, exportDetailedReport } from './utils/exportHelpers';
 import ReactMarkdown from 'react-markdown';
 
 // URL parameter handling for deep linking
@@ -66,6 +70,8 @@ function App() {
     const [newActiveNote, setNewActiveNote] = useState('');
     const [activeNoteOfferId, setActiveNoteOfferId] = useState(null);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [filteredOffersList, setFilteredOffersList] = useState([]);
 
     const showToast = useCallback((message, type = 'info') => { 
         setToast({ message, type }); 
@@ -530,18 +536,57 @@ function App() {
                     </div>
                     
                     <nav className="flex flex-col gap-2 mt-8 px-4">
-                        <button 
-                            onClick={() => { 
-                                setCurrentScreen('grid'); 
-                                setSelectedOfferId(null); 
-                                setShowNotes(false); 
+                        <button
+                            onClick={() => {
+                                setCurrentScreen('grid');
+                                setSelectedOfferId(null);
+                                setShowNotes(false);
                                 setShowActiveOffers(false);
                                 updateUrl('grid');
-                            }} 
+                            }}
                             className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
                         >
-                            <LayoutGrid size={20} className="inline" /> 
+                            <LayoutGrid size={20} className="inline" />
                             {!sidebarCollapsed && <span>GRID</span>}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setCurrentScreen('dashboard');
+                                setSelectedOfferId(null);
+                                setShowNotes(false);
+                                setShowActiveOffers(false);
+                                updateUrl('dashboard');
+                            }}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'dashboard' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                        >
+                            <BarChart3 size={20} className="inline" />
+                            {!sidebarCollapsed && <span>DASHBOARD</span>}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setCurrentScreen('compare');
+                                setSelectedOfferId(null);
+                                setShowNotes(false);
+                                setShowActiveOffers(false);
+                                updateUrl('compare');
+                            }}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'compare' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                        >
+                            <ChevronsLeftRight size={20} className="inline" />
+                            {!sidebarCollapsed && <span>COMPARAR</span>}
+                        </button>
+                        <button
+                            onClick={() => {
+                                setCurrentScreen('alerts');
+                                setSelectedOfferId(null);
+                                setShowNotes(false);
+                                setShowActiveOffers(false);
+                                updateUrl('alerts');
+                            }}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'alerts' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                        >
+                            <Bell size={20} className="inline" />
+                            {!sidebarCollapsed && <span>ALERTAS</span>}
                         </button>
                     </nav>
                 </div>
@@ -578,8 +623,31 @@ function App() {
                             setActiveOfferIds={setActiveOfferIds}
                         />
                     )}
+                    {currentScreen === 'dashboard' && (
+                        <DashboardScreen
+                            offers={offers}
+                            userId={userId}
+                            supabaseClient={activeSupabaseClient}
+                        />
+                    )}
+                    {currentScreen === 'compare' && (
+                        <ComparativeAnalysisScreen
+                            offers={offers}
+                            userId={userId}
+                            showToast={showToast}
+                            supabaseClient={activeSupabaseClient}
+                        />
+                    )}
+                    {currentScreen === 'alerts' && (
+                        <AlertsScreen
+                            userId={userId}
+                            supabaseClient={activeSupabaseClient}
+                            offers={offers}
+                            showToast={showToast}
+                        />
+                    )}
                     {currentScreen === 'detail' && selectedOfferId && (
-                        <OfferDetailScreen 
+                        <OfferDetailScreen
                             offerId={selectedOfferId}
                             userId={userId}
                             showToast={showToast}

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
+import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
+import AdvancedFilters from '../ui/AdvancedFilters';
 
 const OfferGridScreen = ({ 
     offers, 
@@ -27,6 +29,9 @@ const OfferGridScreen = ({
 }) => {
     const [sortBy, setSortBy] = useState('newest');
     const [showSortDropdown, setShowSortDropdown] = useState(false);
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const [localFilteredOffers, setLocalFilteredOffers] = useState(offers);
 
     // Sort options
     const sortOptions = [
@@ -210,8 +215,48 @@ const OfferGridScreen = ({
                             : <LayoutGrid size={22} />
                         }
                     </button>
-                    <button 
-                        onClick={onAddOffer} 
+                    <button
+                        onClick={() => setShowAdvancedFilters(true)}
+                        className="p-2 bg-purple-600 border border-purple-500 rounded-lg hover:bg-purple-700 transition-all duration-200 text-white"
+                        title="Filtros Avançados"
+                    >
+                        <Filter size={22} />
+                    </button>
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className="p-2 bg-green-600 border border-green-500 rounded-lg hover:bg-green-700 transition-all duration-200 text-white"
+                            title="Exportar Dados"
+                        >
+                            <Download size={22} />
+                        </button>
+                        {showExportMenu && (
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                                <button
+                                    onClick={() => {
+                                        exportToCSV(offers);
+                                        setShowExportMenu(false);
+                                    }}
+                                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2 border-b border-gray-700"
+                                >
+                                    <FileText size={16} />
+                                    Exportar CSV
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        exportToJSON(offers);
+                                        setShowExportMenu(false);
+                                    }}
+                                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2"
+                                >
+                                    <FileJson size={16} />
+                                    Exportar JSON
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={onAddOffer}
                         className="ml-2 bg-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-base font-semibold"
                     >
                         <PlusCircle size={20} />
@@ -220,11 +265,27 @@ const OfferGridScreen = ({
                 </div>
             </div>
 
-            {/* Click outside to close dropdown */}
+            {/* Click outside to close dropdowns */}
             {showSortDropdown && (
-                <div 
-                    className="fixed inset-0 z-40" 
+                <div
+                    className="fixed inset-0 z-40"
                     onClick={() => setShowSortDropdown(false)}
+                />
+            )}
+            {showExportMenu && (
+                <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowExportMenu(false)}
+                />
+            )}
+
+            {showAdvancedFilters && (
+                <AdvancedFilters
+                    offers={offers}
+                    onFilterChange={(filtered) => {
+                        setLocalFilteredOffers(filtered);
+                    }}
+                    onClose={() => setShowAdvancedFilters(false)}
                 />
             )}
 
