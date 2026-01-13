@@ -87,26 +87,52 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             
             console.log('[SCRAPER] Primeiras 500 caracteres do texto:', bodyText.substring(0, 500));
             
-            // Padrões mais específicos
+            // Padrões MUITO específicos (ordem importa - do mais específico ao menos)
             const patterns = [
                 /(\d+)\s+active\s+ads?/i,
                 /(\d+)\s+ads?\s+active/i,
-                /(\d+)\s+results?/i,
                 /(\d+)\s+anúncios?\s+ativos?/i,
                 /(\d+)\s+resultados?/i,
-                /showing\s+(\d+)/i,
-                /(\d+)\s+of\s+\d+/i
+                /(\d+)\s+results?\s+found/i,
+                /showing\s+(\d+)\s+results?/i,
+                /(\d+)\s+results?\s+in/i,
+                /(\d+)\s+results?$/im, // No final da linha
             ];
             
             for (const pattern of patterns) {
                 const match = bodyText.match(pattern);
                 if (match) {
                     const num = parseInt(match[1], 10);
-                    if (num > 0) {
+                    // Validações:
+                    // - Número entre 0 e 10000 (anúncios normalmente não passam disso)
+                    // - Não é um ano (2020-2030)
+                    if (num >= 0 && num <= 10000 && (num < 2020 || num > 2030)) {
                         adCount = num;
                         console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
                         console.log(`[SCRAPER] ✓ Match completo: "${match[0]}"`);
                         break;
+                    } else {
+                        console.log(`[SCRAPER] ⚠️  Número ${num} rejeitado (parece ser ano ou número inválido)`);
+                    }
+                }
+            }
+        }
+        
+        // Estratégia 3: Se ainda não achou, procura especificamente por padrão "XX results"
+        if (adCount === null) {
+            console.log('[SCRAPER] Estratégia 3: Procurando padrão específico do Facebook...');
+            // Procura especificamente por linhas que contenham "result" mas não "2026"
+            const lines = bodyText.split('\n');
+            for (const line of lines) {
+                if (line.match(/results?/i) && !line.match(/20\d{2}/)) {
+                    const match = line.match(/(\d+)/);
+                    if (match) {
+                        const num = parseInt(match[1], 10);
+                        if (num > 0 && num <= 10000) {
+                            adCount = num;
+                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios na linha: "${line.trim()}"`);
+                            break;
+                        }
                     }
                 }
             }
