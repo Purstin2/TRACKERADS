@@ -1,0 +1,11 @@
+# Copie este arquivo para .env e preencha com suas credenciais
+
+# Supabase Configuration
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_SERVICE_KEY=sua-service-key-aqui
+
+# Server Configuration
+PORT=3001
+
+# Scraping Configuration
+SCRAPING_INTERVAL=12h

@@ -1,0 +1,129 @@
+import cron from 'node-cron';
+import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple } from './scraper.js';
+import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult } from './supabaseService.js';
+
+/**
+ * Executa o scraping para todas as ofertas
+ */
+export async function runScrapingJob() {
+    console.log('\n====================================');
+    console.log('🚀 INICIANDO JOB DE SCRAPING');
+    console.log(`⏰ ${new Date().toLocaleString('pt-BR')}`);
+    console.log('====================================\n');
+    
+    try {
+        // Busca todas as ofertas com links do Facebook
+        const offers = await getOffersWithFacebookLinks();
+        
+        if (offers.length === 0) {
+            console.log('⚠️  Nenhuma oferta com link do Facebook encontrada.');
+            return;
+        }
+        
+        console.log(`📊 Processando ${offers.length} ofertas...\n`);
+        
+        const results = {
+            success: 0,
+            failed: 0,
+            total: offers.length
+        };
+        
+        // Processa cada oferta sequencialmente (para não sobrecarregar)
+        for (const offer of offers) {
+            console.log(`\n🎯 Processando: ${offer.name}`);
+            console.log(`   Link: ${offer.link}`);
+            
+            // Tenta primeiro o método principal
+            let result = await scrapeFacebookAdsCount(offer.link);
+            
+            // Se falhou, tenta o método alternativo
+            if (!result.success) {
+                console.log('   ⚠️  Método principal falhou, tentando alternativo...');
+                result = await scrapeFacebookAdsCountSimple(offer.link);
+            }
+            
+            if (result.success && result.adCount !== null) {
+                // Atualiza no banco de dados
+                const updated = await updateOfferAdCount(offer.id, result.adCount);
+                
+                if (updated) {
+                    console.log(`   ✅ Sucesso! ${result.adCount} anúncios encontrados e salvos`);
+                    results.success++;
+                } else {
+                    console.log(`   ❌ Erro ao salvar no banco de dados`);
+                    results.failed++;
+                }
+                
+                await logScrapingResult(offer.id, result.adCount, true);
+            } else {
+                console.log(`   ❌ Falha: ${result.error}`);
+                results.failed++;
+                await logScrapingResult(offer.id, null, false, result.error);
+            }
+            
+            // Aguarda 3 segundos entre cada scraping para não ser detectado como bot
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+        console.log('\n====================================');
+        console.log('📈 RESUMO DO JOB DE SCRAPING');
+        console.log(`   Total: ${results.total}`);
+        console.log(`   ✅ Sucesso: ${results.success}`);
+        console.log(`   ❌ Falhas: ${results.failed}`);
+        console.log(`   ⏰ Concluído em: ${new Date().toLocaleString('pt-BR')}`);
+        console.log('====================================\n');
+        
+        return results;
+        
+    } catch (error) {
+        console.error('\n❌ ERRO CRÍTICO NO JOB DE SCRAPING:', error);
+        throw error;
+    }
+}
+
+/**
+ * Inicia o agendamento automático
+ * Roda a cada 12 horas (às 00:00 e 12:00)
+ */
+export function startScheduler() {
+    console.log('⏰ Scheduler iniciado!');
+    console.log('📅 Agendamento: A cada 12 horas (00:00 e 12:00)');
+    
+    // Expressão cron: A cada 12 horas (00:00 e 12:00)
+    // Formato: minuto hora dia mês dia-da-semana
+    const cronExpression = '0 0,12 * * *'; // A cada 12 horas
+    
+    // Alternativas:
+    // '0 */12 * * *'  - A cada 12 horas
+    // '0 0,12 * * *'  - Às 00:00 e 12:00
+    // '*/30 * * * *'  - A cada 30 minutos (para testes)
+    // '0 * * * *'     - A cada 1 hora
+    
+    cron.schedule(cronExpression, async () => {
+        try {
+            await runScrapingJob();
+        } catch (error) {
+            console.error('❌ Erro no job agendado:', error);
+        }
+    }, {
+        timezone: "America/Sao_Paulo" // Ajuste para seu timezone
+    });
+    
+    console.log('✅ Scheduler configurado e rodando!\n');
+}
+
+/**
+ * Para testes: roda o job imediatamente e depois agenda
+ */
+export async function startSchedulerWithInitialRun() {
+    console.log('🚀 Executando job inicial...\n');
+    
+    try {
+        await runScrapingJob();
+    } catch (error) {
+        console.error('❌ Erro no job inicial:', error);
+    }
+    
+    console.log('\n⏰ Iniciando agendamento automático...\n');
+    startScheduler();
+}

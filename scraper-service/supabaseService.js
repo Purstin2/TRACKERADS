@@ -1,0 +1,101 @@
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('❌ ERRO: Variáveis SUPABASE_URL e SUPABASE_SERVICE_KEY devem estar definidas no .env');
+    process.exit(1);
+}
+
+// Cliente Supabase com service key (bypassa RLS)
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+/**
+ * Busca todas as ofertas que têm link da biblioteca do Facebook
+ * @returns {Promise<Array>}
+ */
+export async function getOffersWithFacebookLinks() {
+    try {
+        const { data, error } = await supabase
+            .from('offers')
+            .select('*')
+            .not('link', 'is', null)
+            .neq('link', '')
+            .eq('is_archived', false);
+        
+        if (error) throw error;
+        
+        // Filtra apenas links do Facebook Ads Library
+        const facebookOffers = data.filter(offer => 
+            offer.link && offer.link.includes('facebook.com/ads/library')
+        );
+        
+        console.log(`[SUPABASE] Encontradas ${facebookOffers.length} ofertas com links do Facebook Ads Library`);
+        return facebookOffers;
+        
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao buscar ofertas:', error);
+        return [];
+    }
+}
+
+/**
+ * Atualiza o contador de anúncios de uma oferta
+ * @param {string} offerId - ID da oferta
+ * @param {number} adCount - Número de anúncios
+ * @returns {Promise<boolean>}
+ */
+export async function updateOfferAdCount(offerId, adCount) {
+    try {
+        const { data, error } = await supabase
+            .from('offers')
+            .update({
+                last_ad_count: adCount,
+                last_ad_count_timestamp: new Date().toISOString()
+            })
+            .eq('id', offerId)
+            .select();
+        
+        if (error) throw error;
+        
+        console.log(`[SUPABASE] ✓ Oferta ${offerId} atualizada: ${adCount} anúncios`);
+        return true;
+        
+    } catch (error) {
+        console.error(`[SUPABASE] Erro ao atualizar oferta ${offerId}:`, error);
+        return false;
+    }
+}
+
+/**
+ * Registra um log de scraping (opcional - para histórico)
+ * @param {string} offerId - ID da oferta
+ * @param {number|null} adCount - Número de anúncios encontrados
+ * @param {boolean} success - Se o scraping foi bem-sucedido
+ * @param {string|null} error - Mensagem de erro (se houver)
+ */
+export async function logScrapingResult(offerId, adCount, success, error = null) {
+    try {
+        // Você pode criar uma tabela 'scraping_logs' para manter histórico
+        // Por enquanto, apenas loga no console
+        const logEntry = {
+            offer_id: offerId,
+            ad_count: adCount,
+            success,
+            error,
+            timestamp: new Date().toISOString()
+        };
+        
+        console.log('[SUPABASE] Log de scraping:', JSON.stringify(logEntry));
+        
+        // Descomente abaixo se criar a tabela scraping_logs
+        // await supabase.from('scraping_logs').insert(logEntry);
+        
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao registrar log:', error);
+    }
+}

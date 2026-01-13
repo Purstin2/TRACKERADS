@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Eye, Trash2, Archive, ArchiveRestore, CheckSquare, XSquare, TrendingDown, Zap, Activity, ArrowLeft } from 'lucide-react';
+import { Eye, Trash2, Archive, ArchiveRestore, CheckSquare, XSquare, TrendingDown, Zap, Activity, ArrowLeft, RefreshCw } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp, formatDateForAxis, analyzeOfferPerformance } from '../../utils/helpers';
 
@@ -20,6 +20,7 @@ const OfferDetailScreen = ({
     const [newAdCount, setNewAdCountState] = useState(''); 
     const [newComment, setNewCommentState] = useState(''); 
     const [isLoading, setIsLoading] = useState(true);
+    const [isScrapingRunning, setIsScrapingRunning] = useState(false);
     
     const performanceAnalysis = useMemo(
         () => analyzeOfferPerformance(adCounts, 7), 
@@ -247,6 +248,64 @@ const OfferDetailScreen = ({
                 showToast(`ERRO AO EXCLUIR COMENTÁRIO: ${e.message}`, "error"); 
             }
         });
+    };
+    
+    const handleAutoScraping = async () => {
+        if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
+            showToast("Este target não tem link da Biblioteca do Facebook", "error");
+            return;
+        }
+        
+        setIsScrapingRunning(true);
+        showToast("🤖 Iniciando scraping automático...", "info");
+        
+        try {
+            const response = await fetch('http://localhost:3001/api/scrape/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: offer.link })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.adCount !== null) {
+                // Adiciona a contagem automaticamente
+                const { error: adCountInsertError } = await supabaseClient
+                    .from('ad_counts')
+                    .insert([{ 
+                        offer_id: offerId, 
+                        count: data.adCount, 
+                        user_id: userId, 
+                        timestamp: new Date().toISOString() 
+                    }])
+                    .select();
+                    
+                if (adCountInsertError) throw adCountInsertError;
+                
+                const { error: offerUpdateError } = await supabaseClient
+                    .from('offers')
+                    .update({ 
+                        last_ad_count: data.adCount, 
+                        last_ad_count_timestamp: new Date().toISOString() 
+                    })
+                    .eq('id', offerId);
+                    
+                if (offerUpdateError) throw offerUpdateError;
+                
+                showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
+                fetchOfferData();
+                if (globalFetchOffers) globalFetchOffers();
+            } else {
+                showToast(`❌ Falha no scraping: ${data.error || 'Não foi possível extrair dados'}`, "error");
+            }
+        } catch (error) {
+            console.error('Erro ao executar scraping:', error);
+            showToast(`❌ Erro: Scraper service não está rodando. Execute: cd scraper-service && npm start`, "error");
+        } finally {
+            setIsScrapingRunning(false);
+        }
     };
 
     // Helper function to render the appropriate performance icon
@@ -497,7 +556,38 @@ const OfferDetailScreen = ({
                         <h3 className="text-lg font-semibold text-white mb-4">
                             REGISTRAR ANÚNCIOS
                         </h3>
-                        <form onSubmit={handleAddAdCount} className="space-y-4">
+                        
+                        {/* Botão de scraping automático */}
+                        {offer?.link && offer.link.includes('facebook.com/ads/library') && (
+                            <div className="mb-4 p-4 bg-purple-900/20 border border-purple-500/30 rounded-lg">
+                                <p className="text-sm text-purple-300 mb-3">
+                                    🤖 Este target tem link da Biblioteca do Facebook. Você pode extrair o número de anúncios automaticamente!
+                                </p>
+                                <button 
+                                    onClick={handleAutoScraping}
+                                    disabled={isScrapingRunning}
+                                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-lg font-medium transition-all ${
+                                        isScrapingRunning 
+                                            ? 'bg-purple-800 cursor-not-allowed opacity-50' 
+                                            : 'bg-purple-600 hover:bg-purple-700'
+                                    } text-white`}
+                                >
+                                    <RefreshCw size={18} className={isScrapingRunning ? 'animate-spin' : ''} />
+                                    {isScrapingRunning ? 'EXTRAINDO DADOS...' : 'SCRAPING AUTOMÁTICO'}
+                                </button>
+                            </div>
+                        )}
+                        
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-gray-600"></div>
+                            </div>
+                            <div className="relative flex justify-center text-xs">
+                                <span className="bg-gray-900 px-2 text-gray-400">OU MANUAL</span>
+                            </div>
+                        </div>
+                        
+                        <form onSubmit={handleAddAdCount} className="space-y-4 mt-4">
                             <input 
                                 type="number" 
                                 value={newAdCount} 
@@ -511,7 +601,7 @@ const OfferDetailScreen = ({
                                 type="submit" 
                                 className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-medium transition-colors"
                             >
-                                REGISTRAR CONTAGEM
+                                REGISTRAR MANUALMENTE
                             </button>
                         </form>
                     </div>

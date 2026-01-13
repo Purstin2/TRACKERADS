@@ -1,0 +1,21 @@
+{
+  "name": "trackerads-scraper-service",
+  "version": "1.0.0",
+  "description": "Serviço de scraping automático da Biblioteca de Anúncios do Facebook",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test-scraping.js",
+    "install-browser": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.8",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.40.1",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  }
+}
