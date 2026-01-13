@@ -30,8 +30,11 @@ export async function runScrapingJob() {
         };
         
         // Processa cada oferta sequencialmente (para não sobrecarregar)
-        for (const offer of offers) {
-            console.log(`\n🎯 Processando: ${offer.name}`);
+        for (let i = 0; i < offers.length; i++) {
+            const offer = offers[i];
+            const progress = `[${i + 1}/${offers.length}]`;
+            
+            console.log(`\n🎯 ${progress} Processando: ${offer.name}`);
             console.log(`   Link: ${offer.link}`);
             
             // Tenta primeiro o método principal
@@ -44,6 +47,7 @@ export async function runScrapingJob() {
             }
             
             if (result.success && result.adCount !== null) {
+                console.log(`   ✅ Sucesso! Encontrados ${result.adCount} anúncios`);
                 // Atualiza no banco de dados
                 const updated = await updateOfferAdCount(offer.id, result.adCount);
                 

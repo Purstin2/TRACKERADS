@@ -68,39 +68,48 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                 const bodyText = document.body.innerText || document.body.textContent || '';
                 
                 // Padrões específicos em MÚLTIPLOS IDIOMAS
+                // IMPORTANTE: Suporta números com separadores (1.100, 1,100) e números grandes
                 const patterns = [
-                    // Português
-                    /~?\s*(\d+)\s+resultados?/i,
-                    /(\d+)\s+resultados?/i,
-                    /~?\s*(\d+)\s+anúncios?/i,
-                    /(\d+)\s+anúncios?\s+ativos?/i,
-                    // Inglês
-                    /~?\s*(\d+)\s+results?/i,
-                    /(\d+)\s+active\s+ads?/i,
-                    /(\d+)\s+ads?/i,
+                    // Português - com separadores de milhar
+                    /~?\s*([\d.,]+)\s+resultados?/i,
+                    /([\d.,]+)\s+resultados?/i,
+                    /~?\s*([\d.,]+)\s+anúncios?/i,
+                    /([\d.,]+)\s+anúncios?\s+ativos?/i,
+                    // Inglês - com separadores
+                    /~?\s*([\d.,]+)\s+results?/i,
+                    /([\d.,]+)\s+active\s+ads?/i,
+                    /([\d.,]+)\s+ads?/i,
                     // Chinês (约 = aproximadamente, 条 = unidade, 结果 = resultado)
-                    /约?\s*(\d+)\s*条\s*结果/i,
-                    /(\d+)\s*条\s*结果/i,
-                    /约\s*(\d+)/i,
+                    /约?\s*([\d.,]+)\s*条\s*结果/i,
+                    /([\d.,]+)\s*条\s*结果/i,
+                    /约\s*([\d.,]+)/i,
                     // Espanhol
-                    /~?\s*(\d+)\s+resultados?/i,
+                    /~?\s*([\d.,]+)\s+resultados?/i,
                     // Francês
-                    /~?\s*(\d+)\s+résultats?/i,
+                    /~?\s*([\d.,]+)\s+résultats?/i,
                     // Alemão
-                    /~?\s*(\d+)\s+ergebnisse?/i,
+                    /~?\s*([\d.,]+)\s+ergebnisse?/i,
                     // Padrão genérico: número seguido de qualquer palavra que pareça "resultado"
-                    /~?\s*(\d+)\s+\w+/i
+                    /~?\s*([\d.,]+)\s+\w+/i
                 ];
+                
+                // Função para converter número com separadores para inteiro
+                function parseNumberWithSeparators(str) {
+                    // Remove pontos e vírgulas (separadores de milhar)
+                    const cleaned = str.replace(/[.,]/g, '');
+                    return parseInt(cleaned, 10);
+                }
                 
                 // Procura em todo o texto
                 for (const pattern of patterns) {
                     const matches = bodyText.matchAll(new RegExp(pattern, 'gi'));
                     for (const match of matches) {
-                        const num = parseInt(match[1], 10);
+                        const numStr = match[1];
+                        const num = parseNumberWithSeparators(numStr);
                         const fullMatch = match[0].toLowerCase();
                         
-                        // Validações
-                        if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                        // Validações: suporta até 1 milhão de anúncios
+                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
                             if (fullMatch.includes('resultado') || 
                                 fullMatch.includes('anúncio') || 
                                 fullMatch.includes('result') ||
@@ -126,11 +135,12 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                         trimmed.includes('约'); // Chinês: aproximadamente
                     
                     if (hasResultKeyword && !trimmed.match(/20\d{2}/)) {
-                        // Procura número com ou sem ~ ou 约
-                        const match = trimmed.match(/(?:~|约)?\s*(\d+)/);
+                        // Procura número com ou sem ~ ou 约, suporta separadores
+                        const match = trimmed.match(/(?:~|约)?\s*([\d.,]+)/);
                         if (match) {
-                            const num = parseInt(match[1], 10);
-                            if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                            const numStr = match[1].replace(/[.,]/g, '');
+                            const num = parseInt(numStr, 10);
+                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
                                 return num;
                             }
                         }
@@ -172,35 +182,42 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             });
             
             // Padrões MUITO específicos - MÚLTIPLOS IDIOMAS
+            // IMPORTANTE: Suporta números com separadores (1.100, 1,100)
             const patterns = [
-                // Português
-                /~?\s*(\d+)\s+resultados?/i,
-                /(\d+)\s+resultados?/i,
-                /~?\s*(\d+)\s+anúncios?/i,
-                /(\d+)\s+anúncios?\s+ativos?/i,
-                // Inglês
-                /~?\s*(\d+)\s+results?/i,
-                /(\d+)\s+active\s+ads?/i,
-                /(\d+)\s+ads?\s+active/i,
-                /showing\s+(\d+)\s+results?/i,
+                // Português - com separadores
+                /~?\s*([\d.,]+)\s+resultados?/i,
+                /([\d.,]+)\s+resultados?/i,
+                /~?\s*([\d.,]+)\s+anúncios?/i,
+                /([\d.,]+)\s+anúncios?\s+ativos?/i,
+                // Inglês - com separadores
+                /~?\s*([\d.,]+)\s+results?/i,
+                /([\d.,]+)\s+active\s+ads?/i,
+                /([\d.,]+)\s+ads?\s+active/i,
+                /showing\s+([\d.,]+)\s+results?/i,
                 // Chinês (约110条结果 = aproximadamente 110 resultados)
-                /约?\s*(\d+)\s*条\s*结果/i,
-                /(\d+)\s*条\s*结果/i,
-                /约\s*(\d+)/i,
+                /约?\s*([\d.,]+)\s*条\s*结果/i,
+                /([\d.,]+)\s*条\s*结果/i,
+                /约\s*([\d.,]+)/i,
             ];
+            
+            // Função para converter número com separadores
+            function parseNumberWithSeparators(str) {
+                return parseInt(str.replace(/[.,]/g, ''), 10);
+            }
             
             for (const pattern of patterns) {
                 const matches = [...bodyText.matchAll(new RegExp(pattern, 'gi'))];
                 
                 for (const match of matches) {
-                    const num = parseInt(match[1], 10);
+                    const numStr = match[1];
+                    const num = parseNumberWithSeparators(numStr);
                     const fullMatch = match[0];
                     
                     // Validações rigorosas:
                     // 1. Não é ano (2020-2030)
-                    // 2. Range válido (1-10000)
+                    // 2. Range válido (1-1000000) - suporta até 1 milhão
                     // 3. O match deve conter palavras-chave em QUALQUER IDIOMA
-                    if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                    if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
                         const lowerMatch = fullMatch.toLowerCase();
                         const hasKeyword = 
                             lowerMatch.includes('resultado') || 
@@ -215,6 +232,7 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                             adCount = num;
                             console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
                             console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
+                            console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
                             break;
                         }
                     }
@@ -242,13 +260,15 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                     trimmedLine.includes('约'); // Chinês
                 
                 if (hasKeyword && !trimmedLine.match(/20\d{2}/)) {
-                    // Procura número com ~, 约 ou sem prefixo
-                    const match = trimmedLine.match(/(?:~|约)?\s*(\d+)/);
+                    // Procura número com ~, 约 ou sem prefixo, suporta separadores
+                    const match = trimmedLine.match(/(?:~|约)?\s*([\d.,]+)/);
                     if (match) {
-                        const num = parseInt(match[1], 10);
-                        if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                        const numStr = match[1].replace(/[.,]/g, '');
+                        const num = parseInt(numStr, 10);
+                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
                             adCount = num;
                             console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios na linha: "${trimmedLine}"`);
+                            console.log(`[SCRAPER] ✓ Número original: "${match[1]}"`);
                             break;
                         }
                     }
@@ -327,9 +347,14 @@ export async function scrapeFacebookAdsCountSimple(facebookAdsLibraryUrl) {
         // Executa JavaScript diretamente na página para pegar o número
         const adCount = await page.evaluate(() => {
             // Procura por elementos que contenham números de resultados
+            // Suporta números com separadores (1.100, 1,100)
             const bodyText = document.body.innerText;
-            const match = bodyText.match(/(\d+)\s+(resultados|anúncios|results?)/i);
-            return match ? parseInt(match[1], 10) : null;
+            const match = bodyText.match(/([\d.,]+)\s+(resultados|anúncios|results?)/i);
+            if (match) {
+                const numStr = match[1].replace(/[.,]/g, '');
+                return parseInt(numStr, 10);
+            }
+            return null;
         });
         
         await browser.close();
