@@ -40,42 +40,57 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         // Tenta encontrar o número de anúncios com múltiplos seletores
         let adCount = null;
         
-        // Estratégia 1: Procura por elementos específicos do Facebook Ads Library
-        console.log('[SCRAPER] Estratégia 1: Procurando elementos específicos...');
+        // Estratégia 1: Procura especificamente por "~XX resultados" ou "XX resultados" (padrão do Facebook)
+        console.log('[SCRAPER] Estratégia 1: Procurando padrão "~XX resultados"...');
+        
+        // Primeiro, tenta encontrar o padrão específico "~XX resultados" ou "XX resultados"
+        const specificPatterns = [
+            /~?\s*(\d+)\s+resultados?/i,
+            /(\d+)\s+resultados?/i,
+            /~?\s*(\d+)\s+anúncios?/i,
+            /(\d+)\s+anúncios?\s+ativos?/i
+        ];
+        
+        // Procura em elementos específicos da página do Facebook
         const facebookSelectors = [
-            // Seletores específicos do Facebook Ads Library
-            '[role="main"] span:has-text("result")',
-            '[role="main"] div:has-text("active ad")',
-            'div[class*="x9f619"] span',
-            'span:has-text("See all")',
-            // Texto que contém números seguidos de "results", "ads", etc
-            'text=/\\d+\\s+(active\\s+)?ad/i',
-            'text=/\\d+\\s+result/i',
-            'text=/\\d+\\s+anúncio/i',
-            'text=/\\d+\\s+resultado/i'
+            // Área do perfil onde aparece "~42 resultados"
+            '[role="main"]',
+            'div[class*="x1i10hfl"]', // Classes comuns do Facebook
+            'div[class*="x9f619"]',
+            'span:has-text("resultado")',
+            'span:has-text("anúncio")'
         ];
         
         for (const selector of facebookSelectors) {
             try {
-                await page.waitForSelector(selector, { timeout: 3000 }).catch(() => null);
                 const elements = await page.locator(selector).all();
                 
                 for (const element of elements) {
                     const text = await element.textContent().catch(() => '');
-                    const match = text.match(/(\d+)/);
-                    if (match) {
-                        const num = parseInt(match[1], 10);
-                        if (num > 0) {
-                            adCount = num;
-                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando seletor: ${selector}`);
-                            console.log(`[SCRAPER] ✓ Texto encontrado: "${text}"`);
-                            break;
+                    
+                    // Procura pelos padrões específicos
+                    for (const pattern of specificPatterns) {
+                        const match = text.match(pattern);
+                        if (match) {
+                            const num = parseInt(match[1], 10);
+                            // Valida: não é ano e está em range válido
+                            if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                                // Verifica se o texto contém "resultado" ou "anúncio" (confirma que é o número certo)
+                                if (text.toLowerCase().includes('resultado') || 
+                                    text.toLowerCase().includes('anúncio') ||
+                                    text.toLowerCase().includes('result')) {
+                                    adCount = num;
+                                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando padrão: ${pattern}`);
+                                    console.log(`[SCRAPER] ✓ Texto completo: "${text.trim()}"`);
+                                    break;
+                                }
+                            }
                         }
                     }
+                    if (adCount !== null) break;
                 }
                 if (adCount !== null) break;
             } catch (e) {
-                // Continua tentando outros seletores
                 continue;
             }
         }
