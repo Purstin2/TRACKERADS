@@ -18,7 +18,15 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         });
         
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale: 'pt-BR', // Força português
+            timezoneId: 'America/Sao_Paulo'
+        });
+        
+        // Força idioma português no navegador
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' });
+            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
         });
         
         const page = await context.newPage();
@@ -55,18 +63,33 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
         
         adCount = await page.evaluate(() => {
-            // Função para encontrar número de resultados
+            // Função para encontrar número de resultados (FUNCIONA EM QUALQUER IDIOMA!)
             function findAdCount() {
                 const bodyText = document.body.innerText || document.body.textContent || '';
                 
-                // Padrões específicos
+                // Padrões específicos em MÚLTIPLOS IDIOMAS
                 const patterns = [
+                    // Português
                     /~?\s*(\d+)\s+resultados?/i,
                     /(\d+)\s+resultados?/i,
                     /~?\s*(\d+)\s+anúncios?/i,
                     /(\d+)\s+anúncios?\s+ativos?/i,
+                    // Inglês
                     /~?\s*(\d+)\s+results?/i,
-                    /(\d+)\s+active\s+ads?/i
+                    /(\d+)\s+active\s+ads?/i,
+                    /(\d+)\s+ads?/i,
+                    // Chinês (约 = aproximadamente, 条 = unidade, 结果 = resultado)
+                    /约?\s*(\d+)\s*条\s*结果/i,
+                    /(\d+)\s*条\s*结果/i,
+                    /约\s*(\d+)/i,
+                    // Espanhol
+                    /~?\s*(\d+)\s+resultados?/i,
+                    // Francês
+                    /~?\s*(\d+)\s+résultats?/i,
+                    // Alemão
+                    /~?\s*(\d+)\s+ergebnisse?/i,
+                    // Padrão genérico: número seguido de qualquer palavra que pareça "resultado"
+                    /~?\s*(\d+)\s+\w+/i
                 ];
                 
                 // Procura em todo o texto
@@ -88,15 +111,23 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                     }
                 }
                 
-                // Procura linha por linha
+                // Procura linha por linha (FUNCIONA EM QUALQUER IDIOMA)
                 const lines = bodyText.split('\n');
                 for (const line of lines) {
                     const trimmed = line.trim();
-                    if ((trimmed.toLowerCase().includes('resultado') || 
-                         trimmed.toLowerCase().includes('anúncio') ||
-                         trimmed.toLowerCase().includes('result')) &&
-                        !trimmed.match(/20\d{2}/)) {
-                        const match = trimmed.match(/~?\s*(\d+)/);
+                    // Procura por palavras-chave em múltiplos idiomas
+                    const hasResultKeyword = 
+                        trimmed.toLowerCase().includes('resultado') || 
+                        trimmed.toLowerCase().includes('anúncio') ||
+                        trimmed.toLowerCase().includes('result') ||
+                        trimmed.toLowerCase().includes('ad') ||
+                        trimmed.includes('结果') || // Chinês: resultado
+                        trimmed.includes('条') || // Chinês: unidade
+                        trimmed.includes('约'); // Chinês: aproximadamente
+                    
+                    if (hasResultKeyword && !trimmed.match(/20\d{2}/)) {
+                        // Procura número com ou sem ~ ou 约
+                        const match = trimmed.match(/(?:~|约)?\s*(\d+)/);
                         if (match) {
                             const num = parseInt(match[1], 10);
                             if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
@@ -140,18 +171,22 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                 console.log(`[SCRAPER] DEBUG - Linha ${i + 1}: "${line.trim()}"`);
             });
             
-            // Padrões MUITO específicos - PRIORIDADE para padrões com "resultado" ou "anúncio"
+            // Padrões MUITO específicos - MÚLTIPLOS IDIOMAS
             const patterns = [
-                // Padrões mais específicos primeiro (com ~ ou sem)
+                // Português
                 /~?\s*(\d+)\s+resultados?/i,
                 /(\d+)\s+resultados?/i,
                 /~?\s*(\d+)\s+anúncios?/i,
                 /(\d+)\s+anúncios?\s+ativos?/i,
-                // Padrões em inglês
+                // Inglês
                 /~?\s*(\d+)\s+results?/i,
                 /(\d+)\s+active\s+ads?/i,
                 /(\d+)\s+ads?\s+active/i,
                 /showing\s+(\d+)\s+results?/i,
+                // Chinês (约110条结果 = aproximadamente 110 resultados)
+                /约?\s*(\d+)\s*条\s*结果/i,
+                /(\d+)\s*条\s*结果/i,
+                /约\s*(\d+)/i,
             ];
             
             for (const pattern of patterns) {
@@ -164,13 +199,19 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                     // Validações rigorosas:
                     // 1. Não é ano (2020-2030)
                     // 2. Range válido (1-10000)
-                    // 3. O match deve conter "resultado", "anúncio" ou "result"
+                    // 3. O match deve conter palavras-chave em QUALQUER IDIOMA
                     if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
                         const lowerMatch = fullMatch.toLowerCase();
-                        if (lowerMatch.includes('resultado') || 
+                        const hasKeyword = 
+                            lowerMatch.includes('resultado') || 
                             lowerMatch.includes('anúncio') || 
                             lowerMatch.includes('result') ||
-                            lowerMatch.includes('ad')) {
+                            lowerMatch.includes('ad') ||
+                            fullMatch.includes('结果') || // Chinês
+                            fullMatch.includes('条') || // Chinês
+                            fullMatch.includes('约'); // Chinês
+                        
+                        if (hasKeyword) {
                             adCount = num;
                             console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
                             console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
@@ -190,13 +231,19 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             
             for (const line of lines) {
                 const trimmedLine = line.trim();
-                // Procura linhas que contenham "resultado" ou "anúncio" mas NÃO anos
-                if ((trimmedLine.toLowerCase().includes('resultado') || 
-                     trimmedLine.toLowerCase().includes('anúncio') ||
-                     trimmedLine.toLowerCase().includes('result')) &&
-                    !trimmedLine.match(/20\d{2}/)) {
-                    
-                    const match = trimmedLine.match(/~?\s*(\d+)/);
+                // Procura linhas que contenham palavras-chave em QUALQUER IDIOMA mas NÃO anos
+                const hasKeyword = 
+                    trimmedLine.toLowerCase().includes('resultado') || 
+                    trimmedLine.toLowerCase().includes('anúncio') ||
+                    trimmedLine.toLowerCase().includes('result') ||
+                    trimmedLine.toLowerCase().includes('ad') ||
+                    trimmedLine.includes('结果') || // Chinês
+                    trimmedLine.includes('条') || // Chinês
+                    trimmedLine.includes('约'); // Chinês
+                
+                if (hasKeyword && !trimmedLine.match(/20\d{2}/)) {
+                    // Procura número com ~, 约 ou sem prefixo
+                    const match = trimmedLine.match(/(?:~|约)?\s*(\d+)/);
                     if (match) {
                         const num = parseInt(match[1], 10);
                         if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
