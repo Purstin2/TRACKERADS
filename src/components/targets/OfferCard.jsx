@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'rec
 import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
+import { smartClassifyOffer } from '../../utils/smartClassification';
 
 const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
@@ -29,6 +30,13 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         fetchAdCounts();
     }, [offer.id, userId, supabaseClient]); 
 
+    // Análise inteligente de classificação
+    const smartClassification = useMemo(
+        () => smartClassifyOffer(adCountsHistory),
+        [adCountsHistory]
+    );
+
+    // Mantém análise antiga para compatibilidade (variação 7d)
     const performanceAnalysis = useMemo(
         () => analyzeOfferPerformance(adCountsHistory, 7), 
         [adCountsHistory]
@@ -73,25 +81,13 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         return `${Math.floor(diffDays / 365)}a`;
     };
 
-    // Get status color and icon
-    const getStatusInfo = () => {
-        switch (performanceAnalysis.status) {
-            case 'TEST':
-                return { color: 'text-green-400', bgColor: 'bg-green-900/30', borderColor: 'border-green-500/50', label: 'TESTE' };
-            case 'EXCLUDE_RISK':
-                return { color: 'text-red-400', bgColor: 'bg-red-900/30', borderColor: 'border-red-500/50', label: 'RISCO' };
-            case 'OBSERVE':
-                return { color: 'text-cyan-400', bgColor: 'bg-cyan-900/30', borderColor: 'border-cyan-500/50', label: 'OBSERVAR' };
-            case 'RECENT_START':
-                return { color: 'text-purple-400', bgColor: 'bg-purple-900/30', borderColor: 'border-purple-500/50', label: 'NOVO' };
-            case 'LOW_PERFORMANCE':
-                return { color: 'text-yellow-400', bgColor: 'bg-yellow-900/30', borderColor: 'border-yellow-500/50', label: 'BAIXO' };
-            default:
-                return { color: 'text-gray-400', bgColor: 'bg-gray-900/30', borderColor: 'border-gray-500/50', label: 'SEM DADOS' };
-        }
+    // Usa classificação inteligente
+    const statusInfo = {
+        color: smartClassification.color,
+        bgColor: smartClassification.bgColor,
+        borderColor: smartClassification.borderColor,
+        label: smartClassification.label
     };
-
-    const statusInfo = getStatusInfo();
 
     return (
         <div className={`
