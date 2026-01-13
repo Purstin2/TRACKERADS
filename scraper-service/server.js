@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import { startScheduler, startSchedulerWithInitialRun, runScrapingJob } from './scheduler.js';
 import { scrapeFacebookAdsCount } from './scraper.js';
 import { getOffersWithFacebookLinks } from './supabaseService.js';
-import { getLastScrapingInfo } from './lastScraping.js';
 
 dotenv.config();
 
@@ -29,33 +28,12 @@ app.get('/', (req, res) => {
 app.get('/api/status', async (req, res) => {
     try {
         const offers = await getOffersWithFacebookLinks();
-        const lastScraping = getLastScrapingInfo();
-        
-        // Calcula próxima execução
-        const now = new Date();
-        const nowBR = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-        let nextRun = new Date(nowBR);
-        
-        if (nowBR.getHours() < 12) {
-            nextRun.setHours(12, 0, 0, 0);
-        } else {
-            nextRun.setDate(nextRun.getDate() + 1);
-            nextRun.setHours(0, 0, 0, 0);
-        }
         
         res.json({
             status: 'running',
             offersMonitored: offers.length,
             schedulerActive: true,
-            schedule: '00:00 e 12:00 (horário de Brasília)',
-            nextRun: nextRun.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-            lastScraping: lastScraping.timestamp ? {
-                timestamp: lastScraping.timestamp,
-                success: lastScraping.success,
-                offersProcessed: lastScraping.offersProcessed
-            } : null,
-            serverTime: now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-            serverTimeUTC: now.toUTCString(),
+            nextRun: 'A cada 12 horas (00:00 e 12:00)',
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -168,11 +146,6 @@ app.listen(PORT, () => {
     
     // Ou use esta para apenas agendar (sem rodar imediatamente):
     startScheduler();
-    
-    // Log do horário atual do servidor
-    const serverTime = new Date();
-    console.log(`🕐 Horário do servidor: ${serverTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-    console.log(`🕐 Horário UTC: ${serverTime.toUTCString()}\n`);
 });
 
 // Tratamento de erros não capturados

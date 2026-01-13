@@ -1,7 +1,6 @@
 import cron from 'node-cron';
 import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple } from './scraper.js';
 import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult } from './supabaseService.js';
-import { setLastScrapingInfo } from './lastScraping.js';
 
 /**
  * Executa o scraping para todas as ofertas
@@ -74,13 +73,6 @@ export async function runScrapingJob() {
         console.log(`   ⏰ Concluído em: ${new Date().toLocaleString('pt-BR')}`);
         console.log('====================================\n');
         
-        // Salva informações do último scraping
-        setLastScrapingInfo({
-            success: results.failed === 0,
-            offersProcessed: results.total,
-            results: results
-        });
-        
         return results;
         
     } catch (error) {
@@ -95,13 +87,11 @@ export async function runScrapingJob() {
  */
 export function startScheduler() {
     console.log('⏰ Scheduler iniciado!');
-    console.log('📅 Agendamento: 00:00 e 12:00 (horário de Brasília)');
-    console.log('📅 Agendamento UTC: 03:00 e 15:00 (Railway usa UTC)');
+    console.log('📅 Agendamento: A cada 12 horas (00:00 e 12:00)');
     
-    // Expressão cron: A cada 12 horas (00:00 e 12:00 BRASIL = 03:00 e 15:00 UTC)
+    // Expressão cron: A cada 12 horas (00:00 e 12:00)
     // Formato: minuto hora dia mês dia-da-semana
-    // IMPORTANTE: Railway usa UTC, então 12:00 Brasil = 15:00 UTC (UTC-3)
-    const cronExpression = '0 3,15 * * *'; // 03:00 UTC (00:00 BR) e 15:00 UTC (12:00 BR)
+    const cronExpression = '0 0,12 * * *'; // A cada 12 horas
     
     // Alternativas:
     // '0 */12 * * *'  - A cada 12 horas
@@ -110,32 +100,14 @@ export function startScheduler() {
     // '0 * * * *'     - A cada 1 hora
     
     cron.schedule(cronExpression, async () => {
-        const now = new Date();
-        console.log('\n🔔 ====================================');
-        console.log(`🔔 CRON DISPARADO! ${now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-        console.log('🔔 ====================================\n');
         try {
             await runScrapingJob();
         } catch (error) {
             console.error('❌ Erro no job agendado:', error);
         }
     }, {
-        timezone: "America/Sao_Paulo" // Timezone do Brasil
+        timezone: "America/Sao_Paulo" // Ajuste para seu timezone
     });
-    
-    // Log do próximo agendamento
-    const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 0, 0);
-    const nextNoon = new Date(now);
-    if (now.getHours() < 12) {
-        nextNoon.setHours(12, 0, 0, 0);
-    } else {
-        nextNoon.setHours(36, 0, 0, 0); // Próximo meio-dia
-    }
-    
-    const nextRun = nextNoon < nextMidnight ? nextNoon : nextMidnight;
-    console.log(`📅 Próxima execução: ${nextRun.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
     console.log('✅ Scheduler configurado e rodando!\n');
 }
