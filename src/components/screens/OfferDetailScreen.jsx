@@ -260,7 +260,7 @@ const OfferDetailScreen = ({
         showToast("🤖 Iniciando scraping automático...", "info");
         
         try {
-            const response = await fetch('http://localhost:3001/api/scrape/test', {
+            const response = await fetch('https://trackerads-production.up.railway.app/api/scrape/test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
