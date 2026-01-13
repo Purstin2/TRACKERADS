@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ['nodejs', 'python3']
+
+[phases.install]
+cmds = ['cd scraper-service && npm ci']
+
+[phases.build]
+cmds = ['cd scraper-service && npx playwright install chromium --with-deps']
+
+[start]
+cmd = 'cd scraper-service && node server.js'
