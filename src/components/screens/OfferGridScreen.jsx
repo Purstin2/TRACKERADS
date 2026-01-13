@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw } from 'lucide-react';
 import { HACKER_COLORS } from '../../styles/theme';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
@@ -25,13 +25,16 @@ const OfferGridScreen = ({
     pinnedOfferIds, 
     setPinnedOfferIds,
     activeOfferIds,
-    setActiveOfferIds
+    setActiveOfferIds,
+    showToast,
+    fetchOffers
 }) => {
     const [sortBy, setSortBy] = useState('newest');
     const [showSortDropdown, setShowSortDropdown] = useState(false);
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [localFilteredOffers, setLocalFilteredOffers] = useState(offers);
+    const [isScrapingAll, setIsScrapingAll] = useState(false);
 
     // Sort options
     const sortOptions = [
@@ -255,6 +258,49 @@ const OfferGridScreen = ({
                             </div>
                         )}
                     </div>
+                    {/* Botão de Scraping Automático de Todas as Ofertas */}
+                    {offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived).length > 0 && (
+                        <button
+                            onClick={async () => {
+                                setIsScrapingAll(true);
+                                try {
+                                    const response = await fetch('https://trackerads-production.up.railway.app/api/scrape/run', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        }
+                                    });
+                                    
+                                    const data = await response.json();
+                                    
+                                    if (response.ok) {
+                                        showToast && showToast('🤖 Scraping iniciado para todas as ofertas! Aguarde alguns minutos...', 'success');
+                                        // Aguarda um pouco e atualiza a lista
+                                        setTimeout(() => {
+                                            if (fetchOffers) fetchOffers();
+                                        }, 5000);
+                                    } else {
+                                        showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
+                                    }
+                                } catch (error) {
+                                    console.error('Erro ao executar scraping:', error);
+                                    showToast && showToast('❌ Erro: Scraper service não está disponível', 'error');
+                                } finally {
+                                    setIsScrapingAll(false);
+                                }
+                            }}
+                            disabled={isScrapingAll}
+                            className={`ml-2 px-6 py-2 rounded-lg shadow-lg transition-all flex items-center space-x-2 text-base font-semibold ${
+                                isScrapingAll 
+                                    ? 'bg-purple-800 cursor-not-allowed opacity-50' 
+                                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                            }`}
+                            title="Executar scraping automático para todas as ofertas com link do Facebook"
+                        >
+                            <RefreshCw size={20} className={isScrapingAll ? 'animate-spin' : ''} />
+                            <span>{isScrapingAll ? 'SCRAPING...' : 'SCRAPING TODOS'}</span>
+                        </button>
+                    )}
                     <button
                         onClick={onAddOffer}
                         className="ml-2 bg-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-base font-semibold"
