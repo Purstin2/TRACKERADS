@@ -259,48 +259,66 @@ const OfferGridScreen = ({
                         )}
                     </div>
                     {/* Botão de Scraping Automático de Todas as Ofertas */}
-                    {offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived).length > 0 && (
-                        <button
-                            onClick={async () => {
-                                setIsScrapingAll(true);
-                                try {
-                                    const response = await fetch('https://trackerads-production.up.railway.app/api/scrape/run', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json'
+                    {(() => {
+                        const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
+                        return offersToScrape.length > 0 && (
+                            <button
+                                onClick={async () => {
+                                    setIsScrapingAll(true);
+                                    try {
+                                        showToast && showToast(`🤖 Iniciando scraping para ${offersToScrape.length} ofertas... Isso pode levar alguns minutos.`, 'info');
+                                        
+                                        const response = await fetch('https://trackerads-production.up.railway.app/api/scrape/run', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json'
+                                            }
+                                        });
+                                        
+                                        const data = await response.json();
+                                        
+                                        if (response.ok) {
+                                            showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualize a página em alguns minutos.`, 'success');
+                                            
+                                            // Aguarda e atualiza a lista várias vezes
+                                            let attempts = 0;
+                                            const maxAttempts = 12; // 12 tentativas = 1 minuto
+                                            const interval = setInterval(() => {
+                                                attempts++;
+                                                if (fetchOffers) fetchOffers();
+                                                
+                                                if (attempts >= maxAttempts) {
+                                                    clearInterval(interval);
+                                                    showToast && showToast('🔄 Atualização automática finalizada. Verifique os resultados!', 'info');
+                                                }
+                                            }, 5000); // A cada 5 segundos
+                                            
+                                            // Limpa o intervalo após 2 minutos
+                                            setTimeout(() => clearInterval(interval), 120000);
+                                        } else {
+                                            showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
                                         }
-                                    });
-                                    
-                                    const data = await response.json();
-                                    
-                                    if (response.ok) {
-                                        showToast && showToast('🤖 Scraping iniciado para todas as ofertas! Aguarde alguns minutos...', 'success');
-                                        // Aguarda um pouco e atualiza a lista
-                                        setTimeout(() => {
-                                            if (fetchOffers) fetchOffers();
-                                        }, 5000);
-                                    } else {
-                                        showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
+                                    } catch (error) {
+                                        console.error('Erro ao executar scraping:', error);
+                                        showToast && showToast('❌ Erro: Scraper service não está disponível', 'error');
+                                    } finally {
+                                        // Mantém o botão desabilitado por mais tempo para evitar cliques múltiplos
+                                        setTimeout(() => setIsScrapingAll(false), 30000);
                                     }
-                                } catch (error) {
-                                    console.error('Erro ao executar scraping:', error);
-                                    showToast && showToast('❌ Erro: Scraper service não está disponível', 'error');
-                                } finally {
-                                    setIsScrapingAll(false);
-                                }
-                            }}
-                            disabled={isScrapingAll}
-                            className={`ml-2 px-6 py-2 rounded-lg shadow-lg transition-all flex items-center space-x-2 text-base font-semibold ${
-                                isScrapingAll 
-                                    ? 'bg-purple-800 cursor-not-allowed opacity-50' 
-                                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                            }`}
-                            title="Executar scraping automático para todas as ofertas com link do Facebook"
-                        >
-                            <RefreshCw size={20} className={isScrapingAll ? 'animate-spin' : ''} />
-                            <span>{isScrapingAll ? 'SCRAPING...' : 'SCRAPING TODOS'}</span>
-                        </button>
-                    )}
+                                }}
+                                disabled={isScrapingAll}
+                                className={`ml-2 px-6 py-2 rounded-lg shadow-lg transition-all flex items-center space-x-2 text-base font-semibold ${
+                                    isScrapingAll 
+                                        ? 'bg-purple-800 cursor-not-allowed opacity-50' 
+                                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                }`}
+                                title={`Executar scraping automático para ${offersToScrape.length} ofertas com link do Facebook`}
+                            >
+                                <RefreshCw size={20} className={isScrapingAll ? 'animate-spin' : ''} />
+                                <span>{isScrapingAll ? 'SCRAPING...' : `SCRAPING TODOS (${offersToScrape.length})`}</span>
+                            </button>
+                        );
+                    })()}
                     <button
                         onClick={onAddOffer}
                         className="ml-2 bg-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-base font-semibold"
