@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Eye, Trash2, CreditCard as Edit3, ExternalLink, Archive, ArchiveRestore, Pin, PinOff } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { HACKER_COLORS } from '../../styles/theme';
-import { getSafeTimestamp, getSafeDate } from '../../utils/helpers';
+import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 
 const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive }) => {
@@ -141,7 +142,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 {/* Performance details */}
                 {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <div className="text-xs">
+                    <div className="text-xs mb-3">
                         <span className="text-gray-400">Variação 7d: </span>
                         <span className={
                             parseFloat(performanceAnalysis.weeklyChange) > 0 
@@ -152,6 +153,42 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         }>
                             {performanceAnalysis.weeklyChange}
                         </span>
+                    </div>
+                )}
+                
+                {/* Mini Performance Chart */}
+                {adCountsHistory.length > 0 && (
+                    <div className="mt-3 mb-2">
+                        <div className="h-20 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart 
+                                    data={adCountsHistory.slice().reverse().map(ac => ({
+                                        timestamp: formatDateForAxis(ac.timestamp),
+                                        count: ac.count
+                                    }))}
+                                    margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
+                                >
+                                    <Line 
+                                        type="monotone" 
+                                        dataKey="count" 
+                                        stroke="#60A5FA" 
+                                        strokeWidth={2}
+                                        dot={false}
+                                        activeDot={{ r: 3 }}
+                                    />
+                                    <Tooltip 
+                                        contentStyle={{ 
+                                            backgroundColor: '#1F2937', 
+                                            border: '1px solid #3B82F6', 
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            fontSize: '11px'
+                                        }} 
+                                        labelStyle={{ color: '#60A5FA', fontSize: '10px' }}
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
                 )}
             </div>
