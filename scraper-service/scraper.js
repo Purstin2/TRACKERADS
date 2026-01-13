@@ -35,64 +35,87 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         // Aguarda a página carregar completamente
         console.log('[SCRAPER] Aguardando página carregar...');
         await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(5000); // Aguarda 5 segundos extras
+        await page.waitForTimeout(8000); // Aguarda 8 segundos para conteúdo dinâmico
+        
+        // Tenta esperar por elementos específicos do Facebook
+        try {
+            await page.waitForSelector('[role="main"]', { timeout: 10000 });
+            console.log('[SCRAPER] ✓ Elemento principal encontrado');
+        } catch (e) {
+            console.log('[SCRAPER] ⚠️  Elemento principal não encontrado, continuando...');
+        }
+        
+        // Aguarda mais um pouco para conteúdo dinâmico carregar
+        await page.waitForTimeout(3000);
         
         // Tenta encontrar o número de anúncios com múltiplos seletores
         let adCount = null;
         
-        // Estratégia 1: Procura especificamente por "~XX resultados" ou "XX resultados" (padrão do Facebook)
-        console.log('[SCRAPER] Estratégia 1: Procurando padrão "~XX resultados"...');
+        // Estratégia 1: Usa JavaScript direto no DOM para encontrar o número
+        console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
         
-        // Primeiro, tenta encontrar o padrão específico "~XX resultados" ou "XX resultados"
-        const specificPatterns = [
-            /~?\s*(\d+)\s+resultados?/i,
-            /(\d+)\s+resultados?/i,
-            /~?\s*(\d+)\s+anúncios?/i,
-            /(\d+)\s+anúncios?\s+ativos?/i
-        ];
-        
-        // Procura em elementos específicos da página do Facebook
-        const facebookSelectors = [
-            // Área do perfil onde aparece "~42 resultados"
-            '[role="main"]',
-            'div[class*="x1i10hfl"]', // Classes comuns do Facebook
-            'div[class*="x9f619"]',
-            'span:has-text("resultado")',
-            'span:has-text("anúncio")'
-        ];
-        
-        for (const selector of facebookSelectors) {
-            try {
-                const elements = await page.locator(selector).all();
+        adCount = await page.evaluate(() => {
+            // Função para encontrar número de resultados
+            function findAdCount() {
+                const bodyText = document.body.innerText || document.body.textContent || '';
                 
-                for (const element of elements) {
-                    const text = await element.textContent().catch(() => '');
-                    
-                    // Procura pelos padrões específicos
-                    for (const pattern of specificPatterns) {
-                        const match = text.match(pattern);
-                        if (match) {
-                            const num = parseInt(match[1], 10);
-                            // Valida: não é ano e está em range válido
-                            if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
-                                // Verifica se o texto contém "resultado" ou "anúncio" (confirma que é o número certo)
-                                if (text.toLowerCase().includes('resultado') || 
-                                    text.toLowerCase().includes('anúncio') ||
-                                    text.toLowerCase().includes('result')) {
-                                    adCount = num;
-                                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando padrão: ${pattern}`);
-                                    console.log(`[SCRAPER] ✓ Texto completo: "${text.trim()}"`);
-                                    break;
-                                }
+                // Padrões específicos
+                const patterns = [
+                    /~?\s*(\d+)\s+resultados?/i,
+                    /(\d+)\s+resultados?/i,
+                    /~?\s*(\d+)\s+anúncios?/i,
+                    /(\d+)\s+anúncios?\s+ativos?/i,
+                    /~?\s*(\d+)\s+results?/i,
+                    /(\d+)\s+active\s+ads?/i
+                ];
+                
+                // Procura em todo o texto
+                for (const pattern of patterns) {
+                    const matches = bodyText.matchAll(new RegExp(pattern, 'gi'));
+                    for (const match of matches) {
+                        const num = parseInt(match[1], 10);
+                        const fullMatch = match[0].toLowerCase();
+                        
+                        // Validações
+                        if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                            if (fullMatch.includes('resultado') || 
+                                fullMatch.includes('anúncio') || 
+                                fullMatch.includes('result') ||
+                                fullMatch.includes('ad')) {
+                                return num;
                             }
                         }
                     }
-                    if (adCount !== null) break;
                 }
-                if (adCount !== null) break;
-            } catch (e) {
-                continue;
+                
+                // Procura linha por linha
+                const lines = bodyText.split('\n');
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if ((trimmed.toLowerCase().includes('resultado') || 
+                         trimmed.toLowerCase().includes('anúncio') ||
+                         trimmed.toLowerCase().includes('result')) &&
+                        !trimmed.match(/20\d{2}/)) {
+                        const match = trimmed.match(/~?\s*(\d+)/);
+                        if (match) {
+                            const num = parseInt(match[1], 10);
+                            if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                                return num;
+                            }
+                        }
+                    }
+                }
+                
+                return null;
             }
+            
+            return findAdCount();
+        });
+        
+        if (adCount !== null) {
+            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando JavaScript no DOM`);
+        } else {
+            console.log('[SCRAPER] ⚠️  Estratégia 1 não encontrou número');
         }
         
         // Estratégia 2: Extrai todo o texto visível e procura padrões ESPECÍFICOS
