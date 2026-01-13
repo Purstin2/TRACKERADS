@@ -146,6 +146,11 @@ app.listen(PORT, () => {
     
     // Ou use esta para apenas agendar (sem rodar imediatamente):
     startScheduler();
+    
+    // Log do horário atual do servidor
+    const serverTime = new Date();
+    console.log(`🕐 Horário do servidor: ${serverTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+    console.log(`🕐 Horário UTC: ${serverTime.toUTCString()}\n`);
 });
 
 // Tratamento de erros não capturados

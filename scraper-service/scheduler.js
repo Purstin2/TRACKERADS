@@ -100,14 +100,32 @@ export function startScheduler() {
     // '0 * * * *'     - A cada 1 hora
     
     cron.schedule(cronExpression, async () => {
+        const now = new Date();
+        console.log('\n🔔 ====================================');
+        console.log(`🔔 CRON DISPARADO! ${now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+        console.log('🔔 ====================================\n');
         try {
             await runScrapingJob();
         } catch (error) {
             console.error('❌ Erro no job agendado:', error);
         }
     }, {
-        timezone: "America/Sao_Paulo" // Ajuste para seu timezone
+        timezone: "America/Sao_Paulo" // Timezone do Brasil
     });
+    
+    // Log do próximo agendamento
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const nextNoon = new Date(now);
+    if (now.getHours() < 12) {
+        nextNoon.setHours(12, 0, 0, 0);
+    } else {
+        nextNoon.setHours(36, 0, 0, 0); // Próximo meio-dia
+    }
+    
+    const nextRun = nextNoon < nextMidnight ? nextNoon : nextMidnight;
+    console.log(`📅 Próxima execução: ${nextRun.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
     console.log('✅ Scheduler configurado e rodando!\n');
 }
