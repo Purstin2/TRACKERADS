@@ -7,28 +7,42 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
     const [name, setName] = useState('');
     const [link, setLink] = useState('');
     const [tags, setTags] = useState('');
+    const [adCount, setAdCount] = useState('');
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        
-        if (!name.trim()) { 
-            showToast("NOME É OBRIGATÓRIO.", "error"); 
-            return; 
+
+        if (!name.trim()) {
+            showToast("NOME É OBRIGATÓRIO.", "error");
+            return;
         }
-        
-        onAddOffer({ 
-            name: name.trim(), 
-            link: link.trim() || '', // Changed from null to empty string
+
+        const offerData = {
+            name: name.trim(),
+            link: link.trim() || '',
             tags: tags.split(',')
                 .map(t => t.trim())
-                .filter(t => t).length > 0 
-                    ? tags.split(',').map(t => t.trim()).filter(t => t) 
+                .filter(t => t).length > 0
+                    ? tags.split(',').map(t => t.trim()).filter(t => t)
                     : null
-        });
-        
-        setName(''); 
-        setLink(''); 
+        };
+
+        if (adCount.trim()) {
+            const count = parseInt(adCount, 10);
+            if (!isNaN(count) && count >= 0) {
+                offerData.initial_ad_count = count;
+            } else {
+                showToast("NÚMERO DE ADS INVÁLIDO.", "error");
+                return;
+            }
+        }
+
+        onAddOffer(offerData);
+
+        setName('');
+        setLink('');
         setTags('');
+        setAdCount('');
     };
 
     return (
@@ -68,21 +82,38 @@ const AddOfferModal = ({ isOpen, onClose, onAddOffer, showToast }) => {
                 </div>
                 
                 <div>
-                    <label 
-                        htmlFor="offerTagsAdd" 
+                    <label
+                        htmlFor="offerTagsAdd"
                         className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}
                     >
                         TAGS (SEPARADAS POR VÍRGULA)
                     </label>
-                    <input 
-                        type="text" 
-                        id="offerTagsAdd" 
-                        value={tags} 
-                        onChange={(e) => setTags(e.target.value)} 
-                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`} 
+                    <input
+                        type="text"
+                        id="offerTagsAdd"
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
+                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`}
                     />
                 </div>
-                
+
+                <div>
+                    <label
+                        htmlFor="offerAdCountAdd"
+                        className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}
+                    >
+                        NÚMERO DE ADS (OPCIONAL)
+                    </label>
+                    <input
+                        type="number"
+                        id="offerAdCountAdd"
+                        value={adCount}
+                        onChange={(e) => setAdCount(e.target.value)}
+                        min="0"
+                        className={`w-full ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} p-2.5 rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none text-sm`}
+                    />
+                </div>
+
                 <div className="flex justify-end pt-3 space-x-3">
                     <button 
                         type="button" 

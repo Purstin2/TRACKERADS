@@ -238,33 +238,48 @@ function App() {
     }, [isAuthReady, userId, fetchOffers, activeSupabaseClient]);
 
     const handleAddOffer = async (offerData) => {
-        if (!userId || !activeSupabaseClient || !activeSupabaseClient.from) { 
-            showToast("Não autenticado ou Supabase não configurado.", "error"); 
-            return; 
+        if (!userId || !activeSupabaseClient || !activeSupabaseClient.from) {
+            showToast("Não autenticado ou Supabase não configurado.", "error");
+            return;
         }
-        
+
         try {
-            const payload = { 
-                ...offerData, 
-                user_id: userId, 
-                last_ad_count: 0, 
-                last_ad_count_timestamp: null, 
+            const initialAdCount = offerData.initial_ad_count ?? 0;
+            const payload = {
+                name: offerData.name,
+                link: offerData.link || '',
+                tags: offerData.tags || null,
+                user_id: userId,
+                last_ad_count: initialAdCount,
+                last_ad_count_timestamp: initialAdCount > 0 ? new Date().toISOString() : null,
                 is_archived: false
             };
-            
+
             const { data, error } = await activeSupabaseClient
                 .from('offers')
-                .insert([payload]) 
-                .select(); 
+                .insert([payload])
+                .select();
 
             if (error) throw error;
-            
-            showToast("TARGET ADICIONADO!", "success"); 
+
+            if (initialAdCount > 0 && data && data[0]) {
+                const offerId = data[0].id;
+                await activeSupabaseClient
+                    .from('ad_counts')
+                    .insert([{
+                        offer_id: offerId,
+                        user_id: userId,
+                        count: initialAdCount,
+                        timestamp: new Date().toISOString()
+                    }]);
+            }
+
+            showToast("TARGET ADICIONADO!", "success");
             setIsAddOfferModalOpen(false);
-            fetchOffers(); 
-        } catch (e) { 
-            console.error("App: Erro em handleAddOffer:", e); 
-            showToast(`ERRO AO ADICIONAR: ${e.message}`, "error"); 
+            fetchOffers();
+        } catch (e) {
+            console.error("App: Erro em handleAddOffer:", e);
+            showToast(`ERRO AO ADICIONAR: ${e.message}`, "error");
         }
     };
 
