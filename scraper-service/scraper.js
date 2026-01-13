@@ -123,7 +123,22 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             console.log('[SCRAPER] Estratégia 2: Analisando todo o conteúdo da página...');
             const bodyText = await page.evaluate(() => document.body.innerText);
             
-            console.log('[SCRAPER] Primeiras 1000 caracteres do texto:', bodyText.substring(0, 1000));
+            console.log('[SCRAPER] DEBUG - Tamanho total do texto:', bodyText.length, 'caracteres');
+            console.log('[SCRAPER] DEBUG - Primeiras 2000 caracteres do texto:');
+            console.log(bodyText.substring(0, 2000));
+            
+            // Procura especificamente por linhas que contenham números próximos de "resultado"
+            console.log('[SCRAPER] DEBUG - Procurando linhas com "resultado"...');
+            const lines = bodyText.split('\n');
+            const relevantLines = lines.filter(line => 
+                line.toLowerCase().includes('resultado') || 
+                line.toLowerCase().includes('anúncio') ||
+                line.toLowerCase().includes('result')
+            );
+            console.log(`[SCRAPER] DEBUG - Encontradas ${relevantLines.length} linhas relevantes:`);
+            relevantLines.slice(0, 10).forEach((line, i) => {
+                console.log(`[SCRAPER] DEBUG - Linha ${i + 1}: "${line.trim()}"`);
+            });
             
             // Padrões MUITO específicos - PRIORIDADE para padrões com "resultado" ou "anúncio"
             const patterns = [
@@ -194,11 +209,28 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             }
         }
         
-        // Tira um screenshot para debug (opcional)
-        await page.screenshot({ 
-            path: `./scraper-service/screenshots/debug-${Date.now()}.png`,
-            fullPage: false 
-        });
+        // Debug: Salva HTML e screenshot
+        if (adCount === null) {
+            console.log('[SCRAPER] ⚠️  Não encontrou número, salvando debug...');
+            try {
+                const html = await page.content();
+                const bodyText = await page.evaluate(() => document.body.innerText);
+                
+                console.log('[SCRAPER] DEBUG - Primeiros 2000 caracteres do texto:');
+                console.log(bodyText.substring(0, 2000));
+                console.log('[SCRAPER] DEBUG - Procurando por "resultado" no texto...');
+                const resultadoMatches = bodyText.match(/resultado/gi);
+                console.log(`[SCRAPER] DEBUG - Encontrou "resultado" ${resultadoMatches ? resultadoMatches.length : 0} vezes`);
+                
+                // Tira screenshot
+                await page.screenshot({ 
+                    path: `/tmp/debug-${Date.now()}.png`,
+                    fullPage: true 
+                }).catch(e => console.log('[SCRAPER] Erro ao salvar screenshot:', e.message));
+            } catch (e) {
+                console.log('[SCRAPER] Erro no debug:', e.message);
+            }
+        }
         
         await browser.close();
         
