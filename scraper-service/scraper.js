@@ -32,57 +32,82 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             timeout: 30000
         });
         
-        // Aguarda um pouco para garantir que a página carregou
-        await page.waitForTimeout(3000);
+        // Aguarda a página carregar completamente
+        console.log('[SCRAPER] Aguardando página carregar...');
+        await page.waitForLoadState('networkidle');
+        await page.waitForTimeout(5000); // Aguarda 5 segundos extras
         
         // Tenta encontrar o número de anúncios com múltiplos seletores
         let adCount = null;
         
-        // Estratégia 1: Procura por texto que contém "resultados" ou "anúncios"
-        const possibleSelectors = [
-            'text=/\\d+\\s+(resultados|resultado|anúncios|anúncio)/i',
-            '[data-testid*="result"] >> text=/\\d+/',
-            'div:has-text("resultados") >> text=/\\d+/',
-            'text=/^\\d+\\s+result/i',
-            'span:has-text("result") >> text=/\\d+/'
+        // Estratégia 1: Procura por elementos específicos do Facebook Ads Library
+        console.log('[SCRAPER] Estratégia 1: Procurando elementos específicos...');
+        const facebookSelectors = [
+            // Seletores específicos do Facebook Ads Library
+            '[role="main"] span:has-text("result")',
+            '[role="main"] div:has-text("active ad")',
+            'div[class*="x9f619"] span',
+            'span:has-text("See all")',
+            // Texto que contém números seguidos de "results", "ads", etc
+            'text=/\\d+\\s+(active\\s+)?ad/i',
+            'text=/\\d+\\s+result/i',
+            'text=/\\d+\\s+anúncio/i',
+            'text=/\\d+\\s+resultado/i'
         ];
         
-        for (const selector of possibleSelectors) {
+        for (const selector of facebookSelectors) {
             try {
-                const element = await page.locator(selector).first();
-                if (await element.isVisible({ timeout: 5000 })) {
-                    const text = await element.textContent();
+                await page.waitForSelector(selector, { timeout: 3000 }).catch(() => null);
+                const elements = await page.locator(selector).all();
+                
+                for (const element of elements) {
+                    const text = await element.textContent().catch(() => '');
                     const match = text.match(/(\d+)/);
                     if (match) {
-                        adCount = parseInt(match[1], 10);
-                        console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando seletor: ${selector}`);
-                        break;
+                        const num = parseInt(match[1], 10);
+                        if (num > 0) {
+                            adCount = num;
+                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando seletor: ${selector}`);
+                            console.log(`[SCRAPER] ✓ Texto encontrado: "${text}"`);
+                            break;
+                        }
                     }
                 }
+                if (adCount !== null) break;
             } catch (e) {
                 // Continua tentando outros seletores
                 continue;
             }
         }
         
-        // Estratégia 2: Se não encontrou, tenta extrair do conteúdo da página inteira
+        // Estratégia 2: Extrai todo o texto visível e procura padrões
         if (adCount === null) {
-            console.log('[SCRAPER] Tentando estratégia alternativa...');
-            const bodyText = await page.textContent('body');
+            console.log('[SCRAPER] Estratégia 2: Analisando todo o conteúdo da página...');
+            const bodyText = await page.evaluate(() => document.body.innerText);
             
-            // Procura por padrões como "42 resultados", "42 anúncios", "42 results"
+            console.log('[SCRAPER] Primeiras 500 caracteres do texto:', bodyText.substring(0, 500));
+            
+            // Padrões mais específicos
             const patterns = [
-                /(\d+)\s+(resultados|resultado)/i,
-                /(\d+)\s+(anúncios|anúncio)/i,
-                /(\d+)\s+results?/i
+                /(\d+)\s+active\s+ads?/i,
+                /(\d+)\s+ads?\s+active/i,
+                /(\d+)\s+results?/i,
+                /(\d+)\s+anúncios?\s+ativos?/i,
+                /(\d+)\s+resultados?/i,
+                /showing\s+(\d+)/i,
+                /(\d+)\s+of\s+\d+/i
             ];
             
             for (const pattern of patterns) {
                 const match = bodyText.match(pattern);
                 if (match) {
-                    adCount = parseInt(match[1], 10);
-                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando padrão regex`);
-                    break;
+                    const num = parseInt(match[1], 10);
+                    if (num > 0) {
+                        adCount = num;
+                        console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
+                        console.log(`[SCRAPER] ✓ Match completo: "${match[0]}"`);
+                        break;
+                    }
                 }
             }
         }
