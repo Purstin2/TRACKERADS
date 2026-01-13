@@ -636,6 +636,8 @@ function App() {
                             setPinnedOfferIds={setPinnedOfferIds}
                             activeOfferIds={activeOfferIds}
                             setActiveOfferIds={setActiveOfferIds}
+                            showToast={showToast}
+                            fetchOffers={fetchOffers}
                         />
                     )}
                     {currentScreen === 'dashboard' && (
