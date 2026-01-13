@@ -95,57 +95,75 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             }
         }
         
-        // Estratégia 2: Extrai todo o texto visível e procura padrões
+        // Estratégia 2: Extrai todo o texto visível e procura padrões ESPECÍFICOS
         if (adCount === null) {
             console.log('[SCRAPER] Estratégia 2: Analisando todo o conteúdo da página...');
             const bodyText = await page.evaluate(() => document.body.innerText);
             
-            console.log('[SCRAPER] Primeiras 500 caracteres do texto:', bodyText.substring(0, 500));
+            console.log('[SCRAPER] Primeiras 1000 caracteres do texto:', bodyText.substring(0, 1000));
             
-            // Padrões MUITO específicos (ordem importa - do mais específico ao menos)
+            // Padrões MUITO específicos - PRIORIDADE para padrões com "resultado" ou "anúncio"
             const patterns = [
+                // Padrões mais específicos primeiro (com ~ ou sem)
+                /~?\s*(\d+)\s+resultados?/i,
+                /(\d+)\s+resultados?/i,
+                /~?\s*(\d+)\s+anúncios?/i,
+                /(\d+)\s+anúncios?\s+ativos?/i,
+                // Padrões em inglês
+                /~?\s*(\d+)\s+results?/i,
                 /(\d+)\s+active\s+ads?/i,
                 /(\d+)\s+ads?\s+active/i,
-                /(\d+)\s+anúncios?\s+ativos?/i,
-                /(\d+)\s+resultados?/i,
-                /(\d+)\s+results?\s+found/i,
                 /showing\s+(\d+)\s+results?/i,
-                /(\d+)\s+results?\s+in/i,
-                /(\d+)\s+results?$/im, // No final da linha
             ];
             
             for (const pattern of patterns) {
-                const match = bodyText.match(pattern);
-                if (match) {
+                const matches = [...bodyText.matchAll(new RegExp(pattern, 'gi'))];
+                
+                for (const match of matches) {
                     const num = parseInt(match[1], 10);
-                    // Validações:
-                    // - Número entre 0 e 10000 (anúncios normalmente não passam disso)
-                    // - Não é um ano (2020-2030)
-                    if (num >= 0 && num <= 10000 && (num < 2020 || num > 2030)) {
-                        adCount = num;
-                        console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
-                        console.log(`[SCRAPER] ✓ Match completo: "${match[0]}"`);
-                        break;
-                    } else {
-                        console.log(`[SCRAPER] ⚠️  Número ${num} rejeitado (parece ser ano ou número inválido)`);
+                    const fullMatch = match[0];
+                    
+                    // Validações rigorosas:
+                    // 1. Não é ano (2020-2030)
+                    // 2. Range válido (1-10000)
+                    // 3. O match deve conter "resultado", "anúncio" ou "result"
+                    if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
+                        const lowerMatch = fullMatch.toLowerCase();
+                        if (lowerMatch.includes('resultado') || 
+                            lowerMatch.includes('anúncio') || 
+                            lowerMatch.includes('result') ||
+                            lowerMatch.includes('ad')) {
+                            adCount = num;
+                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
+                            console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
+                            break;
+                        }
                     }
                 }
+                if (adCount !== null) break;
             }
         }
         
-        // Estratégia 3: Se ainda não achou, procura especificamente por padrão "XX results"
+        // Estratégia 3: Procura linha por linha (mais preciso)
         if (adCount === null) {
-            console.log('[SCRAPER] Estratégia 3: Procurando padrão específico do Facebook...');
-            // Procura especificamente por linhas que contenham "result" mas não "2026"
+            console.log('[SCRAPER] Estratégia 3: Analisando linha por linha...');
+            const bodyText = await page.evaluate(() => document.body.innerText);
             const lines = bodyText.split('\n');
+            
             for (const line of lines) {
-                if (line.match(/results?/i) && !line.match(/20\d{2}/)) {
-                    const match = line.match(/(\d+)/);
+                const trimmedLine = line.trim();
+                // Procura linhas que contenham "resultado" ou "anúncio" mas NÃO anos
+                if ((trimmedLine.toLowerCase().includes('resultado') || 
+                     trimmedLine.toLowerCase().includes('anúncio') ||
+                     trimmedLine.toLowerCase().includes('result')) &&
+                    !trimmedLine.match(/20\d{2}/)) {
+                    
+                    const match = trimmedLine.match(/~?\s*(\d+)/);
                     if (match) {
                         const num = parseInt(match[1], 10);
-                        if (num > 0 && num <= 10000) {
+                        if (num > 0 && num <= 10000 && (num < 2020 || num > 2030)) {
                             adCount = num;
-                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios na linha: "${line.trim()}"`);
+                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios na linha: "${trimmedLine}"`);
                             break;
                         }
                     }
