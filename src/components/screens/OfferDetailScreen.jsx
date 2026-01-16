@@ -257,7 +257,7 @@ const OfferDetailScreen = ({
         }
         
         setIsScrapingRunning(true);
-        showToast("🤖 Iniciando scraping automático...", "info");
+        showToast("🤖 Iniciando scraping automático... Isso pode levar até 2 minutos.", "info");
         
         // URLs para tentar (nuvem primeiro, depois localhost como fallback)
         const scraperUrls = [
@@ -271,9 +271,9 @@ const OfferDetailScreen = ({
             try {
                 console.log(`[SCRAPING] Tentando conectar com: ${scraperUrl}`);
                 
-                // Cria um AbortController para timeout
+                // Cria um AbortController para timeout (2 minutos para scraping)
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 segundos
+                const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 segundos (2 minutos)
                 
                 const response = await fetch(scraperUrl, {
                     method: 'POST',

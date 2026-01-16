@@ -12,8 +12,24 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middlewares
-app.use(cors());
-app.use(express.json());
+// CORS configurado para permitir requisições de qualquer origem
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false
+}));
+
+// Aumenta o timeout do Express para requisições longas (scraping pode demorar até 2 minutos)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Timeout global para requisições (2 minutos)
+app.use((req, res, next) => {
+    req.setTimeout(120000); // 2 minutos
+    res.setTimeout(120000);
+    next();
+});
 
 // Health check
 app.get('/', (req, res) => {
@@ -96,6 +112,10 @@ app.post('/api/scrape/run', async (req, res) => {
 
 // Endpoint para testar scraping de uma URL específica
 app.post('/api/scrape/test', async (req, res) => {
+    // Aumenta timeout específico para este endpoint (2 minutos)
+    req.setTimeout(120000);
+    res.setTimeout(120000);
+    
     try {
         const { url } = req.body;
         
@@ -107,21 +127,33 @@ app.post('/api/scrape/test', async (req, res) => {
         }
         
         console.log(`🧪 Testando scraping para: ${url}`);
+        console.log(`⏱️  Timeout configurado: 120 segundos`);
         
+        // Envia headers para manter conexão viva
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Keep-Alive', 'timeout=120');
+        
+        const startTime = Date.now();
         const result = await scrapeFacebookAdsCount(url);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        console.log(`✅ Scraping concluído em ${duration}s`);
         
         res.json({
             success: result.success,
             adCount: result.adCount,
             error: result.error,
             url: url,
+            duration: `${duration}s`,
             timestamp: new Date().toISOString()
         });
         
     } catch (error) {
+        console.error('❌ Erro no endpoint /api/scrape/test:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: error.message,
+            timestamp: new Date().toISOString()
         });
     }
 });
