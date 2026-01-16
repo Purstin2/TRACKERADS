@@ -43,24 +43,81 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         // Aguarda a página carregar completamente
         console.log('[SCRAPER] Aguardando página carregar...');
         await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(8000); // Aguarda 8 segundos para conteúdo dinâmico
+        await page.waitForTimeout(12000); // Aguarda 12 segundos para conteúdo dinâmico
         
         // Tenta esperar por elementos específicos do Facebook
         try {
-            await page.waitForSelector('[role="main"]', { timeout: 10000 });
+            await page.waitForSelector('[role="main"]', { timeout: 15000 });
             console.log('[SCRAPER] ✓ Elemento principal encontrado');
         } catch (e) {
             console.log('[SCRAPER] ⚠️  Elemento principal não encontrado, continuando...');
         }
         
         // Aguarda mais um pouco para conteúdo dinâmico carregar
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
+        
+        // Tenta rolar a página para garantir que o conteúdo carregou
+        try {
+            await page.evaluate(() => {
+                window.scrollTo(0, document.body.scrollHeight / 2);
+            });
+            await page.waitForTimeout(2000);
+            await page.evaluate(() => {
+                window.scrollTo(0, 0);
+            });
+            await page.waitForTimeout(2000);
+        } catch (e) {
+            console.log('[SCRAPER] ⚠️  Erro ao rolar página:', e.message);
+        }
         
         // Tenta encontrar o número de anúncios com múltiplos seletores
         let adCount = null;
         
+        // Estratégia 0: Procura por elementos específicos do Facebook que mostram o número
+        console.log('[SCRAPER] Estratégia 0: Buscando elementos específicos do Facebook...');
+        try {
+            adCount = await page.evaluate(() => {
+                // Procura por elementos com aria-label ou texto que contenha números de resultados
+                const selectors = [
+                    '[aria-label*="resultado"]',
+                    '[aria-label*="result"]',
+                    '[aria-label*="anúncio"]',
+                    '[aria-label*="ad"]',
+                    'span[dir="auto"]',
+                    'div[role="status"]',
+                    'div[role="alert"]'
+                ];
+                
+                for (const selector of selectors) {
+                    const elements = document.querySelectorAll(selector);
+                    for (const el of elements) {
+                        const text = el.textContent || el.innerText || el.getAttribute('aria-label') || '';
+                        // Procura por padrões como "110 resultados", "~110 resultados", etc.
+                        const match = text.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
+                        if (match) {
+                            const numStr = match[1].replace(/[.,]/g, '');
+                            const num = parseInt(numStr, 10);
+                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
+                                return num;
+                            }
+                        }
+                    }
+                }
+                return null;
+            });
+            
+            if (adCount !== null) {
+                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando elementos específicos do Facebook`);
+            } else {
+                console.log('[SCRAPER] ⚠️  Estratégia 0 não encontrou número');
+            }
+        } catch (e) {
+            console.log('[SCRAPER] ⚠️  Erro na estratégia 0:', e.message);
+        }
+        
         // Estratégia 1: Usa JavaScript direto no DOM para encontrar o número
-        console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
+        if (adCount === null) {
+            console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
         
         adCount = await page.evaluate(() => {
             // Função para encontrar número de resultados (FUNCIONA EM QUALQUER IDIOMA!)
@@ -70,14 +127,19 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                 // Padrões específicos em MÚLTIPLOS IDIOMAS
                 // IMPORTANTE: Suporta números com separadores (1.100, 1,100) e números grandes
                 const patterns = [
-                    // Português - com separadores de milhar
+                    // Português - com separadores de milhar (mais específicos primeiro)
                     /~?\s*([\d.,]+)\s+resultados?/i,
                     /([\d.,]+)\s+resultados?/i,
                     /~?\s*([\d.,]+)\s+anúncios?/i,
                     /([\d.,]+)\s+anúncios?\s+ativos?/i,
+                    /mostrando\s+([\d.,]+)\s+resultados?/i,
+                    /([\d.,]+)\s+anúncios?\s+encontrados?/i,
                     // Inglês - com separadores
                     /~?\s*([\d.,]+)\s+results?/i,
+                    /([\d.,]+)\s+results?/i,
                     /([\d.,]+)\s+active\s+ads?/i,
+                    /([\d.,]+)\s+ads?\s+active/i,
+                    /showing\s+([\d.,]+)\s+results?/i,
                     /([\d.,]+)\s+ads?/i,
                     // Chinês (约 = aproximadamente, 条 = unidade, 结果 = resultado)
                     /约?\s*([\d.,]+)\s*条\s*结果/i,
@@ -85,12 +147,16 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                     /约\s*([\d.,]+)/i,
                     // Espanhol
                     /~?\s*([\d.,]+)\s+resultados?/i,
+                    /mostrando\s+([\d.,]+)\s+resultados?/i,
                     // Francês
                     /~?\s*([\d.,]+)\s+résultats?/i,
+                    /affichage\s+de\s+([\d.,]+)\s+résultats?/i,
                     // Alemão
                     /~?\s*([\d.,]+)\s+ergebnisse?/i,
-                    // Padrão genérico: número seguido de qualquer palavra que pareça "resultado"
-                    /~?\s*([\d.,]+)\s+\w+/i
+                    // Padrões mais genéricos (últimos)
+                    /~?\s*([\d.,]+)\s+\w+/i,
+                    // Procura apenas números grandes próximos de palavras-chave
+                    /\b([\d.,]{1,7})\b(?=.*(?:resultado|result|anúncio|ad|结果|条))/i
                 ];
                 
                 // Função para converter número com separadores para inteiro
@@ -102,21 +168,47 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                 
                 // Procura em todo o texto
                 for (const pattern of patterns) {
-                    const matches = bodyText.matchAll(new RegExp(pattern, 'gi'));
-                    for (const match of matches) {
-                        const numStr = match[1];
-                        const num = parseNumberWithSeparators(numStr);
-                        const fullMatch = match[0].toLowerCase();
-                        
-                        // Validações: suporta até 1 milhão de anúncios
-                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                            if (fullMatch.includes('resultado') || 
-                                fullMatch.includes('anúncio') || 
-                                fullMatch.includes('result') ||
-                                fullMatch.includes('ad')) {
-                                return num;
+                    try {
+                        const matches = bodyText.matchAll(new RegExp(pattern, 'gi'));
+                        for (const match of matches) {
+                            const numStr = match[1];
+                            const num = parseNumberWithSeparators(numStr);
+                            const fullMatch = match[0].toLowerCase();
+                            
+                            // Validações: suporta até 1 milhão de anúncios
+                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
+                                // Para padrões mais genéricos, verifica se há palavras-chave próximas
+                                if (pattern.source.includes('\\w+') || pattern.source.includes('\\b')) {
+                                    // Procura contexto ao redor do número
+                                    const matchIndex = bodyText.toLowerCase().indexOf(fullMatch);
+                                    const contextStart = Math.max(0, matchIndex - 50);
+                                    const contextEnd = Math.min(bodyText.length, matchIndex + fullMatch.length + 50);
+                                    const context = bodyText.substring(contextStart, contextEnd).toLowerCase();
+                                    
+                                    if (context.includes('resultado') || 
+                                        context.includes('anúncio') || 
+                                        context.includes('result') ||
+                                        context.includes('ad') ||
+                                        context.includes('结果') ||
+                                        context.includes('条')) {
+                                        return num;
+                                    }
+                                } else {
+                                    // Para padrões específicos, confia no match
+                                    if (fullMatch.includes('resultado') || 
+                                        fullMatch.includes('anúncio') || 
+                                        fullMatch.includes('result') ||
+                                        fullMatch.includes('ad') ||
+                                        fullMatch.includes('结果') ||
+                                        fullMatch.includes('条')) {
+                                        return num;
+                                    }
+                                }
                             }
                         }
+                    } catch (e) {
+                        // Ignora erros de regex e continua
+                        continue;
                     }
                 }
                 
@@ -189,15 +281,21 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                 /([\d.,]+)\s+resultados?/i,
                 /~?\s*([\d.,]+)\s+anúncios?/i,
                 /([\d.,]+)\s+anúncios?\s+ativos?/i,
+                /mostrando\s+([\d.,]+)\s+resultados?/i,
+                /([\d.,]+)\s+anúncios?\s+encontrados?/i,
                 // Inglês - com separadores
                 /~?\s*([\d.,]+)\s+results?/i,
+                /([\d.,]+)\s+results?/i,
                 /([\d.,]+)\s+active\s+ads?/i,
                 /([\d.,]+)\s+ads?\s+active/i,
                 /showing\s+([\d.,]+)\s+results?/i,
+                /([\d.,]+)\s+ads?/i,
                 // Chinês (约110条结果 = aproximadamente 110 resultados)
                 /约?\s*([\d.,]+)\s*条\s*结果/i,
                 /([\d.,]+)\s*条\s*结果/i,
                 /约\s*([\d.,]+)/i,
+                // Padrões genéricos
+                /\b([\d.,]{1,7})\b(?=.*(?:resultado|result|anúncio|ad|结果|条))/i
             ];
             
             // Função para converter número com separadores
@@ -206,38 +304,62 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             }
             
             for (const pattern of patterns) {
-                const matches = [...bodyText.matchAll(new RegExp(pattern, 'gi'))];
-                
-                for (const match of matches) {
-                    const numStr = match[1];
-                    const num = parseNumberWithSeparators(numStr);
-                    const fullMatch = match[0];
+                try {
+                    const matches = [...bodyText.matchAll(new RegExp(pattern, 'gi'))];
                     
-                    // Validações rigorosas:
-                    // 1. Não é ano (2020-2030)
-                    // 2. Range válido (1-1000000) - suporta até 1 milhão
-                    // 3. O match deve conter palavras-chave em QUALQUER IDIOMA
-                    if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                        const lowerMatch = fullMatch.toLowerCase();
-                        const hasKeyword = 
-                            lowerMatch.includes('resultado') || 
-                            lowerMatch.includes('anúncio') || 
-                            lowerMatch.includes('result') ||
-                            lowerMatch.includes('ad') ||
-                            fullMatch.includes('结果') || // Chinês
-                            fullMatch.includes('条') || // Chinês
-                            fullMatch.includes('约'); // Chinês
+                    for (const match of matches) {
+                        const numStr = match[1];
+                        const num = parseNumberWithSeparators(numStr);
+                        const fullMatch = match[0];
                         
-                        if (hasKeyword) {
-                            adCount = num;
-                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
-                            console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
-                            console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
-                            break;
+                        // Validações rigorosas:
+                        // 1. Não é ano (2020-2030)
+                        // 2. Range válido (1-1000000) - suporta até 1 milhão
+                        // 3. O match deve conter palavras-chave em QUALQUER IDIOMA
+                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
+                            const lowerMatch = fullMatch.toLowerCase();
+                            const hasKeyword = 
+                                lowerMatch.includes('resultado') || 
+                                lowerMatch.includes('anúncio') || 
+                                lowerMatch.includes('result') ||
+                                lowerMatch.includes('ad') ||
+                                fullMatch.includes('结果') || // Chinês
+                                fullMatch.includes('条') || // Chinês
+                                fullMatch.includes('约'); // Chinês
+                            
+                            // Para padrões genéricos, verifica contexto
+                            if (pattern.source.includes('\\b')) {
+                                const matchIndex = bodyText.toLowerCase().indexOf(lowerMatch);
+                                const contextStart = Math.max(0, matchIndex - 100);
+                                const contextEnd = Math.min(bodyText.length, matchIndex + lowerMatch.length + 100);
+                                const context = bodyText.substring(contextStart, contextEnd).toLowerCase();
+                                
+                                if (context.includes('resultado') || 
+                                    context.includes('anúncio') || 
+                                    context.includes('result') ||
+                                    context.includes('ad') ||
+                                    context.includes('结果') ||
+                                    context.includes('条')) {
+                                    adCount = num;
+                                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
+                                    console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
+                                    console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
+                                    break;
+                                }
+                            } else if (hasKeyword) {
+                                adCount = num;
+                                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
+                                console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
+                                console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
+                                break;
+                            }
                         }
                     }
+                    if (adCount !== null) break;
+                } catch (e) {
+                    // Ignora erros de regex e continua
+                    continue;
                 }
-                if (adCount !== null) break;
             }
         }
         
@@ -273,6 +395,57 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
                         }
                     }
                 }
+            }
+        }
+        
+        // Estratégia 4: Procura no HTML por atributos data-* ou aria-* que possam conter o número
+        if (adCount === null) {
+            console.log('[SCRAPER] Estratégia 4: Buscando em atributos HTML...');
+            try {
+                adCount = await page.evaluate(() => {
+                    // Procura por todos os elementos que possam conter o número
+                    const allElements = document.querySelectorAll('*');
+                    
+                    for (const el of allElements) {
+                        // Verifica atributos
+                        const attrs = ['aria-label', 'title', 'data-testid', 'data-content'];
+                        for (const attr of attrs) {
+                            const value = el.getAttribute(attr);
+                            if (value) {
+                                const match = value.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
+                                if (match) {
+                                    const numStr = match[1].replace(/[.,]/g, '');
+                                    const num = parseInt(numStr, 10);
+                                    if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
+                                        return num;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Verifica texto do elemento
+                        const text = el.textContent || el.innerText;
+                        if (text && text.length < 100) { // Apenas textos curtos (mais prováveis de conter o número)
+                            const match = text.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
+                            if (match) {
+                                const numStr = match[1].replace(/[.,]/g, '');
+                                const num = parseInt(numStr, 10);
+                                if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
+                                    return num;
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                });
+                
+                if (adCount !== null) {
+                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando atributos HTML`);
+                } else {
+                    console.log('[SCRAPER] ⚠️  Estratégia 4 não encontrou número');
+                }
+            } catch (e) {
+                console.log('[SCRAPER] ⚠️  Erro na estratégia 4:', e.message);
             }
         }
         

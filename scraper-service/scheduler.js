@@ -37,13 +37,30 @@ export async function runScrapingJob() {
             console.log(`\n🎯 ${progress} Processando: ${offer.name}`);
             console.log(`   Link: ${offer.link}`);
             
-            // Tenta primeiro o método principal
-            let result = await scrapeFacebookAdsCount(offer.link);
+            let result = null;
+            const maxRetries = 2; // Tenta até 2 vezes
             
-            // Se falhou, tenta o método alternativo
-            if (!result.success) {
-                console.log('   ⚠️  Método principal falhou, tentando alternativo...');
-                result = await scrapeFacebookAdsCountSimple(offer.link);
+            // Tenta com retry logic
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                if (attempt > 1) {
+                    console.log(`   🔄 Tentativa ${attempt}/${maxRetries}...`);
+                    // Aguarda mais tempo entre tentativas
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+                
+                // Tenta primeiro o método principal
+                result = await scrapeFacebookAdsCount(offer.link);
+                
+                // Se falhou, tenta o método alternativo
+                if (!result.success) {
+                    console.log('   ⚠️  Método principal falhou, tentando alternativo...');
+                    result = await scrapeFacebookAdsCountSimple(offer.link);
+                }
+                
+                // Se conseguiu, para de tentar
+                if (result.success && result.adCount !== null) {
+                    break;
+                }
             }
             
             if (result.success && result.adCount !== null) {
@@ -61,9 +78,9 @@ export async function runScrapingJob() {
                 
                 await logScrapingResult(offer.id, result.adCount, true);
             } else {
-                console.log(`   ❌ Falha: ${result.error}`);
+                console.log(`   ❌ Falha após ${maxRetries} tentativas: ${result?.error || 'Erro desconhecido'}`);
                 results.failed++;
-                await logScrapingResult(offer.id, null, false, result.error);
+                await logScrapingResult(offer.id, null, false, result?.error || 'Erro desconhecido');
             }
             
             // Aguarda 3 segundos entre cada scraping para não ser detectado como bot

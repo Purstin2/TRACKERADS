@@ -131,6 +131,16 @@ try {
         
         // Simplified check for credentials
         if (effectiveSupabaseUrl && effectiveSupabaseAnonKey) {
+            // Valida formato básico da URL
+            if (!effectiveSupabaseUrl.startsWith('http')) {
+                throw new Error("URL do Supabase inválida. Deve começar com 'http://' ou 'https://'");
+            }
+            
+            // Valida formato básico da key (deve ser um JWT)
+            if (effectiveSupabaseAnonKey.length < 50) {
+                throw new Error("Chave anon do Supabase parece inválida (muito curta)");
+            }
+            
             console.log("[Supabase Init Attempt] Tentando inicializar cliente Supabase REAL com URL:", 
                 effectiveSupabaseUrl.substring(0,30) + "...");
             
@@ -143,7 +153,29 @@ try {
                 throw new Error("[Supabase Init Attempt] createClient foi chamado mas retornou um valor 'falsy'.");
             }
         } else {
-            console.warn("!!! [Supabase Init Attempt] CREDENCIAIS SUPABASE NÃO FORNECIDAS. O cliente real não será inicializado.");
+            // Mensagens detalhadas sobre o que está faltando
+            const missing = [];
+            if (!effectiveSupabaseUrl) missing.push('VITE_SUPABASE_URL');
+            if (!effectiveSupabaseAnonKey) missing.push('VITE_SUPABASE_ANON_KEY');
+            
+            console.error("%c!!! ERRO: CREDENCIAIS SUPABASE NÃO ENCONTRADAS !!!", 
+                "color: red; font-weight: bold; font-size: 14px;");
+            console.error("%cVariáveis faltando: " + missing.join(', '), 
+                "color: orange; font-weight: bold;");
+            console.error("%cSOLUÇÃO:", "color: yellow; font-weight: bold;");
+            console.error("1. Crie um arquivo .env na raiz do projeto");
+            console.error("2. Adicione as seguintes linhas:");
+            console.error("   VITE_SUPABASE_URL=https://seu-projeto.supabase.co");
+            console.error("   VITE_SUPABASE_ANON_KEY=sua-anon-key-aqui");
+            console.error("3. Reinicie o servidor (npm run dev)");
+            console.error("%cO sistema está rodando em MODO EXEMPLO (dados não são salvos)", 
+                "color: red; font-weight: bold;");
+            
+            // Mostra alerta visual no console
+            console.error("\n" + "=".repeat(60));
+            console.error("⚠️  MODO EXEMPLO ATIVADO - DADOS NÃO SERÃO SALVOS");
+            console.error("=".repeat(60) + "\n");
+            
             supabaseClient = null;
         }
     } else {
@@ -158,9 +190,17 @@ try {
 
 // Create mock client if real client initialization failed
 if (!supabaseClient) {
-    console.error("!!! [Supabase Fallback] CLIENTE SUPABASE REAL NÃO INICIALIZADO. ATIVANDO MOCK CLIENT. !!!");
+    console.error("%c!!! [Supabase Fallback] CLIENTE SUPABASE REAL NÃO INICIALIZADO. ATIVANDO MOCK CLIENT. !!!", 
+        "color: red; font-weight: bold; font-size: 14px;");
     console.warn("Verifique os logs anteriores para erros de importação ou inicialização. " +
         "Certifique-se de que a biblioteca @supabase/supabase-js está acessível e as credenciais estão corretas.");
+    
+    // Mostra alerta visual mais visível
+    console.error("\n" + "=".repeat(70));
+    console.error("%c🚨 ATENÇÃO: SISTEMA EM MODO EXEMPLO 🚨", "color: red; font-weight: bold; font-size: 16px;");
+    console.error("%cOs dados NÃO serão salvos no banco de dados!", "color: orange; font-weight: bold;");
+    console.error("%cConfigure o arquivo .env com suas credenciais do Supabase", "color: yellow; font-weight: bold;");
+    console.error("=".repeat(70) + "\n");
     
     isSupabaseMockActive = true;
     

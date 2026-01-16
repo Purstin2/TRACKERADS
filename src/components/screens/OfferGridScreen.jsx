@@ -278,23 +278,41 @@ const OfferGridScreen = ({
                                         const data = await response.json();
                                         
                                         if (response.ok) {
-                                            showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualize a página em alguns minutos.`, 'success');
+                                            showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualizando automaticamente...`, 'success');
+                                            
+                                            // Atualiza imediatamente
+                                            if (fetchOffers) fetchOffers();
                                             
                                             // Aguarda e atualiza a lista várias vezes
+                                            // O scraping pode levar ~3-5 segundos por oferta, então para N ofertas, 
+                                            // estimamos N * 5 segundos + margem de segurança
+                                            const estimatedTime = offersToScrape.length * 5 + 30; // segundos
+                                            const updateInterval = 10000; // A cada 10 segundos
+                                            const maxAttempts = Math.ceil(estimatedTime / (updateInterval / 1000)) + 5; // +5 tentativas extras
+                                            
                                             let attempts = 0;
-                                            const maxAttempts = 12; // 12 tentativas = 1 minuto
                                             const interval = setInterval(() => {
                                                 attempts++;
-                                                if (fetchOffers) fetchOffers();
+                                                if (fetchOffers) {
+                                                    fetchOffers();
+                                                    console.log(`[SCRAPING] Atualizando lista (tentativa ${attempts}/${maxAttempts})...`);
+                                                }
                                                 
                                                 if (attempts >= maxAttempts) {
                                                     clearInterval(interval);
                                                     showToast && showToast('🔄 Atualização automática finalizada. Verifique os resultados!', 'info');
+                                                } else if (attempts % 3 === 0) {
+                                                    // A cada 3 tentativas, mostra progresso
+                                                    showToast && showToast(`🔄 Atualizando... (${attempts}/${maxAttempts})`, 'info');
                                                 }
-                                            }, 5000); // A cada 5 segundos
+                                            }, updateInterval);
                                             
-                                            // Limpa o intervalo após 2 minutos
-                                            setTimeout(() => clearInterval(interval), 120000);
+                                            // Limpa o intervalo após o tempo estimado + margem
+                                            setTimeout(() => {
+                                                clearInterval(interval);
+                                                if (fetchOffers) fetchOffers(); // Última atualização
+                                                showToast && showToast('✅ Scraping concluído! Lista atualizada.', 'success');
+                                            }, estimatedTime * 1000);
                                         } else {
                                             showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
                                         }

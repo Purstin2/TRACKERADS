@@ -614,6 +614,40 @@ function App() {
             </aside>
             {/* Conteúdo principal com padding lateral */}
             <main className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} min-h-screen flex flex-col transition-all duration-300`}>
+                {/* Alerta de modo exemplo quando Supabase não está configurado */}
+                {isSupabaseMockActive && (
+                    <div className="bg-red-900/90 border-b-4 border-red-600 text-white px-6 py-4 flex items-center justify-between shadow-lg">
+                        <div className="flex items-center gap-3">
+                            <div className="text-2xl">🚨</div>
+                            <div>
+                                <div className="font-bold text-lg">MODO EXEMPLO ATIVADO</div>
+                                <div className="text-sm text-red-200">
+                                    O Supabase não está configurado. Os dados <strong>NÃO serão salvos</strong> no banco de dados.
+                                </div>
+                                <div className="text-xs text-red-300 mt-1">
+                                    Crie um arquivo <code className="bg-red-800 px-2 py-1 rounded">.env</code> na raiz do projeto com:
+                                    <code className="bg-red-800 px-2 py-1 rounded ml-2">VITE_SUPABASE_URL</code> e 
+                                    <code className="bg-red-800 px-2 py-1 rounded ml-2">VITE_SUPABASE_ANON_KEY</code>
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                console.log("=== INSTRUÇÕES PARA CONFIGURAR SUPABASE ===");
+                                console.log("1. Crie um arquivo .env na raiz do projeto");
+                                console.log("2. Adicione as seguintes linhas:");
+                                console.log("   VITE_SUPABASE_URL=https://seu-projeto.supabase.co");
+                                console.log("   VITE_SUPABASE_ANON_KEY=sua-anon-key-aqui");
+                                console.log("3. Reinicie o servidor: npm run dev");
+                                console.log("4. Veja o arquivo .env.example para referência");
+                                showToast("Instruções exibidas no console do navegador (F12)", "info");
+                            }}
+                            className="bg-red-700 hover:bg-red-600 px-4 py-2 rounded-lg font-semibold transition-colors"
+                        >
+                            Ver Instruções
+                        </button>
+                    </div>
+                )}
                 <div className="flex-1">
                     {currentScreen === 'grid' && (
                         <OfferGridScreen
