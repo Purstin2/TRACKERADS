@@ -268,7 +268,7 @@ const OfferGridScreen = ({
                                     try {
                                         showToast && showToast(`🤖 Iniciando scraping para ${offersToScrape.length} ofertas... Isso pode levar alguns minutos.`, 'info');
                                         
-                                        const response = await fetch('https://trackerads-production.up.railway.app/api/scrape/run', {
+                                        const response = await fetch('http://localhost:3001/api/scrape/run', {
                                             method: 'POST',
                                             headers: {
                                                 'Content-Type': 'application/json'
@@ -318,7 +318,7 @@ const OfferGridScreen = ({
                                         }
                                     } catch (error) {
                                         console.error('Erro ao executar scraping:', error);
-                                        showToast && showToast('❌ Erro: Scraper service não está disponível', 'error');
+                                        showToast && showToast('❌ Erro: Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start', 'error');
                                     } finally {
                                         // Mantém o botão desabilitado por mais tempo para evitar cliques múltiplos
                                         setTimeout(() => setIsScrapingAll(false), 30000);

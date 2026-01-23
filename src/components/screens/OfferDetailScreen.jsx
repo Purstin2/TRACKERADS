@@ -259,103 +259,83 @@ const OfferDetailScreen = ({
         setIsScrapingRunning(true);
         showToast("🤖 Iniciando scraping automático... Isso pode levar até 2 minutos.", "info");
         
-        // URLs para tentar (nuvem primeiro, depois localhost como fallback)
-        const scraperUrls = [
-            'https://trackerads-production.up.railway.app/api/scrape/test',
-            'http://localhost:3001/api/scrape/test'
-        ];
+        // URL do serviço local
+        const scraperUrl = 'http://localhost:3001/api/scrape/test';
         
-        let lastError = null;
-        
-        for (const scraperUrl of scraperUrls) {
-            try {
-                console.log(`[SCRAPING] Tentando conectar com: ${scraperUrl}`);
-                
-                // Cria um AbortController para timeout (2 minutos para scraping)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 segundos (2 minutos)
-                
-                const response = await fetch(scraperUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ url: offer.link }),
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                
-                // Verifica se a resposta é válida
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.success && data.adCount !== null) {
-                    // Adiciona a contagem automaticamente
-                    const { error: adCountInsertError } = await supabaseClient
-                        .from('ad_counts')
-                        .insert([{ 
-                            offer_id: offerId, 
-                            count: data.adCount, 
-                            user_id: userId, 
-                            timestamp: new Date().toISOString() 
-                        }])
-                        .select();
-                        
-                    if (adCountInsertError) throw adCountInsertError;
-                    
-                    const { error: offerUpdateError } = await supabaseClient
-                        .from('offers')
-                        .update({ 
-                            last_ad_count: data.adCount, 
-                            last_ad_count_timestamp: new Date().toISOString() 
-                        })
-                        .eq('id', offerId);
-                        
-                    if (offerUpdateError) throw offerUpdateError;
-                    
-                    showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
-                    fetchOfferData();
-                    if (globalFetchOffers) globalFetchOffers();
-                    setIsScrapingRunning(false);
-                    return; // Sucesso, sai da função
-                } else {
-                    // Se falhou mas recebeu resposta, mostra o erro específico
-                    throw new Error(data.error || 'Não foi possível extrair dados');
-                }
-            } catch (error) {
-                console.error(`[SCRAPING] Erro ao conectar com ${scraperUrl}:`, error);
-                lastError = error;
-                
-                // Se foi abortado (timeout) ou erro de rede, tenta próxima URL
-                if (error.name === 'AbortError' || error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                    console.log(`[SCRAPING] Tentando próxima URL...`);
-                    continue; // Tenta próxima URL
-                } else {
-                    // Se foi outro tipo de erro (ex: erro do servidor), mostra e para
-                    showToast(`❌ Falha no scraping: ${error.message}`, "error");
-                    setIsScrapingRunning(false);
-                    return;
-                }
+        try {
+            console.log(`[SCRAPING] Conectando com serviço local: ${scraperUrl}`);
+            
+            // Cria um AbortController para timeout (2 minutos para scraping)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 segundos (2 minutos)
+            
+            const response = await fetch(scraperUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: offer.link }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            // Verifica se a resposta é válida
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
             }
+            
+            const data = await response.json();
+            
+            if (data.success && data.adCount !== null) {
+                // Adiciona a contagem automaticamente
+                const { error: adCountInsertError } = await supabaseClient
+                    .from('ad_counts')
+                    .insert([{ 
+                        offer_id: offerId, 
+                        count: data.adCount, 
+                        user_id: userId, 
+                        timestamp: new Date().toISOString() 
+                    }])
+                    .select();
+                    
+                if (adCountInsertError) throw adCountInsertError;
+                
+                const { error: offerUpdateError } = await supabaseClient
+                    .from('offers')
+                    .update({ 
+                        last_ad_count: data.adCount, 
+                        last_ad_count_timestamp: new Date().toISOString() 
+                    })
+                    .eq('id', offerId);
+                
+                if (offerUpdateError) throw offerUpdateError;
+                
+                showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
+                fetchOfferData();
+                if (globalFetchOffers) globalFetchOffers();
+                setIsScrapingRunning(false);
+                return; // Sucesso, sai da função
+            } else {
+                // Se falhou mas recebeu resposta, mostra o erro específico
+                throw new Error(data.error || 'Não foi possível extrair dados');
+            }
+        } catch (error) {
+            console.error(`[SCRAPING] Erro ao conectar com ${scraperUrl}:`, error);
+            
+            let errorMessage = 'Não foi possível conectar ao scraper local.';
+            if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                errorMessage = 'Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start';
+            } else if (error.name === 'AbortError') {
+                errorMessage = 'Timeout: O scraper demorou muito para responder. Tente novamente.';
+            } else {
+                errorMessage = `Erro: ${error.message}`;
+            }
+            
+            showToast(`❌ ${errorMessage}`, "error");
+            setIsScrapingRunning(false);
         }
-        
-        // Se chegou aqui, todas as URLs falharam
-        console.error('Erro ao executar scraping em todas as URLs:', lastError);
-        
-        let errorMessage = 'Não foi possível conectar ao scraper.';
-        if (lastError?.message?.includes('502') || lastError?.message?.includes('Application failed')) {
-            errorMessage = 'Servidor Railway não está respondendo. Tente iniciar o scraper local: cd scraper-service && npm start';
-        } else if (lastError?.name === 'AbortError') {
-            errorMessage = 'Timeout: O scraper demorou muito para responder. Tente novamente.';
-        }
-        
-        showToast(`❌ Erro: ${errorMessage}`, "error");
-        setIsScrapingRunning(false);
     };
 
     // Helper function to render the appropriate performance icon
