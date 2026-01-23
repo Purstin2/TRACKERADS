@@ -28,7 +28,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         };
         
         fetchAdCounts();
-    }, [offer.id, userId, supabaseClient]); 
+    }, [offer.id, offer.last_ad_count_timestamp, userId, supabaseClient]); 
 
     // Análise inteligente de classificação
     const smartClassification = useMemo(
