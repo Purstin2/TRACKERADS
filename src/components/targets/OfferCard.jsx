@@ -28,7 +28,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         };
         
         fetchAdCounts();
-    }, [offer.id, offer.last_ad_count_timestamp, userId, supabaseClient]); 
+    }, [offer.id, offer.last_ad_count, offer.last_ad_count_timestamp, userId, supabaseClient]); 
 
     // Análise inteligente de classificação
     const smartClassification = useMemo(
@@ -42,7 +42,32 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         [adCountsHistory]
     ); 
     
-    const latestAdCount = adCountsHistory[0]?.count ?? offer.last_ad_count ?? 0; 
+    // Prioriza offer.last_ad_count porque é atualizado diretamente após scraping
+    // Se não existir, usa o histórico
+    const latestAdCount = offer.last_ad_count ?? adCountsHistory[0]?.count ?? 0;
+    
+    // Se o offer.last_ad_count mudou mas o histórico ainda não tem esse valor, força refetch
+    useEffect(() => {
+        if (offer.last_ad_count !== null && offer.last_ad_count !== undefined) {
+            const hasLatestInHistory = adCountsHistory.some(ac => ac.count === offer.last_ad_count);
+            if (!hasLatestInHistory && adCountsHistory.length > 0) {
+                // O offer foi atualizado mas o histórico ainda não refletiu, força refetch
+                const fetchAdCounts = async () => {
+                    if (!userId || !supabaseClient || !supabaseClient.from) return;
+                    const { data, error } = await supabaseClient
+                        .from('ad_counts')
+                        .select('count, timestamp')
+                        .eq('offer_id', offer.id)
+                        .order('timestamp', { ascending: false })
+                        .limit(15);
+                    if (!error && data) {
+                        setAdCountsHistory(data || []);
+                    }
+                };
+                fetchAdCounts();
+            }
+        }
+    }, [offer.last_ad_count, offer.id, userId, supabaseClient]); 
     
     const previousEntryCount = adCountsHistory[1]?.count;
     let dailyPercentageChangeDisplay = null;

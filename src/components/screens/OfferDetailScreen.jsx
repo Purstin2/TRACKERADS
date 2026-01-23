@@ -313,8 +313,13 @@ const OfferDetailScreen = ({
                 if (offerUpdateError) throw offerUpdateError;
                 
                 showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
-                fetchOfferData();
-                if (globalFetchOffers) globalFetchOffers();
+                
+                // Aguarda um pouco para garantir que o banco foi atualizado
+                setTimeout(() => {
+                    fetchOfferData();
+                    if (globalFetchOffers) globalFetchOffers();
+                }, 500);
+                
                 setIsScrapingRunning(false);
                 return; // Sucesso, sai da função
             } else {
