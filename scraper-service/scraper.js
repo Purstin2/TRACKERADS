@@ -118,8 +118,8 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         // Estratégia 1: Usa JavaScript direto no DOM para encontrar o número
         if (adCount === null) {
             console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
-        
-        adCount = await page.evaluate(() => {
+            
+            adCount = await page.evaluate(() => {
             // Função para encontrar número de resultados (FUNCIONA EM QUALQUER IDIOMA!)
             function findAdCount() {
                 const bodyText = document.body.innerText || document.body.textContent || '';
@@ -244,11 +244,12 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
             
             return findAdCount();
         });
-        
-        if (adCount !== null) {
-            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando JavaScript no DOM`);
-        } else {
-            console.log('[SCRAPER] ⚠️  Estratégia 1 não encontrou número');
+            
+            if (adCount !== null) {
+                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando JavaScript no DOM`);
+            } else {
+                console.log('[SCRAPER] ⚠️  Estratégia 1 não encontrou número');
+            }
         }
         
         // Estratégia 2: Extrai todo o texto visível e procura padrões ESPECÍFICOS
