@@ -532,11 +532,11 @@ function App() {
     return (
         <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-row`}>
             {/* Sidebar lateral */}
-            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.sidebarBg} ${HACKER_COLORS.sidebarBorder} ${HACKER_COLORS.cardShadow} ${HACKER_COLORS.transition}`}>
+            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-72'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.sidebarBg} ${HACKER_COLORS.sidebarBorder} ${HACKER_COLORS.transition}`}>
                 <div>
-                    <div className={`flex items-center gap-3 px-6 py-6 cursor-pointer select-none ${HACKER_COLORS.transitionFast} hover:${HACKER_COLORS.sidebarItemHover} border-b ${HACKER_COLORS.borderDim}`} onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
-                        <Database size={36} className={`${HACKER_COLORS.primary} ${HACKER_COLORS.primaryGlow}`} />
-                        {!sidebarCollapsed && <span className={`text-3xl font-black tracking-wider ${HACKER_COLORS.primary} ${HACKER_COLORS.primaryGlow}`}>PURSTINLAB</span>}
+                    <div className={`flex items-center gap-3 px-6 py-7 cursor-pointer select-none ${HACKER_COLORS.transitionFast} hover:${HACKER_COLORS.sidebarItemHover} border-b ${HACKER_COLORS.borderDim}`} onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
+                        <Database size={40} className={`${HACKER_COLORS.primaryBright} ${HACKER_COLORS.primaryGlow}`} />
+                        {!sidebarCollapsed && <span className={`text-2xl font-black tracking-tight ${HACKER_COLORS.primaryBright}`}>PURSTINLAB</span>}
                     </div>
                     
                     {/* Collapse button */}
@@ -550,7 +550,7 @@ function App() {
                         </button>
                     </div>
                     
-                    <nav className="flex flex-col gap-2 mt-6 px-4">
+                    <nav className="flex flex-col gap-2 mt-8 px-4">
                         <button
                             onClick={() => {
                                 setCurrentScreen('grid');
@@ -559,13 +559,13 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('grid');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
                                 currentScreen === 'grid' && !showNotes && !showActiveOffers 
-                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
+                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
                             }`}
                         >
-                            <LayoutGrid size={20} className="inline" />
+                            <LayoutGrid size={22} className="inline" />
                             {!sidebarCollapsed && <span>GRID</span>}
                         </button>
                         <button
@@ -576,13 +576,13 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('dashboard');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
                                 currentScreen === 'dashboard' 
-                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
+                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
                             }`}
                         >
-                            <BarChart3 size={20} className="inline" />
+                            <BarChart3 size={22} className="inline" />
                             {!sidebarCollapsed && <span>DASHBOARD</span>}
                         </button>
                         <button
@@ -593,13 +593,13 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('compare');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
                                 currentScreen === 'compare' 
-                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
+                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
                             }`}
                         >
-                            <ChevronsLeftRight size={20} className="inline" />
+                            <ChevronsLeftRight size={22} className="inline" />
                             {!sidebarCollapsed && <span>COMPARAR</span>}
                         </button>
                         <button
@@ -610,13 +610,13 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('alerts');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
                                 currentScreen === 'alerts' 
-                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
-                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
+                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
                             }`}
                         >
-                            <Bell size={20} className="inline" />
+                            <Bell size={22} className="inline" />
                             {!sidebarCollapsed && <span>ALERTAS</span>}
                         </button>
                     </nav>
@@ -629,7 +629,7 @@ function App() {
                 )}
             </aside>
             {/* Conteúdo principal com padding lateral */}
-            <main className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-64'} min-h-screen flex flex-col transition-all duration-300`}>
+            <main className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-72'} min-h-screen flex flex-col transition-all duration-300`}>
                 {/* Alerta de modo exemplo quando Supabase não está configurado */}
                 {isSupabaseMockActive && (
                     <div className="bg-red-900/90 border-b-4 border-red-600 text-white px-6 py-4 flex items-center justify-between shadow-lg">

@@ -553,22 +553,33 @@ const OfferDetailScreen = ({
                                         />
                                         <Tooltip 
                                             contentStyle={{ 
-                                                backgroundColor: '#1F2937', 
-                                                border: '1px solid #3B82F6', 
-                                                borderRadius: '8px',
-                                                color: '#F3F4F6'
+                                                backgroundColor: '#0F172A', 
+                                                border: '2px solid #3B82F6', 
+                                                borderRadius: '12px',
+                                                color: '#F3F4F6',
+                                                padding: '10px 14px',
+                                                boxShadow: '0 8px 16px rgba(59, 130, 246, 0.4)'
                                             }} 
-                                            labelStyle={{ color: '#60A5FA', fontWeight: 'bold' }} 
+                                            labelStyle={{ color: '#60A5FA', fontWeight: 'bold', fontSize: '13px' }} 
+                                            cursor={{ stroke: '#3B82F6', strokeWidth: 2, strokeDasharray: '4 4' }}
                                         />
-                                        <Legend wrapperStyle={{ fontSize: "12px", color: '#9CA3AF' }} />
+                                        <defs>
+                                            <linearGradient id="gradientDetail" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                                                <stop offset="50%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                                                <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.05}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <Legend wrapperStyle={{ fontSize: "12px", color: '#CBD5E1', fontWeight: 'bold' }} />
                                         <Line 
                                             type="monotone" 
                                             dataKey="count" 
                                             name="Anúncios" 
-                                            strokeWidth={3} 
-                                            stroke="#60A5FA" 
-                                            dot={{ r: 4, fill: '#60A5FA', strokeWidth: 2 }} 
-                                            activeDot={{ r: 6, stroke: '#1F2937', fill: '#60A5FA', strokeWidth: 2 }} 
+                                            strokeWidth={4} 
+                                            stroke="#3B82F6" 
+                                            dot={{ r: 5, fill: '#3B82F6', strokeWidth: 2, stroke: '#0F172A' }} 
+                                            activeDot={{ r: 8, stroke: '#0F172A', fill: '#3B82F6', strokeWidth: 3 }} 
+                                            animationDuration={1000}
                                         />
                                     </LineChart>
                                 </ResponsiveContainer>

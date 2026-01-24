@@ -235,31 +235,31 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             ${HACKER_COLORS.transition} ${HACKER_COLORS.cardShadow}
             hover:scale-[1.02] hover:${HACKER_COLORS.cardShadowHover} hover:${HACKER_COLORS.cardGlowHover}
             ${isPinned 
-                ? 'border-blue-400/60 shadow-blue-500/30 shadow-2xl bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-blue-950/40 ring-2 ring-blue-400/30' 
+                ? 'border-blue-400/70 shadow-blue-500/40 shadow-2xl bg-gradient-to-br from-blue-950/50 via-slate-900/95 to-blue-950/50 ring-2 ring-blue-400/40' 
                 : offer.is_archived 
-                    ? 'border-slate-700/30 opacity-50 grayscale-[0.3]' 
-                    : 'hover:border-blue-500/40'
+                    ? 'border-slate-700/20 opacity-50 grayscale-[0.3]' 
+                    : 'hover:border-blue-500/50'
             }
             w-full h-full flex flex-col overflow-hidden group
         `}>
             {/* Header with title and creation date */}
-            <div className="p-5 pb-4 flex-shrink-0 border-b border-slate-700/30">
-                <div className="flex items-start justify-between mb-3">
-                    <h3 className={`text-base font-bold truncate pr-2 ${isPinned ? 'text-blue-300' : HACKER_COLORS.textBase} group-hover:text-blue-400 ${HACKER_COLORS.transitionFast}`} title={offer.name}>
+            <div className="p-6 pb-5 flex-shrink-0 border-b border-slate-700/20">
+                <div className="flex items-start justify-between mb-4">
+                    <h3 className={`text-lg font-black truncate pr-2 ${isPinned ? HACKER_COLORS.primaryBright : HACKER_COLORS.textBase} group-hover:${HACKER_COLORS.primaryBright} ${HACKER_COLORS.transitionFast}`} title={offer.name}>
                         {offer.name}
                     </h3>
-                    <span className={`text-xs ${HACKER_COLORS.textDim} ${HACKER_COLORS.surfaceLighter} px-2.5 py-1 rounded-lg whitespace-nowrap flex-shrink-0 border ${HACKER_COLORS.borderDim}`}>
+                    <span className={`text-xs ${HACKER_COLORS.textMuted} ${HACKER_COLORS.surfaceLighter} px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 border ${HACKER_COLORS.borderDim}`}>
                         {formatCreationDate(offer.created_at)}
                     </span>
                 </div>
                 
                 {/* Status and Active badges */}
-                <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-xs font-semibold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color} ${HACKER_COLORS.transitionFast}`}>
+                <div className="flex items-center gap-2.5">
+                    <span className={`inline-flex items-center px-3.5 py-2 rounded-lg border text-xs font-bold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color} ${HACKER_COLORS.transitionFast}`}>
                         {statusInfo.label}
                     </span>
                     {isActive && (
-                        <span className={`text-xs text-cyan-300 bg-cyan-950/50 px-3 py-1.5 rounded-lg font-semibold border border-cyan-500/30 ${HACKER_COLORS.successGlow}`}>
+                        <span className={`text-xs ${HACKER_COLORS.primaryBright} bg-blue-950/60 px-3.5 py-2 rounded-lg font-bold border border-blue-400/40 ${HACKER_COLORS.primaryGlow}`}>
                             ATIVA
                         </span>
                     )}
@@ -267,22 +267,22 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             </div>
 
             {/* Main metrics */}
-            <div className="px-5 pb-4 flex-shrink-0">
-                <div className="flex items-baseline gap-3 mb-2">
-                    <span className={`text-3xl font-extrabold ${HACKER_COLORS.textBase} ${HACKER_COLORS.transitionFast} group-hover:text-blue-400`}>{latestAdCount}</span>
+            <div className="px-6 pb-5 flex-shrink-0">
+                <div className="flex items-baseline gap-3 mb-3">
+                    <span className={`text-4xl font-black ${HACKER_COLORS.textBase} ${HACKER_COLORS.transitionFast} group-hover:${HACKER_COLORS.primaryBright}`}>{latestAdCount}</span>
                     {dailyPercentageChangeDisplay && (
-                        <span className={`text-sm font-bold px-2 py-0.5 rounded-md ${dailyChangeColor} ${dailyChangeColor.includes('green') ? 'bg-emerald-950/30' : dailyChangeColor.includes('red') ? 'bg-red-950/30' : 'bg-slate-800/30'}`}>
+                        <span className={`text-sm font-black px-2.5 py-1 rounded-lg ${dailyChangeColor} ${dailyChangeColor.includes('green') ? 'bg-emerald-950/40 border border-emerald-500/30' : dailyChangeColor.includes('red') ? 'bg-red-950/40 border border-red-500/30' : 'bg-slate-800/40 border border-slate-600/30'}`}>
                             {dailyPercentageChangeDisplay}
                         </span>
                     )}
                 </div>
-                <p className={`text-xs ${HACKER_COLORS.textDim} mb-3 font-medium uppercase tracking-wider`}>ANÚNCIOS ATIVOS</p>
+                <p className={`text-xs ${HACKER_COLORS.textMuted} mb-4 font-bold uppercase tracking-widest`}>ANÚNCIOS ATIVOS</p>
                 
                 {/* Performance details */}
                 {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <div className={`text-xs mb-4 p-2 rounded-lg ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim}`}>
-                        <span className={HACKER_COLORS.textDim}>Variação 7d: </span>
-                        <span className={`font-bold ${
+                    <div className={`text-xs mb-5 p-3 rounded-xl ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim}`}>
+                        <span className={HACKER_COLORS.textMuted}>Variação 7d: </span>
+                        <span className={`font-black ${
                             parseFloat(performanceAnalysis.weeklyChange) > 0 
                                 ? 'text-emerald-400' 
                                 : parseFloat(performanceAnalysis.weeklyChange) < 0 
@@ -296,36 +296,43 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 {/* Mini Performance Chart */}
                 {adCountsHistory.length > 0 && (
-                    <div className="mt-4 mb-2 p-2 rounded-lg bg-slate-900/50 border border-slate-700/30">
-                        <div className="h-20 w-full">
+                    <div className="mt-5 mb-3 p-3 rounded-xl bg-gradient-to-br from-slate-900/80 to-blue-950/30 border border-slate-700/20">
+                        <div className="h-24 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart 
                                     data={adCountsHistory.slice().reverse().map(ac => ({
                                         timestamp: formatDateForAxis(ac.timestamp),
                                         count: ac.count
                                     }))}
-                                    margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
+                                    margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
                                 >
+                                    <defs>
+                                        <linearGradient id={`gradientBlue-${offer.id}`} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.9}/>
+                                            <stop offset="50%" stopColor="#3B82F6" stopOpacity={0.4}/>
+                                            <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                                        </linearGradient>
+                                    </defs>
                                     <Line 
                                         type="monotone" 
                                         dataKey="count" 
-                                        stroke="#60A5FA" 
-                                        strokeWidth={2.5}
+                                        stroke="#3B82F6" 
+                                        strokeWidth={3.5}
                                         dot={false}
-                                        activeDot={{ r: 4, fill: '#60A5FA', stroke: '#1F2937', strokeWidth: 2 }}
-                                        animationDuration={800}
+                                        activeDot={{ r: 6, fill: '#3B82F6', stroke: '#0F172A', strokeWidth: 2 }}
+                                        animationDuration={1000}
                                     />
                                     <Tooltip 
                                         contentStyle={{ 
                                             backgroundColor: '#0F172A', 
                                             border: '1px solid #3B82F6', 
-                                            borderRadius: '8px',
-                                            padding: '6px 10px',
-                                            fontSize: '11px',
-                                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+                                            borderRadius: '10px',
+                                            padding: '8px 12px',
+                                            fontSize: '12px',
+                                            boxShadow: '0 8px 16px rgba(59, 130, 246, 0.3)'
                                         }} 
-                                        labelStyle={{ color: '#60A5FA', fontSize: '10px', fontWeight: 'bold' }}
-                                        cursor={{ stroke: '#60A5FA', strokeWidth: 1, strokeDasharray: '3 3' }}
+                                        labelStyle={{ color: '#60A5FA', fontSize: '11px', fontWeight: 'bold' }}
+                                        cursor={{ stroke: '#3B82F6', strokeWidth: 2, strokeDasharray: '4 4' }}
                                     />
                                 </LineChart>
                             </ResponsiveContainer>
@@ -335,13 +342,13 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             </div>
 
             {/* Last update */}
-            <div className={`px-5 pb-4 text-xs ${HACKER_COLORS.textMuted} flex-shrink-0 border-t border-slate-700/30 pt-3`}>
-                <span className={HACKER_COLORS.textDim}>Atualizado: </span>
-                <span className={HACKER_COLORS.textBase}>{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
+            <div className={`px-6 pb-5 text-xs ${HACKER_COLORS.textMuted} flex-shrink-0 border-t border-slate-700/20 pt-4`}>
+                <span className={HACKER_COLORS.textMuted}>Atualizado: </span>
+                <span className={`${HACKER_COLORS.textBase} font-semibold`}>{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
             </div>
 
             {/* Action buttons - always at bottom */}
-            <div className="mt-auto p-5 pt-3 border-t border-slate-700/30">
+            <div className="mt-auto p-6 pt-4 border-t border-slate-700/20">
                 <div className="grid grid-cols-2 gap-3 mb-3">
                     {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
                         <button 

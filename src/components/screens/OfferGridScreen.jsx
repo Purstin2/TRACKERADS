@@ -150,8 +150,8 @@ const OfferGridScreen = ({
     });
 
     return (
-        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6">
-            <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
+        <div className="px-6 sm:px-8 lg:px-10 max-w-7xl mx-auto py-8">
+            <div className="flex flex-wrap justify-between items-center mb-10 gap-4">
                 <h2 className={`text-4xl font-black ${HACKER_COLORS.textBase} tracking-tight`}>GRID DE TARGETS</h2>
                 <div className="flex items-center space-x-3 flex-wrap gap-2">
                     <div className="relative">
