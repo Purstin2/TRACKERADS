@@ -173,35 +173,35 @@ const OfferGridScreen = ({
                             />
                         </div>
                         <div className="relative">
-                        <button
-                            onClick={() => setShowSortDropdown(!showSortDropdown)}
-                            className={`flex items-center space-x-2 px-4 py-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl ${HACKER_COLORS.transition} font-semibold hover:border-blue-500/70`}
-                        >
-                            <Filter size={20} className={HACKER_COLORS.textDim} />
-                            <span className="text-sm">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
-                            <ChevronDown size={16} className={`${HACKER_COLORS.textDim} ${HACKER_COLORS.transitionFast} ${showSortDropdown ? 'rotate-180' : ''}`} />
-                        </button>
-                        
-                        {showSortDropdown && (
-                            <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
-                                {sortOptions.map(option => (
-                                    <button
-                                        key={option.value}
-                                        onClick={() => {
-                                            setSortBy(option.value);
-                                            setShowSortDropdown(false);
-                                        }}
-                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.transitionFast} border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
-                                            sortBy === option.value 
-                                                ? `text-blue-400 ${HACKER_COLORS.sidebarItemHover} font-bold` 
-                                                : `${HACKER_COLORS.textBase} hover:text-blue-400 hover:${HACKER_COLORS.sidebarItemHover}`
-                                        }`}
-                                    >
-                                        {option.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                            <button
+                                onClick={() => setShowSortDropdown(!showSortDropdown)}
+                                className={`flex items-center space-x-2 px-4 py-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl ${HACKER_COLORS.transition} font-semibold hover:border-blue-500/70`}
+                            >
+                                <Filter size={20} className={HACKER_COLORS.textDim} />
+                                <span className="text-sm">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
+                                <ChevronDown size={16} className={`${HACKER_COLORS.textDim} ${HACKER_COLORS.transitionFast} ${showSortDropdown ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {showSortDropdown && (
+                                <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
+                                    {sortOptions.map(option => (
+                                        <button
+                                            key={option.value}
+                                            onClick={() => {
+                                                setSortBy(option.value);
+                                                setShowSortDropdown(false);
+                                            }}
+                                            className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.transitionFast} border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
+                                                sortBy === option.value 
+                                                    ? `text-blue-400 ${HACKER_COLORS.sidebarItemHover} font-bold` 
+                                                    : `${HACKER_COLORS.textBase} hover:text-blue-400 hover:${HACKER_COLORS.sidebarItemHover}`
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                     
@@ -242,31 +242,30 @@ const OfferGridScreen = ({
                             >
                                 <Download size={18} />
                             </button>
-                        {showExportMenu && (
-                            <div className={`absolute right-0 top-full mt-2 w-48 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
-                                <button
-                                    onClick={() => {
-                                        exportToCSV(offers);
-                                        setShowExportMenu(false);
-                                    }}
-                                    className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2 border-b ${HACKER_COLORS.borderDim}`}
-                                >
-                                    <FileText size={16} />
-                                    Exportar CSV
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        exportToJSON(offers);
-                                        setShowExportMenu(false);
-                                    }}
-                                    className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2`}
-                                >
-                                    <FileJson size={16} />
-                                    Exportar JSON
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                            {showExportMenu && (
+                                <div className={`absolute right-0 top-full mt-2 w-48 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
+                                    <button
+                                        onClick={() => {
+                                            exportToCSV(offers);
+                                            setShowExportMenu(false);
+                                        }}
+                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2 border-b ${HACKER_COLORS.borderDim}`}
+                                    >
+                                        <FileText size={16} />
+                                        Exportar CSV
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            exportToJSON(offers);
+                                            setShowExportMenu(false);
+                                        }}
+                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2`}
+                                    >
+                                        <FileJson size={16} />
+                                        Exportar JSON
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                     
@@ -275,7 +274,9 @@ const OfferGridScreen = ({
                         {/* Botão de Scraping Automático de Todas as Ofertas */}
                         {(() => {
                             const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
-                            return offersToScrape.length > 0 && (
+                            if (offersToScrape.length === 0) return null;
+                            
+                            return (
                                 <button
                                     onClick={async () => {
                                         setIsScrapingAll(true);
