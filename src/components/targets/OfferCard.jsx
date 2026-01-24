@@ -231,33 +231,35 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
     return (
         <div className={`
-            relative bg-gray-900/80 backdrop-blur-sm border rounded-xl transition-all duration-300 hover:scale-[1.02] hover:shadow-xl
+            relative ${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl 
+            ${HACKER_COLORS.transition} ${HACKER_COLORS.cardShadow}
+            hover:scale-[1.02] hover:${HACKER_COLORS.cardShadowHover} hover:${HACKER_COLORS.cardGlowHover}
             ${isPinned 
-                ? 'border-blue-400 shadow-blue-400/20 shadow-lg bg-gradient-to-br from-blue-900/20 to-gray-900/80' 
+                ? 'border-blue-400/60 shadow-blue-500/30 shadow-2xl bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-blue-950/40 ring-2 ring-blue-400/30' 
                 : offer.is_archived 
-                    ? 'border-gray-600 opacity-60' 
-                    : 'border-gray-700 hover:border-blue-400/50'
+                    ? 'border-slate-700/30 opacity-50 grayscale-[0.3]' 
+                    : 'hover:border-blue-500/40'
             }
-            w-full h-full flex flex-col
+            w-full h-full flex flex-col overflow-hidden group
         `}>
             {/* Header with title and creation date */}
-            <div className="p-4 pb-3 flex-shrink-0">
-                <div className="flex items-start justify-between mb-2">
-                    <h3 className={`text-base font-semibold truncate pr-2 ${isPinned ? 'text-blue-300' : 'text-white'}`} title={offer.name}>
+            <div className="p-5 pb-4 flex-shrink-0 border-b border-slate-700/30">
+                <div className="flex items-start justify-between mb-3">
+                    <h3 className={`text-base font-bold truncate pr-2 ${isPinned ? 'text-blue-300' : HACKER_COLORS.textBase} group-hover:text-blue-400 ${HACKER_COLORS.transitionFast}`} title={offer.name}>
                         {offer.name}
                     </h3>
-                    <span className="text-xs text-gray-400 bg-gray-800/60 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+                    <span className={`text-xs ${HACKER_COLORS.textDim} ${HACKER_COLORS.surfaceLighter} px-2.5 py-1 rounded-lg whitespace-nowrap flex-shrink-0 border ${HACKER_COLORS.borderDim}`}>
                         {formatCreationDate(offer.created_at)}
                     </span>
                 </div>
                 
                 {/* Status and Active badges */}
-                <div className="flex items-center gap-2 mb-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
+                <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center px-3 py-1.5 rounded-lg border text-xs font-semibold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color} ${HACKER_COLORS.transitionFast}`}>
                         {statusInfo.label}
                     </span>
                     {isActive && (
-                        <span className="text-xs text-blue-300 bg-blue-900/40 px-2 py-1 rounded-md font-medium">
+                        <span className={`text-xs text-cyan-300 bg-cyan-950/50 px-3 py-1.5 rounded-lg font-semibold border border-cyan-500/30 ${HACKER_COLORS.successGlow}`}>
                             ATIVA
                         </span>
                     )}
@@ -265,28 +267,28 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             </div>
 
             {/* Main metrics */}
-            <div className="px-4 pb-3 flex-shrink-0">
-                <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-2xl font-bold text-white">{latestAdCount}</span>
+            <div className="px-5 pb-4 flex-shrink-0">
+                <div className="flex items-baseline gap-3 mb-2">
+                    <span className={`text-3xl font-extrabold ${HACKER_COLORS.textBase} ${HACKER_COLORS.transitionFast} group-hover:text-blue-400`}>{latestAdCount}</span>
                     {dailyPercentageChangeDisplay && (
-                        <span className={`text-sm font-semibold ${dailyChangeColor}`}>
+                        <span className={`text-sm font-bold px-2 py-0.5 rounded-md ${dailyChangeColor} ${dailyChangeColor.includes('green') ? 'bg-emerald-950/30' : dailyChangeColor.includes('red') ? 'bg-red-950/30' : 'bg-slate-800/30'}`}>
                             {dailyPercentageChangeDisplay}
                         </span>
                     )}
                 </div>
-                <p className="text-xs text-gray-400 mb-2">ANÚNCIOS ATIVOS</p>
+                <p className={`text-xs ${HACKER_COLORS.textDim} mb-3 font-medium uppercase tracking-wider`}>ANÚNCIOS ATIVOS</p>
                 
                 {/* Performance details */}
                 {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <div className="text-xs mb-3">
-                        <span className="text-gray-400">Variação 7d: </span>
-                        <span className={
+                    <div className={`text-xs mb-4 p-2 rounded-lg ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderDim}`}>
+                        <span className={HACKER_COLORS.textDim}>Variação 7d: </span>
+                        <span className={`font-bold ${
                             parseFloat(performanceAnalysis.weeklyChange) > 0 
-                                ? 'text-green-400' 
+                                ? 'text-emerald-400' 
                                 : parseFloat(performanceAnalysis.weeklyChange) < 0 
                                     ? 'text-red-400' 
-                                    : 'text-gray-400'
-                        }>
+                                    : HACKER_COLORS.textDim
+                        }`}>
                             {performanceAnalysis.weeklyChange}
                         </span>
                     </div>
@@ -294,7 +296,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 {/* Mini Performance Chart */}
                 {adCountsHistory.length > 0 && (
-                    <div className="mt-3 mb-2">
+                    <div className="mt-4 mb-2 p-2 rounded-lg bg-slate-900/50 border border-slate-700/30">
                         <div className="h-20 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart 
@@ -308,19 +310,22 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                                         type="monotone" 
                                         dataKey="count" 
                                         stroke="#60A5FA" 
-                                        strokeWidth={2}
+                                        strokeWidth={2.5}
                                         dot={false}
-                                        activeDot={{ r: 3 }}
+                                        activeDot={{ r: 4, fill: '#60A5FA', stroke: '#1F2937', strokeWidth: 2 }}
+                                        animationDuration={800}
                                     />
                                     <Tooltip 
                                         contentStyle={{ 
-                                            backgroundColor: '#1F2937', 
+                                            backgroundColor: '#0F172A', 
                                             border: '1px solid #3B82F6', 
-                                            borderRadius: '6px',
-                                            padding: '4px 8px',
-                                            fontSize: '11px'
+                                            borderRadius: '8px',
+                                            padding: '6px 10px',
+                                            fontSize: '11px',
+                                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
                                         }} 
-                                        labelStyle={{ color: '#60A5FA', fontSize: '10px' }}
+                                        labelStyle={{ color: '#60A5FA', fontSize: '10px', fontWeight: 'bold' }}
+                                        cursor={{ stroke: '#60A5FA', strokeWidth: 1, strokeDasharray: '3 3' }}
                                     />
                                 </LineChart>
                             </ResponsiveContainer>
@@ -330,21 +335,22 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             </div>
 
             {/* Last update */}
-            <div className="px-4 pb-3 text-xs text-gray-500 flex-shrink-0">
-                Atualizado: {getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}
+            <div className={`px-5 pb-4 text-xs ${HACKER_COLORS.textMuted} flex-shrink-0 border-t border-slate-700/30 pt-3`}>
+                <span className={HACKER_COLORS.textDim}>Atualizado: </span>
+                <span className={HACKER_COLORS.textBase}>{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
             </div>
 
             {/* Action buttons - always at bottom */}
-            <div className="mt-auto p-4 pt-2">
-                <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="mt-auto p-5 pt-3 border-t border-slate-700/30">
+                <div className="grid grid-cols-2 gap-3 mb-3">
                     {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
                         <button 
                             onClick={handleLocalScraping}
                             disabled={isScrapingRunning}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                            className={`px-4 py-2.5 rounded-xl text-xs font-bold ${HACKER_COLORS.transition} flex items-center justify-center gap-1.5 ${
                                 isScrapingRunning 
-                                    ? 'bg-purple-800 cursor-not-allowed opacity-50 text-white' 
-                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                    ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
+                                    : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
                             }`}
                             title="Executar scraping local"
                         >
@@ -354,10 +360,10 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                     ) : (
                         <button 
                             onClick={() => onToggleActive(offer.id)}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                            className={`px-4 py-2.5 rounded-xl text-xs font-bold ${HACKER_COLORS.transition} ${
                                 isActive 
-                                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                    : 'bg-gray-800 text-blue-300 border border-gray-600 hover:bg-blue-900/30 hover:border-blue-500'
+                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow}` 
+                                    : `${HACKER_COLORS.surfaceLighter} text-blue-300 border ${HACKER_COLORS.borderPrimary} hover:${HACKER_COLORS.sidebarItemHover} hover:border-blue-400/60`
                             }`}
                         >
                             {isActive ? 'RODANDO' : 'ATIVAR'}
@@ -370,7 +376,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                             const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
                             window.open(newUrl, '_blank');
                         }}
-                        className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                        className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-4 py-2.5 rounded-xl text-xs font-bold ${HACKER_COLORS.transition} flex items-center justify-center gap-1.5`}
                     >
                         <Eye size={14} />
                         ANALISAR
@@ -379,13 +385,13 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 {/* Secondary actions */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                         {offer.link && (
                             <a 
                                 href={offer.link} 
                                 target="_blank" 
                                 rel="noopener noreferrer" 
-                                className="p-1.5 text-gray-400 hover:text-blue-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                                className={`p-2 ${HACKER_COLORS.textDim} hover:text-cyan-400 ${HACKER_COLORS.transitionFast} rounded-lg hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-cyan-500/30`}
                                 title="Abrir link"
                             >
                                 <ExternalLink size={14} />
@@ -393,21 +399,21 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         )}
                         <button 
                             onClick={isPinned ? onUnpin : onPin} 
-                            className={`p-1.5 transition-colors rounded-md hover:bg-gray-800/50 ${isPinned ? 'text-blue-400' : 'text-gray-400 hover:text-blue-400'}`}
+                            className={`p-2 ${HACKER_COLORS.transitionFast} rounded-lg hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-blue-500/30 ${isPinned ? 'text-blue-400' : `${HACKER_COLORS.textDim} hover:text-blue-400`}`}
                             title={isPinned ? 'Desafixar' : 'Fixar no topo'}
                         >
                             {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
                         </button>
                         <button 
                             onClick={() => onEditOffer(offer)} 
-                            className="p-1.5 text-gray-400 hover:text-yellow-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                            className={`p-2 ${HACKER_COLORS.textDim} hover:text-amber-400 ${HACKER_COLORS.transitionFast} rounded-lg hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-amber-500/30`}
                             title="Editar"
                         >
                             <Edit3 size={14} />
                         </button>
                         <button 
                             onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
-                            className="p-1.5 text-gray-400 hover:text-orange-400 transition-colors rounded-md hover:bg-gray-800/50" 
+                            className={`p-2 ${HACKER_COLORS.textDim} hover:text-orange-400 ${HACKER_COLORS.transitionFast} rounded-lg hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-orange-500/30`}
                             title={offer.is_archived ? "Restaurar" : "Arquivar"}
                         >
                             {offer.is_archived ? <ArchiveRestore size={14}/> : <Archive size={14}/>} 
@@ -415,7 +421,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                     </div>
                     <button 
                         onClick={() => onDeleteOffer(offer.id)} 
-                        className="p-1.5 text-gray-400 hover:text-red-400 transition-colors rounded-md hover:bg-gray-800/50"
+                        className={`p-2 ${HACKER_COLORS.textDim} hover:text-red-400 ${HACKER_COLORS.transitionFast} rounded-lg hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-red-500/30`}
                         title="Excluir"
                     >
                         <Trash2 size={14} />

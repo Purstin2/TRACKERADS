@@ -405,21 +405,21 @@ const OfferDetailScreen = ({
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
             {/* Header */}
-            <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+            <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <button 
                             onClick={() => window.history.back()}
-                            className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-800"
+                            className={`p-2.5 ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.textBase} ${HACKER_COLORS.transitionFast} rounded-xl hover:${HACKER_COLORS.surfaceHover} border border-transparent hover:border-blue-500/30`}
                             title="Voltar"
                         >
                             <ArrowLeft size={20} />
                         </button>
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">
+                            <h1 className={`text-2xl sm:text-3xl font-black ${HACKER_COLORS.textBase} mb-1`}>
                                 {offer.name}
                             </h1>
-                            <p className="text-sm text-gray-400">
+                            <p className={`text-sm ${HACKER_COLORS.textDim}`}>
                                 Criado em {getSafeTimestamp(offer.created_at)}
                             </p>
                         </div>
@@ -427,10 +427,10 @@ const OfferDetailScreen = ({
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
-                            className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${
+                            className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${HACKER_COLORS.transition} ${
                                 offer.is_archived 
-                                    ? "bg-yellow-600 hover:bg-yellow-700 text-white" 
-                                    : "bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600"
+                                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-500/30" 
+                                    : `${HACKER_COLORS.inputBg} ${HACKER_COLORS.textBase} ${HACKER_COLORS.borderDim} border hover:border-amber-500/50`
                             }`}
                         >
                             {offer.is_archived ? <ArchiveRestore size={16}/> : <Archive size={16}/>} 
@@ -439,7 +439,7 @@ const OfferDetailScreen = ({
                         
                         <button 
                             onClick={() => onDeleteOffer(offer.id)} 
-                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                            className={`${HACKER_COLORS.buttonDestructiveBg} ${HACKER_COLORS.buttonDestructiveText} ${HACKER_COLORS.buttonDestructiveShadow} px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 ${HACKER_COLORS.transition}`}
                         >
                             <Trash2 size={16} />
                             EXCLUIR
@@ -449,12 +449,12 @@ const OfferDetailScreen = ({
             </div>
 
             {/* Performance Analysis */}
-            <div className={`bg-gray-900/80 backdrop-blur-sm border rounded-xl p-6 ${
+            <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md border rounded-2xl p-6 ${HACKER_COLORS.cardShadow} ${
                 performanceAnalysis.status === "TEST" 
-                    ? 'border-green-500 bg-gradient-to-r from-green-900/20 to-gray-900/80' 
+                    ? 'border-emerald-500/60 bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-emerald-950/40 ring-2 ring-emerald-500/20' 
                     : performanceAnalysis.status === "EXCLUDE_RISK" 
-                        ? 'border-red-500 bg-gradient-to-r from-red-900/20 to-gray-900/80' 
-                        : 'border-gray-700'
+                        ? 'border-red-500/60 bg-gradient-to-r from-red-950/40 via-slate-900/90 to-red-950/40 ring-2 ring-red-500/20' 
+                        : HACKER_COLORS.cardBorder
             }`}>
                 <div className="flex items-center">
                     {renderPerformanceIcon()}
@@ -488,7 +488,7 @@ const OfferDetailScreen = ({
                 {/* Left Column - Info and Chart */}
                 <div className="lg:col-span-2 space-y-8">
                     {/* Target Information */}
-                    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+                    <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <Eye size={20} className="text-blue-400" />
                             INFORMAÇÕES DO TARGET
@@ -529,7 +529,7 @@ const OfferDetailScreen = ({
                     </div>
 
                     {/* Performance Chart */}
-                    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+                    <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
                             <Activity size={20} className="text-blue-400" />
                             LINHA DO TEMPO DE PERFORMANCE
@@ -587,25 +587,25 @@ const OfferDetailScreen = ({
                 {/* Right Column - Actions and Data */}
                 <div className="space-y-8">
                     {/* Add Ad Count */}
-                    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+                    <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                         <h3 className="text-lg font-semibold text-white mb-4">
                             REGISTRAR ANÚNCIOS
                         </h3>
                         
                         {/* Botão de scraping automático */}
                         {offer?.link && offer.link.includes('facebook.com/ads/library') && (
-                            <div className="mb-4 p-4 bg-purple-900/20 border border-purple-500/30 rounded-lg">
-                                <p className="text-sm text-purple-300 mb-3">
+                            <div className={`mb-4 p-4 bg-purple-950/40 border border-purple-500/40 rounded-xl ${HACKER_COLORS.transition}`}>
+                                <p className={`text-sm text-purple-300 mb-3 font-medium`}>
                                     🤖 Este target tem link da Biblioteca do Facebook. Você pode extrair o número de anúncios automaticamente!
                                 </p>
                                 <button 
                                     onClick={handleAutoScraping}
                                     disabled={isScrapingRunning}
-                                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-lg font-medium transition-all ${
+                                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-bold ${HACKER_COLORS.transition} ${
                                         isScrapingRunning 
-                                            ? 'bg-purple-800 cursor-not-allowed opacity-50' 
-                                            : 'bg-purple-600 hover:bg-purple-700'
-                                    } text-white`}
+                                            ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
+                                            : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
+                                    }`}
                                 >
                                     <RefreshCw size={18} className={isScrapingRunning ? 'animate-spin' : ''} />
                                     {isScrapingRunning ? 'EXTRAINDO DADOS...' : 'SCRAPING AUTOMÁTICO'}
@@ -615,10 +615,10 @@ const OfferDetailScreen = ({
                         
                         <div className="relative">
                             <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-gray-600"></div>
+                                <div className={`w-full border-t ${HACKER_COLORS.borderDim}`}></div>
                             </div>
                             <div className="relative flex justify-center text-xs">
-                                <span className="bg-gray-900 px-2 text-gray-400">OU MANUAL</span>
+                                <span className={`${HACKER_COLORS.cardBg} px-2 ${HACKER_COLORS.textDim}`}>OU MANUAL</span>
                             </div>
                         </div>
                         
@@ -630,11 +630,11 @@ const OfferDetailScreen = ({
                                 placeholder="Nº DE ANÚNCIOS ATIVOS" 
                                 required 
                                 min="0" 
-                                className="w-full bg-gray-800 border border-gray-600 text-white p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className={`w-full ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} p-3 rounded-xl ${HACKER_COLORS.transition} font-medium`}
                             />
                             <button 
                                 type="submit" 
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-medium transition-colors"
+                                className={`w-full ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} p-3 rounded-xl font-bold ${HACKER_COLORS.transition}`}
                             >
                                 REGISTRAR MANUALMENTE
                             </button>
@@ -642,7 +642,7 @@ const OfferDetailScreen = ({
                     </div>
 
                     {/* Ad Count History */}
-                    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+                    <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                         <h3 className="text-lg font-semibold text-white mb-4">
                             HISTÓRICO DE REGISTROS
                         </h3>
@@ -668,7 +668,7 @@ const OfferDetailScreen = ({
                                     } 
                                     
                                     return (
-                                        <div key={ac.id} className="bg-gray-800/70 p-4 rounded-lg flex justify-between items-center">
+                                        <div key={ac.id} className={`${HACKER_COLORS.surfaceLighter} p-4 rounded-xl flex justify-between items-center border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.transitionFast} hover:border-blue-500/30`}>
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-white font-semibold">
@@ -703,7 +703,7 @@ const OfferDetailScreen = ({
             </div>
 
             {/* Comments Section */}
-            <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6">
+            <div className={`${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl p-6 ${HACKER_COLORS.cardShadow}`}>
                 <h3 className="text-lg font-semibold text-white mb-6">
                     NOTAS TÁTICAS
                 </h3>
@@ -715,11 +715,11 @@ const OfferDetailScreen = ({
                             onChange={(e) => setNewCommentState(e.target.value)} 
                             placeholder="ADICIONAR NOTA..." 
                             rows="3" 
-                            className="flex-1 bg-gray-800 border border-gray-600 text-white p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
+                            className={`flex-1 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} p-3 rounded-xl ${HACKER_COLORS.transition} resize-none font-medium`}
                         />
                         <button 
                             type="submit" 
-                            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors self-start"
+                            className={`${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow} px-6 py-3 rounded-xl font-bold ${HACKER_COLORS.transition} self-start`}
                         >
                             ADICIONAR
                         </button>
@@ -729,7 +729,7 @@ const OfferDetailScreen = ({
                 {comments.length > 0 ? (
                     <div className="space-y-4 max-h-96 overflow-y-auto">
                         {comments.map(c => (
-                            <div key={c.id} className="bg-gray-800/70 p-4 rounded-lg">
+                            <div key={c.id} className={`${HACKER_COLORS.surfaceLighter} p-4 rounded-xl border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.transitionFast} hover:border-blue-500/30`}>
                                 <p className="text-white mb-3">{c.text}</p>
                                 <div className="flex justify-between items-center">
                                     <p className="text-xs text-gray-400">

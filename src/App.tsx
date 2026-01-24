@@ -532,25 +532,25 @@ function App() {
     return (
         <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-row`}>
             {/* Sidebar lateral */}
-            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.surface} border-r-2 ${HACKER_COLORS.borderPrimary} shadow-2xl transition-all duration-300`}>
+            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-64'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.sidebarBg} ${HACKER_COLORS.sidebarBorder} ${HACKER_COLORS.cardShadow} ${HACKER_COLORS.transition}`}>
                 <div>
-                    <div className="flex items-center gap-3 px-6 py-6 cursor-pointer select-none" onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
-                        <Database size={36} className={`${HACKER_COLORS.primary}`} />
-                        {!sidebarCollapsed && <span className={`text-3xl font-extrabold tracking-wider ${HACKER_COLORS.primary}`}>PURSTINLAB</span>}
+                    <div className={`flex items-center gap-3 px-6 py-6 cursor-pointer select-none ${HACKER_COLORS.transitionFast} hover:${HACKER_COLORS.sidebarItemHover} border-b ${HACKER_COLORS.borderDim}`} onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
+                        <Database size={36} className={`${HACKER_COLORS.primary} ${HACKER_COLORS.primaryGlow}`} />
+                        {!sidebarCollapsed && <span className={`text-3xl font-black tracking-wider ${HACKER_COLORS.primary} ${HACKER_COLORS.primaryGlow}`}>PURSTINLAB</span>}
                     </div>
                     
                     {/* Collapse button */}
-                    <div className="px-4 mb-4">
+                    <div className="px-4 mb-4 mt-4">
                         <button
                             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border-2 ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary}`}
+                            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold ${HACKER_COLORS.transition} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`}
                         >
                             {sidebarCollapsed ? '→' : '←'}
                             {!sidebarCollapsed && <span>MINIMIZAR</span>}
                         </button>
                     </div>
                     
-                    <nav className="flex flex-col gap-2 mt-8 px-4">
+                    <nav className="flex flex-col gap-2 mt-6 px-4">
                         <button
                             onClick={() => {
                                 setCurrentScreen('grid');
@@ -559,7 +559,11 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('grid');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'grid' && !showNotes && !showActiveOffers ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                                currentScreen === 'grid' && !showNotes && !showActiveOffers 
+                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
+                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                            }`}
                         >
                             <LayoutGrid size={20} className="inline" />
                             {!sidebarCollapsed && <span>GRID</span>}
@@ -572,7 +576,11 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('dashboard');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'dashboard' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                                currentScreen === 'dashboard' 
+                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
+                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                            }`}
                         >
                             <BarChart3 size={20} className="inline" />
                             {!sidebarCollapsed && <span>DASHBOARD</span>}
@@ -585,7 +593,11 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('compare');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'compare' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                                currentScreen === 'compare' 
+                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
+                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                            }`}
                         >
                             <ChevronsLeftRight size={20} className="inline" />
                             {!sidebarCollapsed && <span>COMPARAR</span>}
@@ -598,7 +610,11 @@ function App() {
                                 setShowActiveOffers(false);
                                 updateUrl('alerts');
                             }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg text-base font-semibold transition-all border-2 ${currentScreen === 'alerts' ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.borderPrimary}` : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim}`}`}
+                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-xl text-base font-bold ${HACKER_COLORS.transition} ${
+                                currentScreen === 'alerts' 
+                                    ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} border border-blue-400/30` 
+                                    : `${HACKER_COLORS.surfaceLighter} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} ${HACKER_COLORS.borderDim} border hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`
+                            }`}
                         >
                             <Bell size={20} className="inline" />
                             {!sidebarCollapsed && <span>ALERTAS</span>}
@@ -606,9 +622,9 @@ function App() {
                     </nav>
                 </div>
                 {!sidebarCollapsed && (
-                    <div className="px-6 py-4 text-xs text-right text-slate-500">
-                        <div className="mb-1 font-semibold text-slate-400">UID:</div>
-                        <div className="font-mono text-slate-400">{userId.substring(0, 12)}...</div>
+                    <div className={`px-6 py-4 text-xs text-right border-t ${HACKER_COLORS.borderDim}`}>
+                        <div className={`mb-1 font-bold ${HACKER_COLORS.textDim}`}>UID:</div>
+                        <div className={`font-mono ${HACKER_COLORS.textBase} bg-slate-800/50 px-2 py-1 rounded-lg border ${HACKER_COLORS.borderDim} inline-block`}>{userId.substring(0, 12)}...</div>
                     </div>
                 )}
             </aside>
@@ -710,8 +726,8 @@ function App() {
                         />
                     )}
                 </div>
-                <footer className={`${HACKER_COLORS.surface} border-t-2 ${HACKER_COLORS.borderPrimary} p-4 text-center text-xs ${HACKER_COLORS.textDim}`}>
-                    PURSTINLAB // Supabase Edition © {new Date().getFullYear()} // Status: ONLINE
+                <footer className={`${HACKER_COLORS.surface} border-t ${HACKER_COLORS.borderDim} p-4 text-center text-xs ${HACKER_COLORS.textDim} font-medium`}>
+                    <span className={HACKER_COLORS.textBase}>PURSTINLAB</span> // Supabase Edition © {new Date().getFullYear()} // <span className="text-emerald-400">Status: ONLINE</span>
                 </footer>
             </main>
             <AddOfferModal 

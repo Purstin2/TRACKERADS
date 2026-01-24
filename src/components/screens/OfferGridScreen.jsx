@@ -150,9 +150,9 @@ const OfferGridScreen = ({
     });
 
     return (
-        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6">
             <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
-                <h2 className="text-3xl font-bold text-white">GRID DE TARGETS</h2>
+                <h2 className={`text-4xl font-black ${HACKER_COLORS.textBase} tracking-tight`}>GRID DE TARGETS</h2>
                 <div className="flex items-center space-x-3 flex-wrap gap-2">
                     <div className="relative">
                         <input 
@@ -160,25 +160,25 @@ const OfferGridScreen = ({
                             placeholder="BUSCAR TARGET..." 
                             value={searchTerm} 
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-56 sm:w-64 md:w-80 bg-gray-800 border border-gray-600 text-white placeholder-gray-400 rounded-lg py-2 px-4 pl-12 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                            className={`w-56 sm:w-64 md:w-80 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl py-2.5 px-4 pl-12 ${HACKER_COLORS.transition} text-base font-medium`}
                         />
                         <Search 
                             size={20} 
-                            className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
+                            className={`absolute left-4 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.textDim}`}
                         />
                     </div>
                     <div className="relative">
                         <button
                             onClick={() => setShowSortDropdown(!showSortDropdown)}
-                            className="flex items-center space-x-2 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg hover:bg-gray-700 transition-all duration-200 text-white"
+                            className={`flex items-center space-x-2 px-4 py-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl ${HACKER_COLORS.transition} font-semibold hover:border-blue-500/70`}
                         >
-                            <Filter size={20} className="text-gray-400" />
-                            <span className="text-sm font-medium">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
-                            <ChevronDown size={16} className={`text-gray-400 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+                            <Filter size={20} className={HACKER_COLORS.textDim} />
+                            <span className="text-sm">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
+                            <ChevronDown size={16} className={`${HACKER_COLORS.textDim} ${HACKER_COLORS.transitionFast} ${showSortDropdown ? 'rotate-180' : ''}`} />
                         </button>
                         
                         {showSortDropdown && (
-                            <div className="absolute top-full left-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                            <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
                                 {sortOptions.map(option => (
                                     <button
                                         key={option.value}
@@ -186,10 +186,10 @@ const OfferGridScreen = ({
                                             setSortBy(option.value);
                                             setShowSortDropdown(false);
                                         }}
-                                        className={`w-full text-left px-4 py-3 text-sm transition-colors border-b border-gray-700 last:border-b-0 ${
+                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.transitionFast} border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
                                             sortBy === option.value 
-                                                ? 'text-blue-400 bg-blue-900/30' 
-                                                : 'text-white hover:text-blue-400 hover:bg-gray-700'
+                                                ? `text-blue-400 ${HACKER_COLORS.sidebarItemHover} font-bold` 
+                                                : `${HACKER_COLORS.textBase} hover:text-blue-400 hover:${HACKER_COLORS.sidebarItemHover}`
                                         }`}
                                     >
                                         {option.label}
@@ -201,17 +201,17 @@ const OfferGridScreen = ({
                     <button 
                         onClick={() => setShowArchived(!showArchived)} 
                         title={showArchived ? "Ver Ativas" : "Ver Arquivadas"}
-                        className={`p-2 border border-gray-600 rounded-lg transition-all duration-200 ${showArchived ? 'bg-yellow-800/60 text-yellow-300' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                        className={`p-2.5 border rounded-xl ${HACKER_COLORS.transition} ${showArchived ? 'bg-amber-900/40 border-amber-500/50 text-amber-300' : `${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:border-amber-500/50 hover:text-amber-300`}`}
                     >
                         {showArchived 
-                            ? <ArchiveRestore size={22} className="text-yellow-300" /> 
+                            ? <ArchiveRestore size={22} className="text-amber-300" /> 
                             : <Archive size={22} />
                         }
                     </button>
                     <button 
                         onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
                         title="Alternar Visualização"
-                        className="p-2 bg-gray-800 border border-gray-600 rounded-lg hover:bg-gray-700 transition-all duration-200 text-gray-400"
+                        className={`p-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} border rounded-xl hover:border-blue-500/50 ${HACKER_COLORS.transition} ${HACKER_COLORS.textDim} hover:text-blue-400`}
                     >
                         {viewMode === 'grid' 
                             ? <List size={22} /> 
@@ -220,7 +220,7 @@ const OfferGridScreen = ({
                     </button>
                     <button
                         onClick={() => setShowAdvancedFilters(true)}
-                        className="p-2 bg-purple-600 border border-purple-500 rounded-lg hover:bg-purple-700 transition-all duration-200 text-white"
+                        className={`p-2.5 ${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow} border border-purple-400/30 rounded-xl ${HACKER_COLORS.transition}`}
                         title="Filtros Avançados"
                     >
                         <Filter size={22} />
@@ -228,19 +228,19 @@ const OfferGridScreen = ({
                     <div className="relative">
                         <button
                             onClick={() => setShowExportMenu(!showExportMenu)}
-                            className="p-2 bg-green-600 border border-green-500 rounded-lg hover:bg-green-700 transition-all duration-200 text-white"
+                            className={`p-2.5 ${HACKER_COLORS.buttonSuccessBg} ${HACKER_COLORS.buttonSuccessText} border border-emerald-400/30 rounded-xl ${HACKER_COLORS.transition} shadow-lg shadow-emerald-500/20`}
                             title="Exportar Dados"
                         >
                             <Download size={22} />
                         </button>
                         {showExportMenu && (
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                            <div className={`absolute right-0 top-full mt-2 w-48 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
                                 <button
                                     onClick={() => {
                                         exportToCSV(offers);
                                         setShowExportMenu(false);
                                     }}
-                                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2 border-b border-gray-700"
+                                    className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2 border-b ${HACKER_COLORS.borderDim}`}
                                 >
                                     <FileText size={16} />
                                     Exportar CSV
@@ -250,7 +250,7 @@ const OfferGridScreen = ({
                                         exportToJSON(offers);
                                         setShowExportMenu(false);
                                     }}
-                                    className="w-full text-left px-4 py-3 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2"
+                                    className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2`}
                                 >
                                     <FileJson size={16} />
                                     Exportar JSON
@@ -325,10 +325,10 @@ const OfferGridScreen = ({
                                     }
                                 }}
                                 disabled={isScrapingAll}
-                                className={`ml-2 px-6 py-2 rounded-lg shadow-lg transition-all flex items-center space-x-2 text-base font-semibold ${
+                                className={`ml-2 px-6 py-2.5 rounded-xl ${HACKER_COLORS.transition} flex items-center space-x-2 text-base font-bold ${
                                     isScrapingAll 
-                                        ? 'bg-purple-800 cursor-not-allowed opacity-50' 
-                                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                        ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
+                                        : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
                                 }`}
                                 title={`Executar scraping automático para ${offersToScrape.length} ofertas com link do Facebook`}
                             >
@@ -339,7 +339,7 @@ const OfferGridScreen = ({
                     })()}
                     <button
                         onClick={onAddOffer}
-                        className="ml-2 bg-blue-600 text-white px-6 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-base font-semibold"
+                        className={`ml-2 ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-6 py-2.5 rounded-xl ${HACKER_COLORS.transition} flex items-center space-x-2 text-base font-bold`}
                     >
                         <PlusCircle size={20} />
                         <span>NOVO TARGET</span>
