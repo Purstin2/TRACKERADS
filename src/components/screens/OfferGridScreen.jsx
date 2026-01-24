@@ -150,24 +150,29 @@ const OfferGridScreen = ({
     });
 
     return (
-        <div className="px-6 sm:px-8 lg:px-10 max-w-7xl mx-auto py-8">
-            <div className="flex flex-wrap justify-between items-center mb-10 gap-4">
-                <h2 className={`text-4xl font-black ${HACKER_COLORS.textBase} tracking-tight`}>GRID DE TARGETS</h2>
-                <div className="flex items-center space-x-3 flex-wrap gap-2">
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            placeholder="BUSCAR TARGET..." 
-                            value={searchTerm} 
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`w-56 sm:w-64 md:w-80 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl py-2.5 px-4 pl-12 ${HACKER_COLORS.transition} text-base font-medium`}
-                        />
-                        <Search 
-                            size={20} 
-                            className={`absolute left-4 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.textDim}`}
-                        />
-                    </div>
-                    <div className="relative">
+        <div className="px-6 sm:px-8 lg:px-10 max-w-7xl mx-auto py-6">
+            {/* Header Section - Organizado */}
+            <div className="mb-6">
+                <h2 className={`text-3xl font-black ${HACKER_COLORS.textBase} tracking-tight mb-6`}>GRID DE TARGETS</h2>
+                
+                {/* Barra de ações - Organizada em seções */}
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Seção de busca e filtros */}
+                    <div className="flex items-center gap-2 flex-1 min-w-[300px]">
+                        <div className="relative flex-1 max-w-md">
+                            <input 
+                                type="text" 
+                                placeholder="Buscar target..." 
+                                value={searchTerm} 
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={`w-full ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-lg py-2.5 px-4 pl-11 ${HACKER_COLORS.transition} text-sm font-medium`}
+                            />
+                            <Search 
+                                size={18} 
+                                className={`absolute left-3.5 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.textDim}`}
+                            />
+                        </div>
+                        <div className="relative">
                         <button
                             onClick={() => setShowSortDropdown(!showSortDropdown)}
                             className={`flex items-center space-x-2 px-4 py-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl ${HACKER_COLORS.transition} font-semibold hover:border-blue-500/70`}
@@ -197,42 +202,46 @@ const OfferGridScreen = ({
                                 ))}
                             </div>
                         )}
+                        </div>
                     </div>
-                    <button 
-                        onClick={() => setShowArchived(!showArchived)} 
-                        title={showArchived ? "Ver Ativas" : "Ver Arquivadas"}
-                        className={`p-2.5 border rounded-xl ${HACKER_COLORS.transition} ${showArchived ? 'bg-amber-900/40 border-amber-500/50 text-amber-300' : `${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:border-amber-500/50 hover:text-amber-300`}`}
-                    >
-                        {showArchived 
-                            ? <ArchiveRestore size={22} className="text-amber-300" /> 
-                            : <Archive size={22} />
-                        }
-                    </button>
-                    <button 
-                        onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
-                        title="Alternar Visualização"
-                        className={`p-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} border rounded-xl hover:border-blue-500/50 ${HACKER_COLORS.transition} ${HACKER_COLORS.textDim} hover:text-blue-400`}
-                    >
-                        {viewMode === 'grid' 
-                            ? <List size={22} /> 
-                            : <LayoutGrid size={22} />
-                        }
-                    </button>
-                    <button
-                        onClick={() => setShowAdvancedFilters(true)}
-                        className={`p-2.5 ${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow} border border-purple-400/30 rounded-xl ${HACKER_COLORS.transition}`}
-                        title="Filtros Avançados"
-                    >
-                        <Filter size={22} />
-                    </button>
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowExportMenu(!showExportMenu)}
-                            className={`p-2.5 ${HACKER_COLORS.buttonSuccessBg} ${HACKER_COLORS.buttonSuccessText} border border-emerald-400/30 rounded-xl ${HACKER_COLORS.transition} shadow-lg shadow-emerald-500/20`}
-                            title="Exportar Dados"
+                    
+                    {/* Seção de ações rápidas */}
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setShowArchived(!showArchived)} 
+                            title={showArchived ? "Ver Ativas" : "Ver Arquivadas"}
+                            className={`p-2.5 border rounded-lg ${HACKER_COLORS.transition} ${showArchived ? 'bg-amber-900/40 border-amber-500/50 text-amber-300' : `${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:border-amber-500/50 hover:text-amber-300`}`}
                         >
-                            <Download size={22} />
+                            {showArchived 
+                                ? <ArchiveRestore size={18} className="text-amber-300" /> 
+                                : <Archive size={18} />
+                            }
                         </button>
+                        <button 
+                            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
+                            title="Alternar Visualização"
+                            className={`p-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} border rounded-lg hover:border-blue-500/50 ${HACKER_COLORS.transition} ${HACKER_COLORS.textDim} hover:text-blue-400`}
+                        >
+                            {viewMode === 'grid' 
+                                ? <List size={18} /> 
+                                : <LayoutGrid size={18} />
+                            }
+                        </button>
+                        <button
+                            onClick={() => setShowAdvancedFilters(true)}
+                            className={`p-2.5 ${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow} border border-purple-400/30 rounded-lg ${HACKER_COLORS.transition}`}
+                            title="Filtros Avançados"
+                        >
+                            <Filter size={18} />
+                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className={`p-2.5 ${HACKER_COLORS.buttonSuccessBg} ${HACKER_COLORS.buttonSuccessText} border border-emerald-400/30 rounded-lg ${HACKER_COLORS.transition} shadow-lg shadow-emerald-500/20`}
+                                title="Exportar Dados"
+                            >
+                                <Download size={18} />
+                            </button>
                         {showExportMenu && (
                             <div className={`absolute right-0 top-full mt-2 w-48 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
                                 <button
@@ -258,92 +267,93 @@ const OfferGridScreen = ({
                             </div>
                         )}
                     </div>
-                    {/* Botão de Scraping Automático de Todas as Ofertas */}
-                    {(() => {
-                        const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
-                        return offersToScrape.length > 0 && (
-                            <button
-                                onClick={async () => {
-                                    setIsScrapingAll(true);
-                                    try {
-                                        showToast && showToast(`🤖 Iniciando scraping para ${offersToScrape.length} ofertas... Isso pode levar alguns minutos.`, 'info');
-                                        
-                                        const response = await fetch('http://localhost:3001/api/scrape/run', {
-                                            method: 'POST',
-                                            headers: {
-                                                'Content-Type': 'application/json'
-                                            }
-                                        });
-                                        
-                                        const data = await response.json();
-                                        
-                                        if (response.ok) {
-                                            showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualizando automaticamente...`, 'success');
+                        </div>
+                    </div>
+                    
+                    {/* Seção de ações principais */}
+                    <div className="flex items-center gap-2">
+                        {/* Botão de Scraping Automático de Todas as Ofertas */}
+                        {(() => {
+                            const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
+                            return offersToScrape.length > 0 && (
+                                <button
+                                    onClick={async () => {
+                                        setIsScrapingAll(true);
+                                        try {
+                                            showToast && showToast(`🤖 Iniciando scraping para ${offersToScrape.length} ofertas... Isso pode levar alguns minutos.`, 'info');
                                             
-                                            // Atualiza imediatamente
-                                            if (fetchOffers) fetchOffers();
-                                            
-                                            // Aguarda e atualiza a lista várias vezes
-                                            // O scraping pode levar ~3-5 segundos por oferta, então para N ofertas, 
-                                            // estimamos N * 5 segundos + margem de segurança
-                                            const estimatedTime = offersToScrape.length * 5 + 30; // segundos
-                                            const updateInterval = 10000; // A cada 10 segundos
-                                            const maxAttempts = Math.ceil(estimatedTime / (updateInterval / 1000)) + 5; // +5 tentativas extras
-                                            
-                                            let attempts = 0;
-                                            const interval = setInterval(() => {
-                                                attempts++;
-                                                if (fetchOffers) {
-                                                    fetchOffers();
-                                                    console.log(`[SCRAPING] Atualizando lista (tentativa ${attempts}/${maxAttempts})...`);
+                                            const response = await fetch('http://localhost:3001/api/scrape/run', {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json'
                                                 }
+                                            });
+                                            
+                                            const data = await response.json();
+                                            
+                                            if (response.ok) {
+                                                showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualizando automaticamente...`, 'success');
                                                 
-                                                if (attempts >= maxAttempts) {
+                                                // Atualiza imediatamente
+                                                if (fetchOffers) fetchOffers();
+                                                
+                                                // Aguarda e atualiza a lista várias vezes
+                                                const estimatedTime = offersToScrape.length * 5 + 30;
+                                                const updateInterval = 10000;
+                                                const maxAttempts = Math.ceil(estimatedTime / (updateInterval / 1000)) + 5;
+                                                
+                                                let attempts = 0;
+                                                const interval = setInterval(() => {
+                                                    attempts++;
+                                                    if (fetchOffers) {
+                                                        fetchOffers();
+                                                        console.log(`[SCRAPING] Atualizando lista (tentativa ${attempts}/${maxAttempts})...`);
+                                                    }
+                                                    
+                                                    if (attempts >= maxAttempts) {
+                                                        clearInterval(interval);
+                                                        showToast && showToast('🔄 Atualização automática finalizada. Verifique os resultados!', 'info');
+                                                    } else if (attempts % 3 === 0) {
+                                                        showToast && showToast(`🔄 Atualizando... (${attempts}/${maxAttempts})`, 'info');
+                                                    }
+                                                }, updateInterval);
+                                                
+                                                setTimeout(() => {
                                                     clearInterval(interval);
-                                                    showToast && showToast('🔄 Atualização automática finalizada. Verifique os resultados!', 'info');
-                                                } else if (attempts % 3 === 0) {
-                                                    // A cada 3 tentativas, mostra progresso
-                                                    showToast && showToast(`🔄 Atualizando... (${attempts}/${maxAttempts})`, 'info');
-                                                }
-                                            }, updateInterval);
-                                            
-                                            // Limpa o intervalo após o tempo estimado + margem
-                                            setTimeout(() => {
-                                                clearInterval(interval);
-                                                if (fetchOffers) fetchOffers(); // Última atualização
-                                                showToast && showToast('✅ Scraping concluído! Lista atualizada.', 'success');
-                                            }, estimatedTime * 1000);
-                                        } else {
-                                            showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
+                                                    if (fetchOffers) fetchOffers();
+                                                    showToast && showToast('✅ Scraping concluído! Lista atualizada.', 'success');
+                                                }, estimatedTime * 1000);
+                                            } else {
+                                                showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
+                                            }
+                                        } catch (error) {
+                                            console.error('Erro ao executar scraping:', error);
+                                            showToast && showToast('❌ Erro: Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start', 'error');
+                                        } finally {
+                                            setTimeout(() => setIsScrapingAll(false), 30000);
                                         }
-                                    } catch (error) {
-                                        console.error('Erro ao executar scraping:', error);
-                                        showToast && showToast('❌ Erro: Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start', 'error');
-                                    } finally {
-                                        // Mantém o botão desabilitado por mais tempo para evitar cliques múltiplos
-                                        setTimeout(() => setIsScrapingAll(false), 30000);
-                                    }
-                                }}
-                                disabled={isScrapingAll}
-                                className={`ml-2 px-6 py-2.5 rounded-xl ${HACKER_COLORS.transition} flex items-center space-x-2 text-base font-bold ${
-                                    isScrapingAll 
-                                        ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
-                                        : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
-                                }`}
-                                title={`Executar scraping automático para ${offersToScrape.length} ofertas com link do Facebook`}
-                            >
-                                <RefreshCw size={20} className={isScrapingAll ? 'animate-spin' : ''} />
-                                <span>{isScrapingAll ? 'SCRAPING...' : `SCRAPING TODOS (${offersToScrape.length})`}</span>
-                            </button>
-                        );
-                    })()}
-                    <button
-                        onClick={onAddOffer}
-                        className={`ml-2 ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-6 py-2.5 rounded-xl ${HACKER_COLORS.transition} flex items-center space-x-2 text-base font-bold`}
-                    >
-                        <PlusCircle size={20} />
-                        <span>NOVO TARGET</span>
-                    </button>
+                                    }}
+                                    disabled={isScrapingAll}
+                                    className={`px-4 py-2.5 rounded-lg ${HACKER_COLORS.transition} flex items-center space-x-2 text-sm font-bold ${
+                                        isScrapingAll 
+                                            ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
+                                            : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
+                                    }`}
+                                    title={`Executar scraping automático para ${offersToScrape.length} ofertas`}
+                                >
+                                    <RefreshCw size={16} className={isScrapingAll ? 'animate-spin' : ''} />
+                                    <span>{isScrapingAll ? 'SCRAPING...' : `SCRAP TODOS (${offersToScrape.length})`}</span>
+                                </button>
+                            );
+                        })()}
+                        <button
+                            onClick={onAddOffer}
+                            className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-5 py-2.5 rounded-lg ${HACKER_COLORS.transition} flex items-center space-x-2 text-sm font-bold`}
+                        >
+                            <PlusCircle size={18} />
+                            <span>NOVO TARGET</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -399,7 +409,7 @@ const OfferGridScreen = ({
             )}
 
             {userId && viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
                     {sortedOffers.map(offer => (
                         <OfferCard 
                             key={offer.id} 
