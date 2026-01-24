@@ -421,6 +421,8 @@ const OfferGridScreen = ({
                                     setActiveOfferIds([id, ...(activeOfferIds || [])]);
                                 }
                             }}
+                            fetchOffers={fetchOffers}
+                            showToast={showToast}
                         />
                     ))}
                 </div>
