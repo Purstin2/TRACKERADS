@@ -45,26 +45,56 @@ export async function getOffersWithFacebookLinks() {
 
 /**
  * Atualiza o contador de anúncios de uma oferta
+ * IMPORTANTE: Também cria um registro em ad_counts para manter o histórico
  * @param {string} offerId - ID da oferta
  * @param {number} adCount - Número de anúncios
  * @returns {Promise<boolean>}
  */
 export async function updateOfferAdCount(offerId, adCount) {
     try {
-        const { data, error } = await supabase
+        const timestamp = new Date().toISOString();
+
+        // 1. Busca a oferta para pegar o user_id
+        const { data: offer, error: fetchError } = await supabase
+            .from('offers')
+            .select('user_id')
+            .eq('id', offerId)
+            .single();
+
+        if (fetchError) throw fetchError;
+        if (!offer) throw new Error('Oferta não encontrada');
+
+        // 2. Cria registro em ad_counts (HISTÓRICO para gráficos)
+        const { error: insertError } = await supabase
+            .from('ad_counts')
+            .insert([{
+                offer_id: offerId,
+                user_id: offer.user_id,
+                count: adCount,
+                timestamp: timestamp
+            }]);
+
+        if (insertError) {
+            console.error(`[SUPABASE] Erro ao criar registro em ad_counts:`, insertError);
+            throw insertError;
+        }
+
+        console.log(`[SUPABASE] ✓ Registro criado em ad_counts: ${adCount} anúncios`);
+
+        // 3. Atualiza a tabela offers com os últimos valores
+        const { error: updateError } = await supabase
             .from('offers')
             .update({
                 last_ad_count: adCount,
-                last_ad_count_timestamp: new Date().toISOString()
+                last_ad_count_timestamp: timestamp
             })
-            .eq('id', offerId)
-            .select();
-        
-        if (error) throw error;
-        
+            .eq('id', offerId);
+
+        if (updateError) throw updateError;
+
         console.log(`[SUPABASE] ✓ Oferta ${offerId} atualizada: ${adCount} anúncios`);
         return true;
-        
+
     } catch (error) {
         console.error(`[SUPABASE] Erro ao atualizar oferta ${offerId}:`, error);
         return false;
