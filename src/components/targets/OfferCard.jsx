@@ -424,7 +424,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                             className="p-1.5 text-slate-600 hover:text-amber-400 transition-colors rounded-lg hover:bg-white/[0.05]"
                             title="Editar"
                         >
-                            <Edit3 size={13} />
+                            <Pencil size={13} />
                         </button>
                         <button
                             onClick={() => onToggleArchive(offer.id, offer.is_archived)}
