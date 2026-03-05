@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, TrendingDown, Activity, Target, AlertTriangle, Zap, Calendar, Database } from 'lucide-react';
-import { HACKER_COLORS } from '../../styles/theme';
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { TrendingUp, TrendingDown, Activity, Target, AlertTriangle, Zap, Calendar, Database, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 const DashboardScreen = ({ offers, userId, supabaseClient }) => {
     const [adCountsData, setAdCountsData] = useState([]);
@@ -111,32 +110,85 @@ const DashboardScreen = ({ offers, userId, supabaseClient }) => {
         };
     }, [offers, adCountsData]);
 
-    const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+    const COLORS = ['#4F8EF7', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
+
+    const chartTooltipStyle = {
+        backgroundColor: '#0D1220',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '10px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        fontSize: '12px',
+    };
+    const chartAxisStyle = { fontSize: 11, fill: '#64748b' };
 
     if (loading) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
-                CARREGANDO DASHBOARD...
+            <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center">
+                    <Database size={20} className="text-blue-400 animate-pulse" />
+                </div>
+                <p className="text-slate-500 text-sm font-medium tracking-wider">Carregando dashboard...</p>
             </div>
         );
     }
 
+    const statCards = [
+        {
+            label: 'Targets Totais',
+            value: stats.totalOffers,
+            sub: `${stats.activeOffers} ativos`,
+            icon: Target,
+            color: 'text-blue-400',
+            iconBg: 'bg-blue-500/10',
+            accent: 'stat-blue',
+        },
+        {
+            label: 'Anúncios Totais',
+            value: stats.totalAdCount.toLocaleString(),
+            sub: `Média ${stats.avgAdCount}/target`,
+            icon: Activity,
+            color: 'text-emerald-400',
+            iconBg: 'bg-emerald-500/10',
+            accent: 'stat-green',
+        },
+        {
+            label: 'Com Dados',
+            value: stats.offersWithData,
+            sub: `${stats.activeOffers > 0 ? Math.round((stats.offersWithData / stats.activeOffers) * 100) : 0}% do total`,
+            icon: Zap,
+            color: 'text-violet-400',
+            iconBg: 'bg-violet-500/10',
+            accent: 'stat-violet',
+        },
+        {
+            label: 'Período Analisado',
+            value: `${timeRange}d`,
+            sub: `${adCountsData.length} registros`,
+            icon: Calendar,
+            color: 'text-amber-400',
+            iconBg: 'bg-amber-500/10',
+            accent: 'stat-amber',
+        },
+    ];
+
     return (
-        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6">
+        <div className="px-6 lg:px-8 max-w-7xl mx-auto py-7 animate-fade-in">
+
+            {/* Header */}
             <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                    <Database size={32} className="text-blue-400" />
-                    <h2 className="text-3xl font-bold text-white">DASHBOARD</h2>
+                <div>
+                    <h2 className="text-xl font-bold text-white tracking-tight">Dashboard</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">Visão geral do desempenho dos seus targets</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1 p-1 bg-white/[0.04] border border-white/[0.06] rounded-xl">
                     {[7, 14, 30].map(days => (
                         <button
                             key={days}
                             onClick={() => setTimeRange(days)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
                                 timeRange === days
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-700/30'
+                                    : 'text-slate-400 hover:text-slate-200'
                             }`}
                         >
                             {days}d
@@ -145,156 +197,177 @@ const DashboardScreen = ({ offers, userId, supabaseClient }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-gray-900/80 border border-blue-500/30 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-2">
-                        <Target size={24} className="text-blue-400" />
-                        <span className="text-3xl font-bold text-white">{stats.totalOffers}</span>
+            {/* Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-7">
+                {statCards.map(({ label, value, sub, icon: Icon, color, iconBg, accent }) => (
+                    <div key={label} className={`stat-card-top ${accent} bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-5 hover:border-white/[0.12] transition-all duration-300 group`}>
+                        <div className="flex items-center justify-between mb-3">
+                            <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center`}>
+                                <Icon size={17} className={color} />
+                            </div>
+                        </div>
+                        <div className="font-bold text-3xl text-white tracking-tight tabular-nums mb-1">{value}</div>
+                        <div className="text-sm text-slate-500 font-medium">{label}</div>
+                        <div className={`text-xs ${color} mt-1.5`}>{sub}</div>
                     </div>
-                    <p className="text-sm text-gray-400">Total de Targets</p>
-                    <p className="text-xs text-blue-400 mt-1">{stats.activeOffers} ativos</p>
-                </div>
-
-                <div className="bg-gray-900/80 border border-green-500/30 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-2">
-                        <Activity size={24} className="text-green-400" />
-                        <span className="text-3xl font-bold text-white">{stats.totalAdCount}</span>
-                    </div>
-                    <p className="text-sm text-gray-400">Total de Anúncios</p>
-                    <p className="text-xs text-green-400 mt-1">Média: {stats.avgAdCount}/target</p>
-                </div>
-
-                <div className="bg-gray-900/80 border border-purple-500/30 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-2">
-                        <Zap size={24} className="text-purple-400" />
-                        <span className="text-3xl font-bold text-white">{stats.offersWithData}</span>
-                    </div>
-                    <p className="text-sm text-gray-400">Targets com Dados</p>
-                    <p className="text-xs text-purple-400 mt-1">
-                        {stats.activeOffers > 0 ? Math.round((stats.offersWithData / stats.activeOffers) * 100) : 0}% do total
-                    </p>
-                </div>
-
-                <div className="bg-gray-900/80 border border-yellow-500/30 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-2">
-                        <Calendar size={24} className="text-yellow-400" />
-                        <span className="text-3xl font-bold text-white">{timeRange}</span>
-                    </div>
-                    <p className="text-sm text-gray-400">Dias Analisados</p>
-                    <p className="text-xs text-yellow-400 mt-1">{adCountsData.length} registros</p>
-                </div>
+                ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <div className="bg-gray-900/80 border border-gray-700 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <TrendingUp size={20} className="text-blue-400" />
-                        Evolução de Anúncios ({timeRange} dias)
-                    </h3>
+            {/* Charts row 1 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+                {/* Area chart */}
+                <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 className="text-sm font-semibold text-white">Evolução de Anúncios</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Últimos {timeRange} dias</p>
+                        </div>
+                        <TrendingUp size={16} className="text-blue-400" />
+                    </div>
                     {stats.chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={stats.chartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-                                    labelStyle={{ color: '#f3f4f6' }}
-                                />
-                                <Legend />
-                                <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} name="Total" />
-                                <Line type="monotone" dataKey="avg" stroke="#10b981" strokeWidth={2} name="Média" />
-                            </LineChart>
+                        <ResponsiveContainer width="100%" height={240}>
+                            <AreaChart data={stats.chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="gradTotal" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#4F8EF7" stopOpacity={0.3}/>
+                                        <stop offset="100%" stopColor="#4F8EF7" stopOpacity={0}/>
+                                    </linearGradient>
+                                    <linearGradient id="gradAvg" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.25}/>
+                                        <stop offset="100%" stopColor="#10b981" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                                <XAxis dataKey="date" tick={chartAxisStyle} axisLine={false} tickLine={false} />
+                                <YAxis tick={chartAxisStyle} axisLine={false} tickLine={false} />
+                                <Tooltip contentStyle={chartTooltipStyle} labelStyle={{ color: '#94a3b8', marginBottom: 4 }} itemStyle={{ color: '#e2e8f0' }} cursor={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                                <Legend wrapperStyle={{ fontSize: 12, color: '#64748b', paddingTop: 8 }} />
+                                <Area type="monotone" dataKey="total" stroke="#4F8EF7" strokeWidth={2} fill="url(#gradTotal)" name="Total" dot={false} activeDot={{ r: 4, fill: '#4F8EF7' }} />
+                                <Area type="monotone" dataKey="avg" stroke="#10b981" strokeWidth={2} fill="url(#gradAvg)" name="Média" dot={false} activeDot={{ r: 4, fill: '#10b981' }} />
+                            </AreaChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-[300px] flex items-center justify-center text-gray-500">
-                            Sem dados para exibir
+                        <div className="h-[240px] flex flex-col items-center justify-center gap-2">
+                            <Activity size={24} className="text-slate-700" />
+                            <p className="text-sm text-slate-600">Sem dados para exibir</p>
                         </div>
                     )}
                 </div>
 
-                <div className="bg-gray-900/80 border border-gray-700 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <Activity size={20} className="text-green-400" />
-                        Distribuição por Performance
-                    </h3>
+                {/* Pie chart */}
+                <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 className="text-sm font-semibold text-white">Distribuição por Performance</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Segmentação atual dos targets</p>
+                        </div>
+                        <Activity size={16} className="text-emerald-400" />
+                    </div>
                     {stats.pieData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
+                        <ResponsiveContainer width="100%" height={240}>
                             <PieChart>
                                 <Pie
                                     data={stats.pieData}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={false}
-                                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                    outerRadius={80}
-                                    fill="#8884d8"
+                                    cx="50%" cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={90}
+                                    paddingAngle={3}
                                     dataKey="value"
                                 >
                                     {stats.pieData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="transparent" />
                                     ))}
                                 </Pie>
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-                                />
+                                <Tooltip contentStyle={chartTooltipStyle} itemStyle={{ color: '#e2e8f0' }} />
+                                <Legend wrapperStyle={{ fontSize: 12, color: '#64748b', paddingTop: 8 }} />
                             </PieChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-[300px] flex items-center justify-center text-gray-500">
-                            Sem dados para exibir
+                        <div className="h-[240px] flex flex-col items-center justify-center gap-2">
+                            <Activity size={24} className="text-slate-700" />
+                            <p className="text-sm text-slate-600">Sem dados para exibir</p>
                         </div>
                     )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-gray-900/80 border border-gray-700 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <TrendingUp size={20} className="text-yellow-400" />
-                        Top 5 Performers
-                    </h3>
-                    <div className="space-y-3">
-                        {stats.topPerformers.map((offer, idx) => (
-                            <div key={offer.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-                                <div className="flex items-center gap-3">
-                                    <span className={`text-lg font-bold ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-orange-600' : 'text-gray-500'}`}>
-                                        #{idx + 1}
+            {/* Charts row 2 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Top 5 Performers */}
+                <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 className="text-sm font-semibold text-white">Top Performers</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Targets com mais anúncios ativos</p>
+                        </div>
+                        <TrendingUp size={16} className="text-amber-400" />
+                    </div>
+                    <div className="space-y-2.5">
+                        {stats.topPerformers.map((offer, idx) => {
+                            const maxCount = stats.topPerformers[0]?.last_ad_count || 1;
+                            const pct = Math.round(((offer.last_ad_count || 0) / maxCount) * 100);
+                            const medalColors = ['text-yellow-400', 'text-slate-300', 'text-amber-600'];
+                            return (
+                                <div key={offer.id} className="flex items-center gap-3 group">
+                                    <span className={`text-sm font-bold w-6 text-center flex-shrink-0 ${medalColors[idx] || 'text-slate-500'}`}>
+                                        {idx + 1}
                                     </span>
-                                    <span className="text-white font-medium truncate max-w-[200px]">{offer.name}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-sm text-slate-300 truncate font-medium">{offer.name}</span>
+                                            <span className="text-sm font-bold text-blue-400 tabular-nums ml-3 flex-shrink-0">{offer.last_ad_count || 0}</span>
+                                        </div>
+                                        <div className="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                                            <div className="h-full rounded-full bg-blue-500/60 transition-all duration-700" style={{ width: `${pct}%` }} />
+                                        </div>
+                                    </div>
                                 </div>
-                                <span className="text-blue-400 font-bold">{offer.last_ad_count || 0}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {stats.topPerformers.length === 0 && (
-                            <div className="text-center py-8 text-gray-500">
-                                Nenhum target com dados
+                            <div className="py-8 flex flex-col items-center gap-2">
+                                <Target size={24} className="text-slate-700" />
+                                <p className="text-sm text-slate-600">Nenhum target com dados</p>
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="bg-gray-900/80 border border-gray-700 rounded-xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <TrendingUp size={20} className="text-purple-400" />
-                        Crescimento ({timeRange} dias)
-                    </h3>
+                {/* Growth Bar Chart */}
+                <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 className="text-sm font-semibold text-white">Crescimento</h3>
+                            <p className="text-xs text-slate-500 mt-0.5">Variação percentual em {timeRange} dias</p>
+                        </div>
+                        <Zap size={16} className="text-violet-400" />
+                    </div>
                     {stats.growthData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={stats.growthData} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis type="number" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                                <YAxis type="category" dataKey="name" stroke="#9ca3af" style={{ fontSize: '11px' }} width={100} />
+                        <ResponsiveContainer width="100%" height={240}>
+                            <BarChart data={stats.growthData} layout="vertical" margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                                <XAxis type="number" tick={chartAxisStyle} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+                                <YAxis type="category" dataKey="name" tick={chartAxisStyle} axisLine={false} tickLine={false} width={90} />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
-                                    formatter={(value) => `${value}%`}
+                                    contentStyle={chartTooltipStyle}
+                                    itemStyle={{ color: '#e2e8f0' }}
+                                    formatter={(value) => [`${value}%`, 'Crescimento']}
                                 />
-                                <Bar dataKey="growth" fill="#8b5cf6" />
+                                <Bar dataKey="growth" radius={[0, 4, 4, 0]}>
+                                    {stats.growthData.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={entry.growth >= 0 ? '#10b981' : '#f43f5e'}
+                                            fillOpacity={0.8}
+                                        />
+                                    ))}
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-[300px] flex items-center justify-center text-gray-500">
-                            Sem dados suficientes para análise
+                        <div className="h-[240px] flex flex-col items-center justify-center gap-2">
+                            <TrendingUp size={24} className="text-slate-700" />
+                            <p className="text-sm text-slate-600">Sem dados suficientes</p>
                         </div>
                     )}
                 </div>

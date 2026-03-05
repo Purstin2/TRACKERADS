@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Plus, Trash2, CreditCard as Edit3, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, TrendingDown, Target, Clock } from 'lucide-react';
-import { HACKER_COLORS } from '../../styles/theme';
+import { Bell, Plus, Trash2, Pencil, ToggleLeft, ToggleRight, AlertTriangle, TrendingUp, TrendingDown, Target, Clock, X } from 'lucide-react';
 
 const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
     const [alerts, setAlerts] = useState([]);
@@ -141,17 +140,28 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
     const getAlertTypeIcon = (type) => {
         switch (type) {
             case 'ad_count_increase':
-                return <TrendingUp size={20} className="text-green-400" />;
+                return <TrendingUp size={16} className="text-emerald-400" />;
             case 'ad_count_decrease':
-                return <TrendingDown size={20} className="text-red-400" />;
+                return <TrendingDown size={16} className="text-red-400" />;
             case 'threshold_reached':
-                return <Target size={20} className="text-yellow-400" />;
+                return <Target size={16} className="text-amber-400" />;
             case 'inactivity':
-                return <Clock size={20} className="text-purple-400" />;
+                return <Clock size={16} className="text-violet-400" />;
             case 'consistency_drop':
-                return <AlertTriangle size={20} className="text-orange-400" />;
+                return <AlertTriangle size={16} className="text-orange-400" />;
             default:
-                return <Bell size={20} className="text-gray-400" />;
+                return <Bell size={16} className="text-slate-400" />;
+        }
+    };
+
+    const getAlertTypeBadgeClass = (type) => {
+        switch (type) {
+            case 'ad_count_increase': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            case 'ad_count_decrease': return 'bg-red-500/10 text-red-400 border-red-500/20';
+            case 'threshold_reached': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            case 'inactivity': return 'bg-violet-500/10 text-violet-400 border-violet-500/20';
+            case 'consistency_drop': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+            default: return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
         }
     };
 
@@ -174,105 +184,123 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
 
     if (loading) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
-                CARREGANDO ALERTAS...
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                    <span className="text-slate-500 text-sm">Carregando alertas...</span>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto py-6">
+        <div className="px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto py-8">
+            {/* Header */}
             <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                    <Bell size={32} className="text-blue-400" />
-                    <h2 className="text-3xl font-bold text-white">GERENCIAR ALERTAS</h2>
+                <div>
+                    <h1 className="text-2xl font-semibold text-white tracking-tight">Alertas</h1>
+                    <p className="text-slate-500 text-sm mt-0.5">Gerencie notificações automáticas para seus targets</p>
                 </div>
                 <button
                     onClick={() => setShowAddModal(true)}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
                 >
-                    <Plus size={20} />
-                    NOVO ALERTA
+                    <Plus size={16} />
+                    Novo Alerta
                 </button>
             </div>
 
             {alerts.length === 0 ? (
-                <div className="text-center py-20">
-                    <Bell size={64} className="mx-auto text-gray-600 mb-4" />
-                    <p className="text-gray-400 text-lg mb-2">Nenhum alerta configurado</p>
-                    <p className="text-gray-500 text-sm">Crie alertas para ser notificado sobre mudanças importantes</p>
+                <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-16 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
+                        <Bell size={24} className="text-blue-400" />
+                    </div>
+                    <p className="text-slate-300 font-medium mb-1">Nenhum alerta configurado</p>
+                    <p className="text-slate-500 text-sm">Crie alertas para ser notificado sobre mudanças importantes</p>
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="mt-6 inline-flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-blue-500/20"
+                    >
+                        <Plus size={15} /> Criar primeiro alerta
+                    </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {alerts.map(alert => (
                         <div
                             key={alert.id}
-                            className={`bg-gray-900/80 border rounded-xl p-6 ${
-                                alert.is_active ? 'border-blue-500/30' : 'border-gray-700 opacity-60'
+                            className={`bg-[#0D1220]/80 backdrop-blur-xl border rounded-2xl p-5 transition-all ${
+                                alert.is_active
+                                    ? 'border-white/[0.08] hover:border-white/[0.14]'
+                                    : 'border-white/[0.04] opacity-50'
                             }`}
                         >
+                            {/* Card header */}
                             <div className="flex items-start justify-between mb-4">
-                                <div className="flex items-center gap-2">
+                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                    getAlertTypeBadgeClass(alert.alert_type)
+                                }`}>
                                     {getAlertTypeIcon(alert.alert_type)}
-                                    <span className="text-white font-semibold">
-                                        {getAlertTypeName(alert.alert_type)}
-                                    </span>
+                                    {getAlertTypeName(alert.alert_type)}
                                 </div>
                                 <button
                                     onClick={() => handleToggleActive(alert)}
-                                    className="text-gray-400 hover:text-blue-400 transition-colors"
+                                    className="text-slate-500 hover:text-blue-400 transition-colors"
+                                    title={alert.is_active ? 'Desativar' : 'Ativar'}
                                 >
                                     {alert.is_active ? (
-                                        <ToggleRight size={24} className="text-blue-400" />
+                                        <ToggleRight size={22} className="text-blue-400" />
                                     ) : (
-                                        <ToggleLeft size={24} />
+                                        <ToggleLeft size={22} />
                                     )}
                                 </button>
                             </div>
 
-                            <div className="space-y-2 mb-4">
-                                <div className="text-sm">
-                                    <span className="text-gray-400">Target: </span>
-                                    <span className="text-white font-medium">{getOfferName(alert.offer_id)}</span>
+                            {/* Details */}
+                            <div className="space-y-2 mb-5">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">Target</span>
+                                    <span className="text-slate-200 font-medium truncate ml-2 text-right">{getOfferName(alert.offer_id)}</span>
                                 </div>
 
                                 {alert.threshold_value && (
-                                    <div className="text-sm">
-                                        <span className="text-gray-400">Limite: </span>
-                                        <span className="text-white font-medium">{alert.threshold_value}</span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-500">Limite</span>
+                                        <span className="text-slate-200 font-medium tabular-nums">{alert.threshold_value}</span>
                                     </div>
                                 )}
 
                                 {alert.percentage_change && (
-                                    <div className="text-sm">
-                                        <span className="text-gray-400">Variação: </span>
-                                        <span className="text-white font-medium">{alert.percentage_change}%</span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-500">Variação</span>
+                                        <span className="text-slate-200 font-medium tabular-nums">{alert.percentage_change}%</span>
                                     </div>
                                 )}
 
                                 {alert.last_triggered && (
-                                    <div className="text-sm">
-                                        <span className="text-gray-400">Último disparo: </span>
-                                        <span className="text-yellow-400 font-medium">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-500">Último disparo</span>
+                                        <span className="text-amber-400 font-medium text-xs tabular-nums">
                                             {new Date(alert.last_triggered).toLocaleString('pt-BR')}
                                         </span>
                                     </div>
                                 )}
                             </div>
 
-                            <div className="flex gap-2">
+                            {/* Actions */}
+                            <div className="flex gap-2 pt-4 border-t border-white/[0.05]">
                                 <button
                                     onClick={() => handleEdit(alert)}
-                                    className="flex-1 bg-gray-800 text-yellow-400 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+                                    className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 px-3 py-2 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
                                 >
-                                    <Edit3 size={16} />
+                                    <Pencil size={13} />
                                     Editar
                                 </button>
                                 <button
                                     onClick={() => handleDelete(alert.id)}
-                                    className="flex-1 bg-gray-800 text-red-400 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+                                    className="flex-1 bg-red-500/[0.08] hover:bg-red-500/[0.15] text-red-400 px-3 py-2 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
                                 >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={13} />
                                     Excluir
                                 </button>
                             </div>
@@ -281,24 +309,28 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
                 </div>
             )}
 
+            {/* Add / Edit Modal */}
             {showAddModal && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-gray-900 border-2 border-blue-500 rounded-xl max-w-lg w-full">
-                        <div className="border-b border-gray-700 p-6">
-                            <h3 className="text-2xl font-bold text-white">
-                                {editingAlert ? 'EDITAR ALERTA' : 'NOVO ALERTA'}
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#0D1220] border border-white/[0.1] rounded-2xl max-w-lg w-full shadow-2xl">
+                        <div className="flex items-center justify-between p-6 border-b border-white/[0.07]">
+                            <h3 className="text-lg font-semibold text-white">
+                                {editingAlert ? 'Editar Alerta' : 'Novo Alerta'}
                             </h3>
+                            <button onClick={resetForm} className="text-slate-500 hover:text-slate-300 transition-colors">
+                                <X size={20} />
+                            </button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
                                     Tipo de Alerta
                                 </label>
                                 <select
                                     value={formData.alert_type}
                                     onChange={(e) => setFormData(prev => ({ ...prev, alert_type: e.target.value }))}
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3"
+                                    className="w-full bg-[#131929] border border-white/[0.08] text-white rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-500/50"
                                     required
                                 >
                                     <option value="ad_count_increase">Aumento de Anúncios</option>
@@ -310,13 +342,13 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
                                     Target
                                 </label>
                                 <select
                                     value={formData.offer_id}
                                     onChange={(e) => setFormData(prev => ({ ...prev, offer_id: e.target.value }))}
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3"
+                                    className="w-full bg-[#131929] border border-white/[0.08] text-white rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-500/50"
                                 >
                                     <option value="">Selecione um target</option>
                                     {offers.filter(o => !o.is_archived).map(offer => (
@@ -329,7 +361,7 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
 
                             {formData.alert_type === 'threshold_reached' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
                                         Valor do Limite
                                     </label>
                                     <input
@@ -337,7 +369,7 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
                                         min="0"
                                         value={formData.threshold_value}
                                         onChange={(e) => setFormData(prev => ({ ...prev, threshold_value: e.target.value }))}
-                                        className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3"
+                                        className="w-full bg-[#131929] border border-white/[0.08] text-white rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-500/50"
                                         placeholder="Ex: 100"
                                     />
                                 </div>
@@ -345,7 +377,7 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
 
                             {(formData.alert_type === 'ad_count_increase' || formData.alert_type === 'ad_count_decrease') && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
                                         Variação Percentual (%)
                                     </label>
                                     <input
@@ -354,7 +386,7 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
                                         max="100"
                                         value={formData.percentage_change}
                                         onChange={(e) => setFormData(prev => ({ ...prev, percentage_change: e.target.value }))}
-                                        className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3"
+                                        className="w-full bg-[#131929] border border-white/[0.08] text-white rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-500/50"
                                         placeholder="Ex: 20"
                                     />
                                 </div>
@@ -366,26 +398,26 @@ const AlertsScreen = ({ userId, supabaseClient, offers, showToast }) => {
                                     id="is_active"
                                     checked={formData.is_active}
                                     onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                                    className="w-5 h-5 text-blue-600 bg-gray-800 border-gray-600 rounded"
+                                    className="w-4 h-4 rounded border-white/20 bg-[#131929] text-blue-600 focus:ring-blue-500/50"
                                 />
-                                <label htmlFor="is_active" className="text-sm font-medium text-gray-300">
+                                <label htmlFor="is_active" className="text-sm text-slate-300">
                                     Alerta ativo
                                 </label>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
+                            <div className="flex gap-3 pt-2">
                                 <button
                                     type="button"
                                     onClick={resetForm}
-                                    className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
+                                    className="flex-1 bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                                 >
-                                    CANCELAR
+                                    Cancelar
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                                 >
-                                    {editingAlert ? 'ATUALIZAR' : 'CRIAR'}
+                                    {editingAlert ? 'Atualizar' : 'Criar Alerta'}
                                 </button>
                             </div>
                         </form>

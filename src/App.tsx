@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabaseClient, isSupabaseMockActive } from './utils/supabaseClient';
-import { HACKER_COLORS } from './styles/theme';
 import { Toast } from './components/ui/Toast';
 import { Modal, ConfirmationModal } from './components/ui/Modal';
 import OfferGridScreen from './components/screens/OfferGridScreen';
@@ -504,17 +503,28 @@ function App() {
 
     if (!isAuthReady) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
-                INICIALIZANDO SISTEMA...
+            <div className="bg-[#080C14] min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center mx-auto">
+                        <Database size={24} className="text-blue-400 animate-pulse" />
+                    </div>
+                    <p className="text-slate-400 text-sm font-medium tracking-wider">INICIALIZANDO...</p>
+                </div>
             </div>
         );
     }
     
     if (!userId) {
         return (
-            <div className={`${HACKER_COLORS.background} min-h-screen flex items-center justify-center font-mono`}>
+            <div className="bg-[#080C14] min-h-screen flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
-                    <h1 className={`text-2xl mb-6 text-center ${HACKER_COLORS.primary}`}>ACESSO AO SISTEMA</h1>
+                    <div className="text-center mb-8">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-600/15 border border-blue-500/20 flex items-center justify-center mx-auto mb-4">
+                            <Database size={28} className="text-blue-400" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-white tracking-tight">Purstinlab</h1>
+                        <p className="text-slate-500 text-sm mt-1">Plataforma de Inteligência em Anúncios</p>
+                    </div>
                     <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
                 </div>
             </div>
@@ -523,144 +533,121 @@ function App() {
     
     if (isAuthReady && isLoading && userId && activeSupabaseClient) {
         return (
-            <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.primary} min-h-screen flex items-center justify-center font-mono text-2xl animate-pulse`}>
-                CARREGANDO PURSTINLAB...
+            <div className="bg-[#080C14] min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center mx-auto">
+                        <Database size={24} className="text-blue-400 animate-pulse" />
+                    </div>
+                    <p className="text-slate-400 text-sm font-medium tracking-wider">CARREGANDO DADOS...</p>
+                </div>
             </div>
         );
     }
 
+    const navItems = [
+        { id: 'grid',      icon: LayoutGrid,       label: 'Targets' },
+        { id: 'dashboard', icon: BarChart3,         label: 'Dashboard' },
+        { id: 'compare',   icon: ChevronsLeftRight, label: 'Comparar' },
+        { id: 'alerts',    icon: Bell,              label: 'Alertas' },
+    ] as const;
+
     return (
-        <div className={`${HACKER_COLORS.background} ${HACKER_COLORS.textBase} min-h-screen font-mono flex flex-row`}>
-            {/* Sidebar lateral */}
-            <aside className={`h-screen ${sidebarCollapsed ? 'w-16' : 'w-72'} flex flex-col justify-between fixed left-0 top-0 z-40 ${HACKER_COLORS.sidebarBg} ${HACKER_COLORS.sidebarBorder} ${HACKER_COLORS.transition}`}>
-                <div>
-                    <div className={`flex items-center gap-3 px-6 py-7 cursor-pointer select-none ${HACKER_COLORS.transitionFast} hover:${HACKER_COLORS.sidebarItemHover} border-b ${HACKER_COLORS.borderDim}`} onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}>
-                        <Database size={40} className={`${HACKER_COLORS.primaryBright} ${HACKER_COLORS.primaryGlow}`} />
-                        {!sidebarCollapsed && <span className={`text-2xl font-black tracking-tight ${HACKER_COLORS.primaryBright}`}>PURSTINLAB</span>}
+        <div className="bg-[#080C14] text-slate-100 min-h-screen flex flex-row">
+            {/* ── Sidebar ──────────────────────────────────────────────── */}
+            <aside className={`h-screen ${
+                sidebarCollapsed ? 'w-[68px]' : 'w-64'
+            } flex flex-col fixed left-0 top-0 z-40 bg-[#080C14] border-r border-white/[0.05] transition-all duration-300`}>
+
+                {/* Logo */}
+                <div
+                    className="flex items-center gap-3 px-4 py-5 cursor-pointer group border-b border-white/[0.05]"
+                    onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}
+                >
+                    <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/25 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600/30 transition-colors">
+                        <Database size={18} className="text-blue-400" />
                     </div>
-                    
-                    {/* Collapse button */}
-                    <div className="px-4 mb-4 mt-4">
-                        <button
-                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold ${HACKER_COLORS.transition} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primary} hover:border-blue-500/50 hover:${HACKER_COLORS.sidebarItemHover}`}
-                        >
-                            {sidebarCollapsed ? '→' : '←'}
-                            {!sidebarCollapsed && <span>MINIMIZAR</span>}
-                        </button>
-                    </div>
-                    
-                    <nav className="flex flex-col gap-2 mt-8 px-4">
-                        <button
-                            onClick={() => {
-                                setCurrentScreen('grid');
-                                setSelectedOfferId(null);
-                                setShowNotes(false);
-                                setShowActiveOffers(false);
-                                updateUrl('grid');
-                            }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
-                                currentScreen === 'grid' && !showNotes && !showActiveOffers 
-                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
-                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
-                            }`}
-                        >
-                            <LayoutGrid size={22} className="inline" />
-                            {!sidebarCollapsed && <span>GRID</span>}
-                        </button>
-                        <button
-                            onClick={() => {
-                                setCurrentScreen('dashboard');
-                                setSelectedOfferId(null);
-                                setShowNotes(false);
-                                setShowActiveOffers(false);
-                                updateUrl('dashboard');
-                            }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
-                                currentScreen === 'dashboard' 
-                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
-                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
-                            }`}
-                        >
-                            <BarChart3 size={22} className="inline" />
-                            {!sidebarCollapsed && <span>DASHBOARD</span>}
-                        </button>
-                        <button
-                            onClick={() => {
-                                setCurrentScreen('compare');
-                                setSelectedOfferId(null);
-                                setShowNotes(false);
-                                setShowActiveOffers(false);
-                                updateUrl('compare');
-                            }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
-                                currentScreen === 'compare' 
-                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
-                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
-                            }`}
-                        >
-                            <ChevronsLeftRight size={22} className="inline" />
-                            {!sidebarCollapsed && <span>COMPARAR</span>}
-                        </button>
-                        <button
-                            onClick={() => {
-                                setCurrentScreen('alerts');
-                                setSelectedOfferId(null);
-                                setShowNotes(false);
-                                setShowActiveOffers(false);
-                                updateUrl('alerts');
-                            }}
-                            className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-4'} px-5 py-3.5 rounded-xl text-sm font-bold ${HACKER_COLORS.transition} ${
-                                currentScreen === 'alerts' 
-                                    ? `${HACKER_COLORS.sidebarActive} ${HACKER_COLORS.primaryBright} border-l-4 border-blue-400 shadow-lg shadow-blue-500/20` 
-                                    : `${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryBright} hover:${HACKER_COLORS.sidebarItemHover} rounded-l-xl`
-                            }`}
-                        >
-                            <Bell size={22} className="inline" />
-                            {!sidebarCollapsed && <span>ALERTAS</span>}
-                        </button>
-                    </nav>
+                    {!sidebarCollapsed && (
+                        <div>
+                            <span className="text-sm font-bold text-white tracking-tight leading-none">Purstinlab</span>
+                            <p className="text-[10px] text-slate-500 leading-none mt-0.5">Ad Intelligence</p>
+                        </div>
+                    )}
                 </div>
-                {!sidebarCollapsed && (
-                    <div className={`px-6 py-4 text-xs text-right border-t ${HACKER_COLORS.borderDim}`}>
-                        <div className={`mb-1 font-bold ${HACKER_COLORS.textDim}`}>UID:</div>
-                        <div className={`font-mono ${HACKER_COLORS.textBase} bg-slate-800/50 px-2 py-1 rounded-lg border ${HACKER_COLORS.borderDim} inline-block`}>{userId.substring(0, 12)}...</div>
-                    </div>
-                )}
+
+                {/* Nav */}
+                <nav className="flex flex-col gap-1 px-2 pt-4 flex-1">
+                    {navItems.map(({ id, icon: Icon, label }) => {
+                        const isActive = currentScreen === id && !showNotes && !showActiveOffers;
+                        return (
+                            <button
+                                key={id}
+                                onClick={() => {
+                                    setCurrentScreen(id);
+                                    setSelectedOfferId(null);
+                                    setShowNotes(false);
+                                    setShowActiveOffers(false);
+                                    updateUrl(id);
+                                }}
+                                title={sidebarCollapsed ? label : undefined}
+                                className={`flex items-center ${
+                                    sidebarCollapsed ? 'justify-center' : 'gap-3'
+                                } px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                                    isActive
+                                        ? 'bg-blue-600/15 text-blue-300 border border-blue-500/20'
+                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.05] border border-transparent'
+                                }`}
+                            >
+                                <Icon size={18} className={isActive ? 'text-blue-400' : ''} />
+                                {!sidebarCollapsed && <span>{label}</span>}
+                            </button>
+                        );
+                    })}
+                </nav>
+
+                {/* Footer */}
+                <div className="px-2 pb-4">
+                    {/* Collapse button */}
+                    <button
+                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-300 hover:bg-white/[0.05] transition-all border border-transparent hover:border-white/[0.06] mb-2"
+                        title={sidebarCollapsed ? 'Expandir' : 'Recolher'}
+                    >
+                        {sidebarCollapsed ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+                        ) : (
+                            <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg><span>Recolher</span></>
+                        )}
+                    </button>
+                    {!sidebarCollapsed && (
+                        <div className="px-2 py-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                            <p className="text-[10px] text-slate-600 mb-0.5 font-medium">SESSÃO</p>
+                            <p className="text-xs text-slate-400 font-mono truncate">{userId.substring(0, 14)}…</p>
+                        </div>
+                    )}
+                </div>
             </aside>
-            {/* Conteúdo principal com padding lateral */}
-            <main className={`flex-1 ${sidebarCollapsed ? 'ml-16' : 'ml-72'} min-h-screen flex flex-col transition-all duration-300`}>
-                {/* Alerta de modo exemplo quando Supabase não está configurado */}
+
+            {/* ── Main content ─────────────────────────────────────────── */}
+            <main className={`flex-1 ${
+                sidebarCollapsed ? 'ml-[68px]' : 'ml-64'
+            } min-h-screen flex flex-col transition-all duration-300`}>
+                {/* Alerta de modo demo */}
                 {isSupabaseMockActive && (
-                    <div className="bg-red-900/90 border-b-4 border-red-600 text-white px-6 py-4 flex items-center justify-between shadow-lg">
+                    <div className="bg-rose-950/80 border-b border-rose-500/30 text-white px-6 py-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="text-2xl">🚨</div>
+                            <div className="w-7 h-7 rounded-lg bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+                                <span className="text-rose-400 text-sm">!</span>
+                            </div>
                             <div>
-                                <div className="font-bold text-lg">MODO EXEMPLO ATIVADO</div>
-                                <div className="text-sm text-red-200">
-                                    O Supabase não está configurado. Os dados <strong>NÃO serão salvos</strong> no banco de dados.
-                                </div>
-                                <div className="text-xs text-red-300 mt-1">
-                                    Crie um arquivo <code className="bg-red-800 px-2 py-1 rounded">.env</code> na raiz do projeto com:
-                                    <code className="bg-red-800 px-2 py-1 rounded ml-2">VITE_SUPABASE_URL</code> e 
-                                    <code className="bg-red-800 px-2 py-1 rounded ml-2">VITE_SUPABASE_ANON_KEY</code>
-                                </div>
+                                <span className="font-semibold text-sm text-rose-300">Modo Demo —&nbsp;</span>
+                                <span className="text-sm text-slate-400">Configure o Supabase para salvar dados permanentemente.</span>
                             </div>
                         </div>
                         <button
-                            onClick={() => {
-                                console.log("=== INSTRUÇÕES PARA CONFIGURAR SUPABASE ===");
-                                console.log("1. Crie um arquivo .env na raiz do projeto");
-                                console.log("2. Adicione as seguintes linhas:");
-                                console.log("   VITE_SUPABASE_URL=https://seu-projeto.supabase.co");
-                                console.log("   VITE_SUPABASE_ANON_KEY=sua-anon-key-aqui");
-                                console.log("3. Reinicie o servidor: npm run dev");
-                                console.log("4. Veja o arquivo .env.example para referência");
-                                showToast("Instruções exibidas no console do navegador (F12)", "info");
-                            }}
-                            className="bg-red-700 hover:bg-red-600 px-4 py-2 rounded-lg font-semibold transition-colors"
+                            onClick={() => { showToast("Veja o arquivo .env.example na raiz do projeto.", "info"); }}
+                            className="text-xs text-rose-400 hover:text-rose-300 border border-rose-500/30 px-3 py-1.5 rounded-lg hover:bg-rose-500/10 transition-all flex-shrink-0"
                         >
-                            Ver Instruções
+                            Ver instruções
                         </button>
                     </div>
                 )}
@@ -726,8 +713,12 @@ function App() {
                         />
                     )}
                 </div>
-                <footer className={`${HACKER_COLORS.surface} border-t ${HACKER_COLORS.borderDim} p-4 text-center text-xs ${HACKER_COLORS.textDim} font-medium`}>
-                    <span className={HACKER_COLORS.textBase}>PURSTINLAB</span> // Supabase Edition © {new Date().getFullYear()} // <span className="text-emerald-400">Status: ONLINE</span>
+                <footer className="border-t border-white/[0.04] px-8 py-3 flex items-center justify-between">
+                    <span className="text-xs text-slate-600">Purstinlab © {new Date().getFullYear()}</span>
+                    <span className="text-xs text-emerald-500 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                        Online
+                    </span>
                 </footer>
             </main>
             <AddOfferModal 

@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Eye, Trash2, CreditCard as Edit3, ExternalLink, Archive, ArchiveRestore, Pin, PinOff, RefreshCw } from 'lucide-react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Eye, Trash2, Pencil, ExternalLink, Archive, ArchiveRestore, Pin, PinOff, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { HACKER_COLORS } from '../../styles/theme';
 import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 import { smartClassifyOffer } from '../../utils/smartClassification';
@@ -10,7 +9,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     const [adCountsHistory, setAdCountsHistory] = useState([]);
     const [isScrapingRunning, setIsScrapingRunning] = useState(false);
     
-    // Função para buscar histórico de ad_counts
+    // FunÃ§Ã£o para buscar histÃ³rico de ad_counts
     const fetchAdCounts = useCallback(async () => {
         if (!userId || !supabaseClient || !supabaseClient.from) return;
         
@@ -32,22 +31,22 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         fetchAdCounts();
     }, [fetchAdCounts]);
     
-    // Atualiza o histórico quando o offer.last_ad_count ou offer.last_ad_count_timestamp mudarem
+    // Atualiza o histÃ³rico quando o offer.last_ad_count ou offer.last_ad_count_timestamp mudarem
     useEffect(() => {
-        // Força atualização do histórico quando o offer for atualizado
+        // ForÃ§a atualizaÃ§Ã£o do histÃ³rico quando o offer for atualizado
         if (offer.last_ad_count !== null && offer.last_ad_count !== undefined && offer.last_ad_count_timestamp) {
-            // Verifica se o último valor do offer está no histórico com timestamp similar
+            // Verifica se o Ãºltimo valor do offer estÃ¡ no histÃ³rico com timestamp similar
             const hasLatestInHistory = adCountsHistory.some(ac => {
                 const countMatch = ac.count === offer.last_ad_count;
                 if (!countMatch) return false;
                 
-                // Verifica se o timestamp está próximo (dentro de 2 minutos)
+                // Verifica se o timestamp estÃ¡ prÃ³ximo (dentro de 2 minutos)
                 const acTime = new Date(ac.timestamp).getTime();
                 const offerTime = new Date(offer.last_ad_count_timestamp).getTime();
                 return Math.abs(acTime - offerTime) < 120000; // 2 minutos
             });
             
-            // Se o último valor do offer não está no histórico, força refetch
+            // Se o Ãºltimo valor do offer nÃ£o estÃ¡ no histÃ³rico, forÃ§a refetch
             if (!hasLatestInHistory) {
                 // Aguarda um pouco para garantir que o banco foi atualizado
                 const timeoutId = setTimeout(() => {
@@ -58,8 +57,8 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         }
     }, [offer.last_ad_count, offer.last_ad_count_timestamp, adCountsHistory, fetchAdCounts]);
     
-    // Polling para atualizar o histórico quando o timestamp for recente (últimos 5 minutos)
-    // Isso garante que os cards sejam atualizados mesmo quando o scraping é feito em massa
+    // Polling para atualizar o histÃ³rico quando o timestamp for recente (Ãºltimos 5 minutos)
+    // Isso garante que os cards sejam atualizados mesmo quando o scraping Ã© feito em massa
     useEffect(() => {
         if (!offer.last_ad_count_timestamp) return;
         
@@ -67,7 +66,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         const now = Date.now();
         const age = now - timestamp;
         
-        // Se o timestamp é recente (últimos 5 minutos), faz polling a cada 5 segundos
+        // Se o timestamp Ã© recente (Ãºltimos 5 minutos), faz polling a cada 5 segundos
         if (age < 300000) { // 5 minutos
             const interval = setInterval(() => {
                 fetchAdCounts();
@@ -77,27 +76,27 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         }
     }, [offer.last_ad_count_timestamp, fetchAdCounts]); 
 
-    // Análise inteligente de classificação
+    // AnÃ¡lise inteligente de classificaÃ§Ã£o
     const smartClassification = useMemo(
         () => smartClassifyOffer(adCountsHistory),
         [adCountsHistory]
     );
 
-    // Mantém análise antiga para compatibilidade (variação 7d)
+    // MantÃ©m anÃ¡lise antiga para compatibilidade (variaÃ§Ã£o 7d)
     const performanceAnalysis = useMemo(
         () => analyzeOfferPerformance(adCountsHistory, 7), 
         [adCountsHistory]
     ); 
     
-    // Função para executar scraping local
+    // FunÃ§Ã£o para executar scraping local
     const handleLocalScraping = useCallback(async () => {
         if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
-            showToast && showToast("Este target não tem link da Biblioteca do Facebook", "error");
+            showToast && showToast("Este target nÃ£o tem link da Biblioteca do Facebook", "error");
             return;
         }
         
         setIsScrapingRunning(true);
-        showToast && showToast("🤖 Iniciando scraping automático... Isso pode levar até 2 minutos.", "info");
+        showToast && showToast("ðŸ¤– Iniciando scraping automÃ¡tico... Isso pode levar atÃ© 2 minutos.", "info");
         
         const scraperUrl = 'http://localhost:3001/api/scrape/test';
         
@@ -147,9 +146,9 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 if (offerUpdateError) throw offerUpdateError;
                 
-                showToast && showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
+                showToast && showToast(`âœ… Scraping concluÃ­do! ${data.adCount} anÃºncios encontrados`, "success");
                 
-                // Atualiza o histórico imediatamente
+                // Atualiza o histÃ³rico imediatamente
                 await fetchAdCounts();
                 
                 // Atualiza a lista de offers
@@ -161,36 +160,36 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 setIsScrapingRunning(false);
             } else {
-                throw new Error(data.error || 'Não foi possível extrair dados');
+                throw new Error(data.error || 'NÃ£o foi possÃ­vel extrair dados');
             }
         } catch (error) {
             console.error('[SCRAPING] Erro:', error);
             
-            let errorMessage = 'Não foi possível conectar ao scraper local.';
+            let errorMessage = 'NÃ£o foi possÃ­vel conectar ao scraper local.';
             if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                errorMessage = 'Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start';
+                errorMessage = 'ServiÃ§o local nÃ£o estÃ¡ rodando. Inicie o scraper: cd scraper-service && npm start';
             } else if (error.name === 'AbortError') {
                 errorMessage = 'Timeout: O scraper demorou muito para responder. Tente novamente.';
             } else {
                 errorMessage = `Erro: ${error.message}`;
             }
             
-            showToast && showToast(`❌ ${errorMessage}`, "error");
+            showToast && showToast(`âŒ ${errorMessage}`, "error");
             setIsScrapingRunning(false);
         }
     }, [offer, userId, supabaseClient, fetchAdCounts, fetchOffers, showToast]);
     
-    // Prioriza offer.last_ad_count porque é atualizado diretamente após scraping
-    // Se não existir, usa o histórico
+    // Prioriza offer.last_ad_count porque Ã© atualizado diretamente apÃ³s scraping
+    // Se nÃ£o existir, usa o histÃ³rico
     const latestAdCount = offer.last_ad_count ?? adCountsHistory[0]?.count ?? 0; 
     
     const previousEntryCount = adCountsHistory[1]?.count;
     let dailyPercentageChangeDisplay = null;
-    let dailyChangeColor = HACKER_COLORS.textDim;
+    let dailyChangeColor = 'text-slate-500';
 
     if (typeof previousEntryCount === 'number' && previousEntryCount !== null) {
         if (previousEntryCount === 0 && latestAdCount > 0) {
-            dailyPercentageChangeDisplay = "+∞"; 
+            dailyPercentageChangeDisplay = "+âˆž"; 
             dailyChangeColor = "text-green-400";
         } else if (previousEntryCount > 0) {
             const change = ((latestAdCount - previousEntryCount) / previousEntryCount) * 100;
@@ -221,7 +220,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         return `${Math.floor(diffDays / 365)}a`;
     };
 
-    // Usa classificação inteligente
+    // Usa classificaÃ§Ã£o inteligente
     const statusInfo = {
         color: smartClassification.color,
         bgColor: smartClassification.bgColor,
@@ -229,115 +228,120 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         label: smartClassification.label
     };
 
+    const isGrowing = dailyPercentageChangeDisplay && dailyPercentageChangeDisplay.startsWith('+');
+    const isFalling = dailyPercentageChangeDisplay && dailyPercentageChangeDisplay.startsWith('-') && dailyPercentageChangeDisplay !== '-âˆž';
+
     return (
         <div className={`
-            relative ${HACKER_COLORS.cardBg} backdrop-blur-md ${HACKER_COLORS.cardBorder} rounded-2xl 
-            ${HACKER_COLORS.transition} ${HACKER_COLORS.cardShadow}
-            hover:scale-[1.01] hover:${HACKER_COLORS.cardShadowHover} hover:${HACKER_COLORS.cardGlowHover}
-            ${isPinned 
-                ? 'border-blue-400/70 shadow-blue-500/40 shadow-2xl bg-gradient-to-br from-blue-950/50 via-slate-900/95 to-blue-950/50 ring-2 ring-blue-400/40' 
-                : offer.is_archived 
-                    ? 'border-slate-700/20 opacity-50 grayscale-[0.3]' 
-                    : 'hover:border-blue-500/50'
+            relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 group
+            bg-[#0D1220]/80 backdrop-blur-xl
+            ${isPinned
+                ? 'border-blue-500/35 shadow-xl shadow-blue-900/25 ring-1 ring-blue-500/15'
+                : offer.is_archived
+                    ? 'border-white/[0.04] opacity-50 grayscale-[0.4]'
+                    : 'border-white/[0.07] hover:border-white/[0.14] hover:shadow-xl hover:shadow-black/40'
             }
-            w-full flex flex-col overflow-hidden group
         `}>
-            {/* Header - Título e Status */}
-            <div className="p-5 pb-4 flex-shrink-0">
-                <div className="flex items-start justify-between mb-3">
+            {/* Top accent line when pinned */}
+            {isPinned && <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />}
+
+            {/* Header */}
+            <div className="p-4 pb-3">
+                <div className="flex items-start justify-between gap-2 mb-2.5">
                     <div className="flex-1 min-w-0">
-                        <h3 className={`text-base font-bold truncate ${isPinned ? HACKER_COLORS.primaryBright : HACKER_COLORS.textBase} group-hover:${HACKER_COLORS.primaryBright} ${HACKER_COLORS.transitionFast} mb-1`} title={offer.name}>
+                        <h3 className="text-sm font-semibold text-slate-100 truncate group-hover:text-white transition-colors" title={offer.name}>
                             {offer.name}
                         </h3>
-                        <span className={`text-xs ${HACKER_COLORS.textMuted} font-medium`}>
-                            {formatCreationDate(offer.created_at)}
-                        </span>
+                        <span className="text-xs text-slate-600 font-medium">{formatCreationDate(offer.created_at)}</span>
                     </div>
-                    {isActive && (
-                        <span className={`text-xs ${HACKER_COLORS.primaryBright} bg-blue-950/60 px-2 py-1 rounded-md font-bold border border-blue-400/40 ml-2 flex-shrink-0`}>
-                            ATIVA
-                        </span>
-                    )}
-                </div>
-                
-                {/* Status badge */}
-                <div className="flex items-center">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md border text-xs font-bold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color} ${HACKER_COLORS.transitionFast}`}>
-                        {statusInfo.label}
-                    </span>
-                </div>
-            </div>
-
-            {/* Main metrics - Destaque principal */}
-            <div className="px-5 pb-4 flex-shrink-0 border-t border-slate-700/20 pt-4">
-                <div className="mb-2">
-                    <p className={`text-xs ${HACKER_COLORS.textMuted} font-semibold uppercase tracking-wide mb-2`}>ANÚNCIOS ATIVOS</p>
-                    <div className="flex items-baseline gap-2">
-                        <span className={`text-3xl font-black ${HACKER_COLORS.textBase} ${HACKER_COLORS.transitionFast} group-hover:${HACKER_COLORS.primaryBright}`}>{latestAdCount}</span>
-                        {dailyPercentageChangeDisplay && (
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${dailyChangeColor} ${dailyChangeColor.includes('green') ? 'bg-emerald-950/30' : dailyChangeColor.includes('red') ? 'bg-red-950/30' : 'bg-slate-800/30'}`}>
-                                {dailyPercentageChangeDisplay}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {isActive && (
+                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                ATIVA
+                            </span>
+                        )}
+                        {isPinned && (
+                            <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                                FIXADO
                             </span>
                         )}
                     </div>
                 </div>
-                
-                {/* Variação 7d - Compacto */}
-                {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <div className={`text-xs mt-3 pt-3 border-t border-slate-700/20`}>
-                        <span className={HACKER_COLORS.textMuted}>Variação 7d: </span>
-                        <span className={`font-bold ${
-                            parseFloat(performanceAnalysis.weeklyChange) > 0 
-                                ? 'text-emerald-400' 
-                                : parseFloat(performanceAnalysis.weeklyChange) < 0 
-                                    ? 'text-red-400' 
-                                    : HACKER_COLORS.textDim
+
+                {/* Status badge */}
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
+                    {statusInfo.label}
+                </span>
+            </div>
+
+            {/* Metric */}
+            <div className="px-4 pb-3 border-t border-white/[0.05] pt-3">
+                <p className="text-[10px] text-slate-600 font-semibold uppercase tracking-widest mb-1">AnÃºncios Ativos</p>
+                <div className="flex items-end gap-2">
+                    <span className="text-3xl font-bold text-white tabular-nums leading-none">{latestAdCount}</span>
+                    {dailyPercentageChangeDisplay && (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full mb-0.5 ${
+                            isGrowing
+                                ? 'text-emerald-400 bg-emerald-500/10'
+                                : isFalling
+                                    ? 'text-rose-400 bg-rose-500/10'
+                                    : 'text-slate-500 bg-white/[0.04]'
                         }`}>
-                            {performanceAnalysis.weeklyChange}
+                            {dailyPercentageChangeDisplay}
                         </span>
-                    </div>
+                    )}
+                </div>
+                {performanceAnalysis.weeklyChange !== "N/A" && (
+                    <p className="text-[11px] text-slate-600 mt-1.5">
+                        7d: <span className={`font-semibold ${
+                            parseFloat(performanceAnalysis.weeklyChange) > 0
+                                ? 'text-emerald-400'
+                                : parseFloat(performanceAnalysis.weeklyChange) < 0
+                                    ? 'text-rose-400'
+                                    : 'text-slate-500'
+                        }`}>{performanceAnalysis.weeklyChange}</span>
+                    </p>
                 )}
             </div>
 
-            {/* Mini Performance Chart - Seção dedicada */}
-            {adCountsHistory.length > 0 && (
-                <div className="px-5 pb-4 flex-shrink-0 border-t border-slate-700/20 pt-4">
-                    <div className="h-20 w-full rounded-lg bg-gradient-to-br from-slate-900/60 to-blue-950/20 p-2">
+            {/* Mini chart */}
+            {adCountsHistory.length > 1 && (
+                <div className="px-3 pb-3 border-t border-white/[0.05] pt-3">
+                    <div className="h-[56px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart 
+                            <LineChart
                                 data={adCountsHistory.slice().reverse().map(ac => ({
-                                    timestamp: formatDateForAxis(ac.timestamp),
-                                    count: ac.count
+                                    t: formatDateForAxis(ac.timestamp),
+                                    v: ac.count
                                 }))}
                                 margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
                             >
                                 <defs>
-                                    <linearGradient id={`gradientBlue-${offer.id}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.9}/>
-                                        <stop offset="50%" stopColor="#3B82F6" stopOpacity={0.4}/>
-                                        <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                                    <linearGradient id={`cg-${offer.id}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#4F8EF7" stopOpacity={0.8}/>
+                                        <stop offset="100%" stopColor="#4F8EF7" stopOpacity={0.1}/>
                                     </linearGradient>
                                 </defs>
-                                <Line 
-                                    type="monotone" 
-                                    dataKey="count" 
-                                    stroke="#3B82F6" 
-                                    strokeWidth={3}
+                                <Line
+                                    type="monotone"
+                                    dataKey="v"
+                                    stroke="#4F8EF7"
+                                    strokeWidth={2}
                                     dot={false}
-                                    activeDot={{ r: 5, fill: '#3B82F6', stroke: '#0F172A', strokeWidth: 2 }}
-                                    animationDuration={1000}
+                                    activeDot={{ r: 3, fill: '#4F8EF7', strokeWidth: 0 }}
+                                    animationDuration={800}
                                 />
-                                <Tooltip 
-                                    contentStyle={{ 
-                                        backgroundColor: '#0F172A', 
-                                        border: '1px solid #3B82F6', 
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: '#0D1220',
+                                        border: '1px solid rgba(255,255,255,0.08)',
                                         borderRadius: '8px',
-                                        padding: '6px 10px',
+                                        padding: '4px 8px',
                                         fontSize: '11px',
-                                        boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
-                                    }} 
-                                    labelStyle={{ color: '#60A5FA', fontSize: '10px', fontWeight: 'bold' }}
-                                    cursor={{ stroke: '#3B82F6', strokeWidth: 1.5, strokeDasharray: '3 3' }}
+                                    }}
+                                    labelStyle={{ color: '#64748b', fontSize: '10px' }}
+                                    itemStyle={{ color: '#e2e8f0' }}
+                                    cursor={{ stroke: 'rgba(255,255,255,0.08)' }}
                                 />
                             </LineChart>
                         </ResponsiveContainer>
@@ -345,97 +349,96 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 </div>
             )}
 
-            {/* Footer - Info e ações */}
-            <div className="mt-auto border-t border-slate-700/20">
+            {/* Footer */}
+            <div className="mt-auto border-t border-white/[0.05]">
                 {/* Last update */}
-                <div className={`px-5 py-3 text-xs ${HACKER_COLORS.textMuted} border-b border-slate-700/20`}>
-                    <span className={HACKER_COLORS.textMuted}>Atualizado: </span>
-                    <span className={`${HACKER_COLORS.textBase} font-medium`}>{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
+                <div className="px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between border-b border-white/[0.04]">
+                    <span>Atualizado</span>
+                    <span className="text-slate-400 font-medium">{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
                 </div>
 
-                {/* Action buttons */}
-                <div className="p-4">
-                    <div className="grid grid-cols-2 gap-2 mb-3">
+                {/* Actions */}
+                <div className="p-3 space-y-2">
+                    <div className="flex gap-2">
                         {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
-                            <button 
+                            <button
                                 onClick={handleLocalScraping}
                                 disabled={isScrapingRunning}
-                                className={`px-3 py-2 rounded-lg text-xs font-bold ${HACKER_COLORS.transition} flex items-center justify-center gap-1.5 ${
-                                    isScrapingRunning 
-                                        ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
-                                        : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                    isScrapingRunning
+                                        ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
+                                        : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
                                 }`}
-                                title="Executar scraping local"
+                                title="Scraping automÃ¡tico"
                             >
                                 <RefreshCw size={12} className={isScrapingRunning ? 'animate-spin' : ''} />
-                                {isScrapingRunning ? 'SCRAP...' : 'SCRAP'}
+                                {isScrapingRunning ? 'Buscando...' : 'Scraping'}
                             </button>
                         ) : (
-                            <button 
+                            <button
                                 onClick={() => onToggleActive(offer.id)}
-                                className={`px-3 py-2 rounded-lg text-xs font-bold ${HACKER_COLORS.transition} ${
-                                    isActive 
-                                        ? `${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow}` 
-                                        : `${HACKER_COLORS.surfaceLighter} text-blue-300 border ${HACKER_COLORS.borderPrimary} hover:${HACKER_COLORS.sidebarItemHover} hover:border-blue-400/60`
+                                className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                    isActive
+                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20'
+                                        : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-400 hover:text-slate-200 border border-white/[0.07]'
                                 }`}
                             >
-                                {isActive ? 'ON' : 'OFF'}
+                                {isActive ? 'Ativa' : 'Ativar'}
                             </button>
                         )}
-                        <button 
+                        <button
                             onClick={(e) => {
                                 e.preventDefault();
                                 const currentUrl = window.location.origin + window.location.pathname;
-                                const newUrl = `${currentUrl}?view=detail&id=${offer.id}`;
-                                window.open(newUrl, '_blank');
+                                window.open(`${currentUrl}?view=detail&id=${offer.id}`, '_blank');
                             }}
-                            className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-3 py-2 rounded-lg text-xs font-bold ${HACKER_COLORS.transition} flex items-center justify-center gap-1.5`}
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20 transition-all"
                         >
                             <Eye size={12} />
-                            VER
+                            Detalhes
                         </button>
                     </div>
-                    
-                    {/* Secondary actions - Compacto */}
+
+                    {/* Icon actions */}
                     <div className="flex items-center justify-center gap-1">
                         {offer.link && (
-                            <a 
-                                href={offer.link} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className={`p-1.5 ${HACKER_COLORS.textDim} hover:text-cyan-400 ${HACKER_COLORS.transitionFast} rounded hover:${HACKER_COLORS.surfaceHover}`}
+                            <a
+                                href={offer.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 text-slate-600 hover:text-sky-400 transition-colors rounded-lg hover:bg-white/[0.05]"
                                 title="Abrir link"
                             >
-                                <ExternalLink size={12} />
+                                <ExternalLink size={13} />
                             </a>
                         )}
-                        <button 
-                            onClick={isPinned ? onUnpin : onPin} 
-                            className={`p-1.5 ${HACKER_COLORS.transitionFast} rounded hover:${HACKER_COLORS.surfaceHover} ${isPinned ? 'text-blue-400' : `${HACKER_COLORS.textDim} hover:text-blue-400`}`}
+                        <button
+                            onClick={isPinned ? onUnpin : onPin}
+                            className={`p-1.5 transition-colors rounded-lg hover:bg-white/[0.05] ${isPinned ? 'text-blue-400' : 'text-slate-600 hover:text-blue-400'}`}
                             title={isPinned ? 'Desafixar' : 'Fixar'}
                         >
-                            {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                            {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
                         </button>
-                        <button 
-                            onClick={() => onEditOffer(offer)} 
-                            className={`p-1.5 ${HACKER_COLORS.textDim} hover:text-amber-400 ${HACKER_COLORS.transitionFast} rounded hover:${HACKER_COLORS.surfaceHover}`}
+                        <button
+                            onClick={() => onEditOffer(offer)}
+                            className="p-1.5 text-slate-600 hover:text-amber-400 transition-colors rounded-lg hover:bg-white/[0.05]"
                             title="Editar"
                         >
-                            <Edit3 size={12} />
+                            <Edit3 size={13} />
                         </button>
-                        <button 
-                            onClick={() => onToggleArchive(offer.id, offer.is_archived)} 
-                            className={`p-1.5 ${HACKER_COLORS.textDim} hover:text-orange-400 ${HACKER_COLORS.transitionFast} rounded hover:${HACKER_COLORS.surfaceHover}`}
-                            title={offer.is_archived ? "Restaurar" : "Arquivar"}
+                        <button
+                            onClick={() => onToggleArchive(offer.id, offer.is_archived)}
+                            className="p-1.5 text-slate-600 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                            title={offer.is_archived ? 'Restaurar' : 'Arquivar'}
                         >
-                            {offer.is_archived ? <ArchiveRestore size={12}/> : <Archive size={12}/>} 
+                            {offer.is_archived ? <ArchiveRestore size={13}/> : <Archive size={13}/>}
                         </button>
-                        <button 
-                            onClick={() => onDeleteOffer(offer.id)} 
-                            className={`p-1.5 ${HACKER_COLORS.textDim} hover:text-red-400 ${HACKER_COLORS.transitionFast} rounded hover:${HACKER_COLORS.surfaceHover}`}
+                        <button
+                            onClick={() => onDeleteOffer(offer.id)}
+                            className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors rounded-lg hover:bg-white/[0.05]"
                             title="Excluir"
                         >
-                            <Trash2 size={12} />
+                            <Trash2 size={13} />
                         </button>
                     </div>
                 </div>

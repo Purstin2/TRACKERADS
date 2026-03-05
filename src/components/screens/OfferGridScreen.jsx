@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw } from 'lucide-react';
-import { HACKER_COLORS } from '../../styles/theme';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
@@ -38,15 +37,15 @@ const OfferGridScreen = ({
 
     // Sort options
     const sortOptions = [
-        { value: 'newest', label: 'Recém Adicionados' },
+        { value: 'newest', label: 'RecÃ©m Adicionados' },
         { value: 'oldest', label: 'Mais Antigos' },
-        { value: 'alphabetical', label: 'Ordem Alfabética' },
-        { value: 'most_ads_7d', label: 'Mais Anúncios (7 dias)' },
-        { value: 'most_ads_14d', label: 'Mais Anúncios (14 dias)' },
-        { value: 'most_ads_30d', label: 'Mais Anúncios (30 dias)' },
-        { value: 'consistency_7d', label: 'Maior Consistência (7 dias)' },
-        { value: 'consistency_14d', label: 'Maior Consistência (14 dias)' },
-        { value: 'consistency_30d', label: 'Maior Consistência (30 dias)' },
+        { value: 'alphabetical', label: 'Ordem AlfabÃ©tica' },
+        { value: 'most_ads_7d', label: 'Mais AnÃºncios (7 dias)' },
+        { value: 'most_ads_14d', label: 'Mais AnÃºncios (14 dias)' },
+        { value: 'most_ads_30d', label: 'Mais AnÃºncios (30 dias)' },
+        { value: 'consistency_7d', label: 'Maior ConsistÃªncia (7 dias)' },
+        { value: 'consistency_14d', label: 'Maior ConsistÃªncia (14 dias)' },
+        { value: 'consistency_30d', label: 'Maior ConsistÃªncia (30 dias)' },
         { value: 'trending_up', label: 'Em Alta (crescimento)' },
         { value: 'trending_down', label: 'Em Queda (decrescimento)' },
         { value: 'most_active', label: 'Mais Ativos Recentemente' }
@@ -95,7 +94,7 @@ const OfferGridScreen = ({
         
         // Pinned offers always come first
         if (aPinnedIdx !== -1 && bPinnedIdx !== -1) {
-            return aPinnedIdx - bPinnedIdx; // mantém ordem de fixação
+            return aPinnedIdx - bPinnedIdx; // mantÃ©m ordem de fixaÃ§Ã£o
         }
         if (aPinnedIdx !== -1) return -1;
         if (bPinnedIdx !== -1) return 1;
@@ -150,277 +149,240 @@ const OfferGridScreen = ({
     });
 
     return (
-        <div className="px-6 sm:px-8 lg:px-10 max-w-7xl mx-auto py-6">
-            {/* Header Section - Organizado */}
+        <div className="px-6 lg:px-8 max-w-7xl mx-auto py-7 animate-fade-in">
+
+            {/* Header */}
             <div className="mb-6">
-                <h2 className={`text-3xl font-black ${HACKER_COLORS.textBase} tracking-tight mb-6`}>GRID DE TARGETS</h2>
-                
-                {/* Barra de ações - Organizada em seções */}
-                <div className="flex flex-wrap items-center gap-3">
-                    {/* Seção de busca e filtros */}
-                    <div className="flex items-center gap-2 flex-1 min-w-[300px]">
-                        <div className="relative flex-1 max-w-md">
-                            <input 
-                                type="text" 
-                                placeholder="Buscar target..." 
-                                value={searchTerm} 
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className={`w-full ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-lg py-2.5 px-4 pl-11 ${HACKER_COLORS.transition} text-sm font-medium`}
-                            />
-                            <Search 
-                                size={18} 
-                                className={`absolute left-3.5 top-1/2 transform -translate-y-1/2 ${HACKER_COLORS.textDim}`}
-                            />
-                        </div>
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowSortDropdown(!showSortDropdown)}
-                                className={`flex items-center space-x-2 px-4 py-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.inputText} rounded-xl ${HACKER_COLORS.transition} font-semibold hover:border-blue-500/70`}
-                            >
-                                <Filter size={20} className={HACKER_COLORS.textDim} />
-                                <span className="text-sm">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
-                                <ChevronDown size={16} className={`${HACKER_COLORS.textDim} ${HACKER_COLORS.transitionFast} ${showSortDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {showSortDropdown && (
-                                <div className={`absolute top-full left-0 mt-2 w-64 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
-                                    {sortOptions.map(option => (
-                                        <button
-                                            key={option.value}
-                                            onClick={() => {
-                                                setSortBy(option.value);
-                                                setShowSortDropdown(false);
-                                            }}
-                                            className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.transitionFast} border-b ${HACKER_COLORS.borderDim} last:border-b-0 ${
-                                                sortBy === option.value 
-                                                    ? `text-blue-400 ${HACKER_COLORS.sidebarItemHover} font-bold` 
-                                                    : `${HACKER_COLORS.textBase} hover:text-blue-400 hover:${HACKER_COLORS.sidebarItemHover}`
-                                            }`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                <div className="flex items-center justify-between mb-5">
+                    <div>
+                        <h2 className="text-xl font-bold text-white tracking-tight">
+                            {showArchived ? 'Targets Arquivados' : 'Targets'}
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                            {offers.length} {offers.length === 1 ? 'target' : 'targets'}
+                            {searchTerm ? ` para "${searchTerm}"` : ''}
+                        </p>
                     </div>
-                    
-                    {/* Seção de ações rápidas */}
                     <div className="flex items-center gap-2">
-                        <button 
-                            onClick={() => setShowArchived(!showArchived)} 
-                            title={showArchived ? "Ver Ativas" : "Ver Arquivadas"}
-                            className={`p-2.5 border rounded-lg ${HACKER_COLORS.transition} ${showArchived ? 'bg-amber-900/40 border-amber-500/50 text-amber-300' : `${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} ${HACKER_COLORS.textDim} hover:border-amber-500/50 hover:text-amber-300`}`}
-                        >
-                            {showArchived 
-                                ? <ArchiveRestore size={18} className="text-amber-300" /> 
-                                : <Archive size={18} />
-                            }
-                        </button>
-                        <button 
-                            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} 
-                            title="Alternar Visualização"
-                            className={`p-2.5 ${HACKER_COLORS.inputBg} ${HACKER_COLORS.borderDim} border rounded-lg hover:border-blue-500/50 ${HACKER_COLORS.transition} ${HACKER_COLORS.textDim} hover:text-blue-400`}
-                        >
-                            {viewMode === 'grid' 
-                                ? <List size={18} /> 
-                                : <LayoutGrid size={18} />
-                            }
-                        </button>
-                        <button
-                            onClick={() => setShowAdvancedFilters(true)}
-                            className={`p-2.5 ${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow} border border-purple-400/30 rounded-lg ${HACKER_COLORS.transition}`}
-                            title="Filtros Avançados"
-                        >
-                            <Filter size={18} />
-                        </button>
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowExportMenu(!showExportMenu)}
-                                className={`p-2.5 ${HACKER_COLORS.buttonSuccessBg} ${HACKER_COLORS.buttonSuccessText} border border-emerald-400/30 rounded-lg ${HACKER_COLORS.transition} shadow-lg shadow-emerald-500/20`}
-                                title="Exportar Dados"
-                            >
-                                <Download size={18} />
-                            </button>
-                            {showExportMenu && (
-                                <div className={`absolute right-0 top-full mt-2 w-48 ${HACKER_COLORS.cardBg} ${HACKER_COLORS.cardBorder} rounded-xl ${HACKER_COLORS.cardShadow} z-50 overflow-hidden`}>
-                                    <button
-                                        onClick={() => {
-                                            exportToCSV(offers);
-                                            setShowExportMenu(false);
-                                        }}
-                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2 border-b ${HACKER_COLORS.borderDim}`}
-                                    >
-                                        <FileText size={16} />
-                                        Exportar CSV
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            exportToJSON(offers);
-                                            setShowExportMenu(false);
-                                        }}
-                                        className={`w-full text-left px-4 py-3 text-sm ${HACKER_COLORS.textBase} hover:${HACKER_COLORS.sidebarItemHover} ${HACKER_COLORS.transitionFast} flex items-center gap-2`}
-                                    >
-                                        <FileJson size={16} />
-                                        Exportar JSON
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    
-                    {/* Seção de ações principais */}
-                    <div className="flex items-center gap-2">
-                        {/* Botão de Scraping Automático de Todas as Ofertas */}
+                        {/* Scrape All */}
                         {(() => {
                             const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
                             if (offersToScrape.length === 0) return null;
-                            
                             return (
                                 <button
                                     onClick={async () => {
                                         setIsScrapingAll(true);
                                         try {
-                                            showToast && showToast(`🤖 Iniciando scraping para ${offersToScrape.length} ofertas... Isso pode levar alguns minutos.`, 'info');
-                                            
+                                            showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
                                             const response = await fetch('http://localhost:3001/api/scrape/run', {
                                                 method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json'
-                                                }
+                                                headers: { 'Content-Type': 'application/json' }
                                             });
-                                            
                                             const data = await response.json();
-                                            
                                             if (response.ok) {
-                                                showToast && showToast(`✅ Scraping iniciado! Processando ${offersToScrape.length} ofertas em background. Atualizando automaticamente...`, 'success');
-                                                
-                                                // Atualiza imediatamente
+                                                showToast && showToast(`Scraping em andamento para ${offersToScrape.length} targets.`, 'success');
                                                 if (fetchOffers) fetchOffers();
-                                                
-                                                // Aguarda e atualiza a lista várias vezes
                                                 const estimatedTime = offersToScrape.length * 5 + 30;
-                                                const updateInterval = 10000;
-                                                const maxAttempts = Math.ceil(estimatedTime / (updateInterval / 1000)) + 5;
-                                                
                                                 let attempts = 0;
+                                                const maxAttempts = Math.ceil(estimatedTime / 10) + 5;
                                                 const interval = setInterval(() => {
                                                     attempts++;
-                                                    if (fetchOffers) {
-                                                        fetchOffers();
-                                                        console.log(`[SCRAPING] Atualizando lista (tentativa ${attempts}/${maxAttempts})...`);
-                                                    }
-                                                    
+                                                    if (fetchOffers) fetchOffers();
                                                     if (attempts >= maxAttempts) {
                                                         clearInterval(interval);
-                                                        showToast && showToast('🔄 Atualização automática finalizada. Verifique os resultados!', 'info');
-                                                    } else if (attempts % 3 === 0) {
-                                                        showToast && showToast(`🔄 Atualizando... (${attempts}/${maxAttempts})`, 'info');
+                                                        showToast && showToast('AtualizaÃ§Ã£o automÃ¡tica finalizada.', 'info');
                                                     }
-                                                }, updateInterval);
-                                                
-                                                setTimeout(() => {
-                                                    clearInterval(interval);
-                                                    if (fetchOffers) fetchOffers();
-                                                    showToast && showToast('✅ Scraping concluído! Lista atualizada.', 'success');
-                                                }, estimatedTime * 1000);
+                                                }, 10000);
+                                                setTimeout(() => { clearInterval(interval); if (fetchOffers) fetchOffers(); }, estimatedTime * 1000);
                                             } else {
-                                                showToast && showToast(`❌ Erro: ${data.error || 'Falha ao iniciar scraping'}`, 'error');
+                                                showToast && showToast(`Erro: ${data.error || 'Falha'}`, 'error');
                                             }
-                                        } catch (error) {
-                                            console.error('Erro ao executar scraping:', error);
-                                            showToast && showToast('❌ Erro: Serviço local não está rodando. Inicie o scraper: cd scraper-service && npm start', 'error');
+                                        } catch {
+                                            showToast && showToast('ServiÃ§o local nÃ£o estÃ¡ rodando.', 'error');
                                         } finally {
                                             setTimeout(() => setIsScrapingAll(false), 30000);
                                         }
                                     }}
                                     disabled={isScrapingAll}
-                                    className={`px-4 py-2.5 rounded-lg ${HACKER_COLORS.transition} flex items-center space-x-2 text-sm font-bold ${
-                                        isScrapingAll 
-                                            ? 'bg-purple-800/60 cursor-not-allowed opacity-60 text-white' 
-                                            : `${HACKER_COLORS.buttonSecondaryBg} ${HACKER_COLORS.buttonSecondaryText} ${HACKER_COLORS.buttonSecondaryShadow}`
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                                        isScrapingAll
+                                            ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
+                                            : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
                                     }`}
-                                    title={`Executar scraping automático para ${offersToScrape.length} ofertas`}
+                                    title={`Scraping automÃ¡tico para ${offersToScrape.length} targets`}
                                 >
-                                    <RefreshCw size={16} className={isScrapingAll ? 'animate-spin' : ''} />
-                                    <span>{isScrapingAll ? 'SCRAPING...' : `SCRAP TODOS (${offersToScrape.length})`}</span>
+                                    <RefreshCw size={15} className={isScrapingAll ? 'animate-spin' : ''} />
+                                    {isScrapingAll ? 'Scraping...' : `Scraping (${offersToScrape.length})`}
                                 </button>
                             );
                         })()}
                         <button
                             onClick={onAddOffer}
-                            className={`${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} ${HACKER_COLORS.buttonPrimaryShadow} px-5 py-2.5 rounded-lg ${HACKER_COLORS.transition} flex items-center space-x-2 text-sm font-bold`}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20 transition-all"
                         >
-                            <PlusCircle size={18} />
-                            <span>NOVO TARGET</span>
+                            <PlusCircle size={15} />
+                            Novo Target
                         </button>
+                    </div>
+                </div>
+
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Search */}
+                    <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                            type="text"
+                            placeholder="Buscar target..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-[#131929] border border-white/[0.08] focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 outline-none text-slate-200 placeholder:text-slate-600 rounded-xl py-2 px-4 pl-9 text-sm transition-all"
+                        />
+                    </div>
+
+                    {/* Sort */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowSortDropdown(!showSortDropdown)}
+                            className="flex items-center gap-2 px-3 py-2 bg-[#131929] border border-white/[0.08] hover:border-white/[0.14] rounded-xl text-sm text-slate-400 hover:text-slate-200 font-medium transition-all"
+                        >
+                            <Filter size={14} className="text-slate-500" />
+                            <span className="max-w-[130px] truncate">{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
+                            <ChevronDown size={13} className={`text-slate-500 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showSortDropdown && (
+                            <div className="absolute top-full left-0 mt-2 w-60 bg-[#0D1220] border border-white/[0.09] rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden py-1">
+                                {sortOptions.map(option => (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => { setSortBy(option.value); setShowSortDropdown(false); }}
+                                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                                            sortBy === option.value
+                                                ? 'text-blue-400 bg-blue-500/10 font-semibold'
+                                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-1 ml-auto">
+                        {/* Archive toggle */}
+                        <button
+                            onClick={() => setShowArchived(!showArchived)}
+                            title={showArchived ? 'Ver Ativas' : 'Ver Arquivadas'}
+                            className={`p-2 rounded-xl border transition-all ${
+                                showArchived
+                                    ? 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                                    : 'bg-[#131929] border-white/[0.07] text-slate-500 hover:text-amber-400 hover:border-amber-500/20'
+                            }`}
+                        >
+                            {showArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                        </button>
+
+                        {/* View mode */}
+                        <button
+                            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                            title="Alternar visualizaÃ§Ã£o"
+                            className="p-2 bg-[#131929] border border-white/[0.07] hover:border-white/[0.14] rounded-xl text-slate-500 hover:text-slate-200 transition-all"
+                        >
+                            {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
+                        </button>
+
+                        {/* Advanced filters */}
+                        <button
+                            onClick={() => setShowAdvancedFilters(true)}
+                            className="p-2 bg-violet-600/10 border border-violet-500/20 hover:bg-violet-600/20 rounded-xl text-violet-400 transition-all"
+                            title="Filtros avanÃ§ados"
+                        >
+                            <Filter size={16} />
+                        </button>
+
+                        {/* Export */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                className="p-2 bg-emerald-600/10 border border-emerald-500/20 hover:bg-emerald-600/20 rounded-xl text-emerald-400 transition-all"
+                                title="Exportar dados"
+                            >
+                                <Download size={16} />
+                            </button>
+                            {showExportMenu && (
+                                <div className="absolute right-0 top-full mt-2 w-44 bg-[#0D1220] border border-white/[0.09] rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden py-1">
+                                    <button
+                                        onClick={() => { exportToCSV(offers); setShowExportMenu(false); }}
+                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors flex items-center gap-2"
+                                    >
+                                        <FileText size={14} /> Exportar CSV
+                                    </button>
+                                    <button
+                                        onClick={() => { exportToJSON(offers); setShowExportMenu(false); }}
+                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors flex items-center gap-2"
+                                    >
+                                        <FileJson size={14} /> Exportar JSON
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Click outside to close dropdowns */}
-            {showSortDropdown && (
-                <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowSortDropdown(false)}
-                />
-            )}
-            {showExportMenu && (
-                <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowExportMenu(false)}
-                />
-            )}
+            {/* Click outside overlays */}
+            {showSortDropdown && <div className="fixed inset-0 z-40" onClick={() => setShowSortDropdown(false)} />}
+            {showExportMenu && <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />}
 
             {showAdvancedFilters && (
                 <AdvancedFilters
                     offers={offers}
-                    onFilterChange={(filtered) => {
-                        setLocalFilteredOffers(filtered);
-                    }}
+                    onFilterChange={(filtered) => setLocalFilteredOffers(filtered)}
                     onClose={() => setShowAdvancedFilters(false)}
                 />
             )}
 
+            {/* Empty states */}
             {!userId && isAuthReady && (
-                <div className="text-center py-10">
-                    <p className={`text-lg ${HACKER_COLORS.destructiveNeon} mb-4`}>
-                        FALHA NA AUTENTICAÇÃO.
-                    </p>
-                    <AlertTriangle size={40} className={`mx-auto ${HACKER_COLORS.destructiveNeon}`} />
-                </div>
-            )}
-            
-            {userId && offers.length === 0 && !searchTerm && (
-                <div className="text-center py-10">
-                    <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
-                        NENHUM TARGET {showArchived ? 'ARQUIVADO' : 'ATIVO'} ENCONTRADO.
-                    </p>
-                    <Zap size={40} className={`mx-auto ${HACKER_COLORS.textDim}`} />
-                </div>
-            )}
-            
-            {userId && offers.length === 0 && searchTerm && (
-                <div className="text-center py-10">
-                    <p className={`text-lg ${HACKER_COLORS.textDim} mb-4`}>
-                        NENHUM TARGET PARA "{searchTerm}".
-                    </p>
-                    <Search size={40} className={`mx-auto ${HACKER_COLORS.textDim}`} />
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                    <AlertTriangle size={32} className="text-rose-500" />
+                    <p className="text-slate-500 text-sm">AutenticaÃ§Ã£o necessÃ¡ria.</p>
                 </div>
             )}
 
+            {userId && offers.length === 0 && !searchTerm && (
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/15 flex items-center justify-center">
+                        <Zap size={24} className="text-blue-500" />
+                    </div>
+                    <div className="text-center">
+                        <p className="text-slate-300 font-medium">Nenhum target {showArchived ? 'arquivado' : 'ainda'}</p>
+                        <p className="text-slate-600 text-sm mt-1">{showArchived ? 'Nenhum target foi arquivado.' : 'Clique em "Novo Target" para comeÃ§ar.'}</p>
+                    </div>
+                </div>
+            )}
+
+            {userId && offers.length === 0 && searchTerm && (
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                    <Search size={32} className="text-slate-600" />
+                    <p className="text-slate-500 text-sm">Nenhum resultado para <span className="text-slate-300">"{searchTerm}"</span></p>
+                </div>
+            )}
+
+            {/* Grid / List */}
             {userId && viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                     {sortedOffers.map(offer => (
-                        <OfferCard 
-                            key={offer.id} 
-                            offer={offer} 
-                            onViewDetails={onViewDetails} 
-                            onEditOffer={onEditOffer} 
-                            onToggleArchive={onToggleArchive} 
-                            onDeleteOffer={onDeleteOffer} 
-                            userId={userId} 
-                            supabaseClient={supabaseClient} 
+                        <OfferCard
+                            key={offer.id}
+                            offer={offer}
+                            onViewDetails={onViewDetails}
+                            onEditOffer={onEditOffer}
+                            onToggleArchive={onToggleArchive}
+                            onDeleteOffer={onDeleteOffer}
+                            userId={userId}
+                            supabaseClient={supabaseClient}
                             isPinned={pinnedOfferIds.includes(offer.id)}
                             onPin={() => setPinnedOfferIds(prev => prev.includes(offer.id) ? prev : [...prev, offer.id])}
                             onUnpin={() => setPinnedOfferIds(prev => prev.filter(id => id !== offer.id))}
@@ -440,11 +402,11 @@ const OfferGridScreen = ({
             ) : userId && (
                 <OfferList
                     offers={sortedOffers}
-                    onViewDetails={onViewDetails} 
-                    onEditOffer={onEditOffer} 
-                    onToggleArchive={onToggleArchive} 
-                    onDeleteOffer={onDeleteOffer} 
-                    supabaseClient={supabaseClient} 
+                    onViewDetails={onViewDetails}
+                    onEditOffer={onEditOffer}
+                    onToggleArchive={onToggleArchive}
+                    onDeleteOffer={onDeleteOffer}
+                    supabaseClient={supabaseClient}
                 />
             )}
         </div>

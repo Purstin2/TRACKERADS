@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Filter, Tag, Calendar, TrendingUp, Activity } from 'lucide-react';
-import { HACKER_COLORS } from '../../styles/theme';
+
+const inputClass = "w-full bg-[#131929] border border-white/[0.08] text-white rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-500/50 transition-colors";
 
 const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
     const [selectedTags, setSelectedTags] = useState([]);
@@ -110,26 +111,26 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900 border-2 border-blue-500 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#0D1220] border border-white/[0.1] rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+                <div className="sticky top-0 bg-[#0D1220] border-b border-white/[0.07] p-6 flex items-center justify-between z-10">
                     <div className="flex items-center gap-3">
-                        <Filter size={24} className="text-blue-400" />
-                        <h2 className="text-2xl font-bold text-white">FILTROS AVANÇADOS</h2>
+                        <Filter size={18} className="text-blue-400" />
+                        <h2 className="text-lg font-semibold text-white">Filtros Avançados</h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-white transition-colors"
+                        className="text-slate-500 hover:text-slate-300 transition-colors"
                     >
-                        <X size={24} />
+                        <X size={20} />
                     </button>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <div>
                         <div className="flex items-center gap-2 mb-3">
-                            <Tag size={18} className="text-blue-400" />
-                            <label className="text-white font-semibold">Filtrar por Tags</label>
+                            <Tag size={15} className="text-blue-400" />
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Filtrar por Tags</label>
                         </div>
                         {allTags.length > 0 ? (
                             <div className="flex flex-wrap gap-2">
@@ -137,10 +138,10 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
                                     <button
                                         key={tag}
                                         onClick={() => toggleTag(tag)}
-                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                             selectedTags.includes(tag)
-                                                ? 'bg-blue-600 text-white border-2 border-blue-400'
-                                                : 'bg-gray-800 text-gray-400 border border-gray-600 hover:bg-gray-700'
+                                                ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                                                : 'bg-white/[0.04] text-slate-400 border-white/[0.08] hover:border-white/[0.14]'
                                         }`}
                                     >
                                         {tag}
@@ -148,32 +149,32 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-gray-500 text-sm">Nenhuma tag disponível</p>
+                            <p className="text-slate-600 text-sm">Nenhuma tag disponível</p>
                         )}
                     </div>
 
                     <div>
                         <div className="flex items-center gap-2 mb-3">
-                            <Calendar size={18} className="text-green-400" />
-                            <label className="text-white font-semibold">Data de Criação</label>
+                            <Calendar size={15} className="text-emerald-400" />
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Data de Criação</label>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">De</label>
+                                <label className="text-xs text-slate-600 mb-1.5 block">De</label>
                                 <input
                                     type="date"
                                     value={dateRange.start}
                                     onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3 text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Até</label>
+                                <label className="text-xs text-slate-600 mb-1.5 block">Até</label>
                                 <input
                                     type="date"
                                     value={dateRange.end}
                                     onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3 text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                         </div>
@@ -181,30 +182,30 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
 
                     <div>
                         <div className="flex items-center gap-2 mb-3">
-                            <Activity size={18} className="text-purple-400" />
-                            <label className="text-white font-semibold">Contagem de Anúncios</label>
+                            <Activity size={15} className="text-violet-400" />
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Contagem de Anúncios</label>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Mínimo</label>
+                                <label className="text-xs text-slate-600 mb-1.5 block">Mínimo</label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={adCountRange.min}
                                     onChange={(e) => setAdCountRange(prev => ({ ...prev, min: e.target.value }))}
                                     placeholder="0"
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3 text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 mb-1 block">Máximo</label>
+                                <label className="text-xs text-slate-600 mb-1.5 block">Máximo</label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={adCountRange.max}
                                     onChange={(e) => setAdCountRange(prev => ({ ...prev, max: e.target.value }))}
                                     placeholder="∞"
-                                    className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3 text-sm"
+                                    className={inputClass}
                                 />
                             </div>
                         </div>
@@ -212,10 +213,10 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
 
                     <div>
                         <div className="flex items-center gap-2 mb-3">
-                            <TrendingUp size={18} className="text-yellow-400" />
-                            <label className="text-white font-semibold">Performance</label>
+                            <TrendingUp size={15} className="text-amber-400" />
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Performance</label>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                             {[
                                 { value: 'all', label: 'Todos' },
                                 { value: 'high', label: 'Alta (≥50)' },
@@ -226,10 +227,10 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
                                 <button
                                     key={option.value}
                                     onClick={() => setPerformanceFilter(option.value)}
-                                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-all border ${
                                         performanceFilter === option.value
-                                            ? 'bg-yellow-600 text-white'
-                                            : 'bg-gray-800 text-gray-400 border border-gray-600 hover:bg-gray-700'
+                                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                            : 'bg-white/[0.04] text-slate-400 border-white/[0.08] hover:border-white/[0.14]'
                                     }`}
                                 >
                                     {option.label}
@@ -240,13 +241,13 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
 
                     <div>
                         <div className="flex items-center gap-2 mb-3">
-                            <Filter size={18} className="text-cyan-400" />
-                            <label className="text-white font-semibold">Ordenar Por</label>
+                            <Filter size={15} className="text-slate-400" />
+                            <label className="text-xs font-medium text-slate-400 uppercase tracking-wider">Ordenar Por</label>
                         </div>
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg py-2 px-3 text-sm"
+                            className={inputClass}
                         >
                             <option value="newest">Mais Recentes</option>
                             <option value="oldest">Mais Antigos</option>
@@ -257,18 +258,18 @@ const AdvancedFilters = ({ offers, onFilterChange, onClose }) => {
                     </div>
                 </div>
 
-                <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 p-6 flex gap-3">
+                <div className="sticky bottom-0 bg-[#0D1220] border-t border-white/[0.07] p-6 flex gap-3">
                     <button
                         onClick={resetFilters}
-                        className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
+                        className="flex-1 bg-white/[0.05] hover:bg-white/[0.08] text-slate-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                     >
-                        RESETAR
+                        Resetar
                     </button>
                     <button
                         onClick={onClose}
-                        className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                     >
-                        APLICAR
+                        Aplicar
                     </button>
                 </div>
             </div>

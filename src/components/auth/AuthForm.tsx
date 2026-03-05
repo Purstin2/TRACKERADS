@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { HACKER_COLORS } from '../../styles/theme';
 import { Mail, Lock, UserPlus, LogIn, AlertCircle } from 'lucide-react';
 
 interface AuthFormProps {
@@ -52,60 +51,60 @@ const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
   };
 
   return (
-    <div className={`w-full max-w-md mx-auto p-6 ${HACKER_COLORS.surfaceLighter} border ${HACKER_COLORS.borderNeon} rounded-lg shadow-lg`}>
+    <div className="w-full max-w-md mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
         {validationError && (
-          <div className={`p-3 rounded-md bg-red-900/30 border border-red-500 flex items-center space-x-2 text-red-400`}>
-            <AlertCircle size={18} />
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-red-400">
+            <AlertCircle size={16} />
             <span className="text-sm">{validationError}</span>
           </div>
         )}
 
         <div>
-          <label htmlFor="email" className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}>
-            EMAIL
+          <label htmlFor="email" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+            Email
           </label>
           <div className="relative">
-            <Mail size={18} className={`absolute left-3 top-1/2 -translate-y-1/2 ${HACKER_COLORS.textDim}`} />
+            <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className={`w-full pl-10 pr-3 py-2 ${HACKER_COLORS.surface} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none`}
+              autoComplete="email"
+              className="w-full pl-9 pr-3 py-2.5 bg-[#131929] border border-white/[0.08] text-white rounded-xl text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-colors"
               placeholder="seu@email.com"
             />
           </div>
         </div>
 
         <div>
-          <label htmlFor="password" className={`block text-sm font-medium ${HACKER_COLORS.textDim} mb-1`}>
-            SENHA
+          <label htmlFor="password" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+            Senha
           </label>
           <div className="relative">
-            <Lock size={18} className={`absolute left-3 top-1/2 -translate-y-1/2 ${HACKER_COLORS.textDim}`} />
+            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className={`w-full pl-10 pr-3 py-2 ${HACKER_COLORS.surface} border ${HACKER_COLORS.borderDim} ${HACKER_COLORS.primaryNeon} rounded-md focus:ring-1 focus:${HACKER_COLORS.borderNeon} outline-none`}
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
+              className="w-full pl-9 pr-3 py-2.5 bg-[#131929] border border-white/[0.08] text-white rounded-xl text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-colors"
               placeholder="••••••••"
             />
           </div>
-          <p className={`mt-1 text-xs ${HACKER_COLORS.textDim}`}>
-            Mínimo de 6 caracteres
-          </p>
+          <p className="mt-1.5 text-xs text-slate-600">Mínimo de 6 caracteres</p>
         </div>
 
         <button
           type="submit"
-          className={`w-full ${HACKER_COLORS.buttonPrimaryBg} ${HACKER_COLORS.buttonPrimaryText} px-4 py-2 rounded-md hover:${HACKER_COLORS.buttonPrimaryBg} transition-colors flex items-center justify-center space-x-2 text-sm font-medium border border-black/50`}
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 mt-2"
         >
-          {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
-          <span>{isLogin ? 'ENTRAR' : 'CRIAR CONTA'}</span>
+          {isLogin ? <LogIn size={16} /> : <UserPlus size={16} />}
+          <span>{isLogin ? 'Entrar' : 'Criar Conta'}</span>
         </button>
 
         <button
@@ -114,7 +113,7 @@ const AuthForm: React.FC<AuthFormProps> = ({ onLogin, onRegister }) => {
             setIsLogin(!isLogin);
             setValidationError('');
           }}
-          className={`w-full text-sm ${HACKER_COLORS.textDim} hover:${HACKER_COLORS.primaryNeon}`}
+          className="w-full text-sm text-slate-500 hover:text-slate-300 transition-colors py-1"
         >
           {isLogin ? 'Não tem uma conta? Criar conta' : 'Já tem uma conta? Fazer login'}
         </button>
