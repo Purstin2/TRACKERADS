@@ -36,14 +36,13 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         
         console.log('[SCRAPER] Navegando para a página...');
         await page.goto(facebookAdsLibraryUrl, {
-            waitUntil: 'networkidle',
+            waitUntil: 'domcontentloaded',
             timeout: 30000
         });
         
         // Aguarda a página carregar completamente
         console.log('[SCRAPER] Aguardando página carregar...');
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(12000); // Aguarda 12 segundos para conteúdo dinâmico
+        await page.waitForTimeout(5000); // Aguarda 5 segundos para conteúdo dinâmico
         
         // Tenta esperar por elementos específicos do Facebook
         try {
@@ -54,18 +53,18 @@ export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
         }
         
         // Aguarda mais um pouco para conteúdo dinâmico carregar
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(2000);
         
         // Tenta rolar a página para garantir que o conteúdo carregou
         try {
             await page.evaluate(() => {
                 window.scrollTo(0, document.body.scrollHeight / 2);
             });
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1000);
             await page.evaluate(() => {
                 window.scrollTo(0, 0);
             });
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1000);
         } catch (e) {
             console.log('[SCRAPER] ⚠️  Erro ao rolar página:', e.message);
         }

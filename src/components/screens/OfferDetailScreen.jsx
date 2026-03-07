@@ -328,16 +328,16 @@ const OfferDetailScreen = ({
         } catch (error) {
             console.error(`[SCRAPING] Erro ao conectar com ${scraperUrl}:`, error);
             
-            let errorMessage = 'NÃ£o foi possÃ­vel conectar ao scraper local.';
+            let errorMessage = 'Não foi possível conectar ao scraper.';
             if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                errorMessage = 'ServiÃ§o local nÃ£o estÃ¡ rodando. Inicie o scraper: cd scraper-service && npm start';
+                errorMessage = 'Serviço de scraping indisponível. O scraping automático roda via GitHub Actions 2x/dia.';
             } else if (error.name === 'AbortError') {
                 errorMessage = 'Timeout: O scraper demorou muito para responder. Tente novamente.';
             } else {
                 errorMessage = `Erro: ${error.message}`;
             }
             
-            showToast(`âŒ ${errorMessage}`, "error");
+            showToast(`❌ ${errorMessage}`, "error");
             setIsScrapingRunning(false);
         }
     };
