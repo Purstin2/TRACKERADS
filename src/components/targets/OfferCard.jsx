@@ -98,7 +98,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         setIsScrapingRunning(true);
         showToast && showToast("ðŸ¤– Iniciando scraping automÃ¡tico... Isso pode levar atÃ© 2 minutos.", "info");
         
-        const scraperUrl = 'http://localhost:3001/api/scrape/test';
+        const scraperUrl = `${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/test`;
         
         try {
             const controller = new AbortController();

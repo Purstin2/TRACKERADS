@@ -174,7 +174,7 @@ const OfferGridScreen = ({
                                         setIsScrapingAll(true);
                                         try {
                                             showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
-                                            const response = await fetch('http://localhost:3001/api/scrape/run', {
+                                            const response = await fetch(`${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/run`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' }
                                             });

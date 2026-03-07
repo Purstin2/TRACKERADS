@@ -11,7 +11,12 @@ Crie o arquivo `.env` na pasta raiz: `C:\Users\WDAGUtilityAccount\Downloads\TRAC
 ```
 VITE_SUPABASE_URL=https://asnqphrzfbflpocqcxbr.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzbnFwaHJ6ZmJmbHBvY3FjeGJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyNjcwMTcsImV4cCI6MjA4Mzg0MzAxN30.jmi7bXNpOQma8Tp1T6cfrV0FlYeeDuxX8ibkMMUStVM
+
+# URL do scraper (Railway ou outro deploy). Se vazio, usa http://localhost:3001
+VITE_SCRAPER_URL=https://sua-url.up.railway.app
 ```
+
+> **Sem Railway?** Deixe `VITE_SCRAPER_URL` em branco ou não inclua — vai usar `localhost:3001` automaticamente.
 
 ### 2️⃣ `.env` na pasta `scraper-service` (para o scraper)
 
@@ -33,6 +38,7 @@ SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 ✅ **Raiz do projeto** (`.env`):
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_SCRAPER_URL` ← URL do scraper no Railway (opcional, usa localhost:3001 se vazio)
 
 ✅ **scraper-service** (`.env`):
 - `SUPABASE_URL`

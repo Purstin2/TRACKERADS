@@ -258,8 +258,8 @@ const OfferDetailScreen = ({
         setIsScrapingRunning(true);
         showToast("ðŸ¤– Iniciando scraping automÃ¡tico... Isso pode levar atÃ© 2 minutos.", "info");
         
-        // URL do serviÃ§o local
-        const scraperUrl = 'http://localhost:3001/api/scrape/test';
+        // URL do serviço (local ou Railway via VITE_SCRAPER_URL)
+        const scraperUrl = `${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/test`;
         
         try {
             console.log(`[SCRAPING] Conectando com serviÃ§o local: ${scraperUrl}`);
