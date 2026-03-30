@@ -12,7 +12,7 @@ import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
 import AuthForm from './components/auth/AuthForm';
 import AdvancedFilters from './components/ui/AdvancedFilters';
-import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter, SearchCheck } from 'lucide-react';
+import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter, Search } from 'lucide-react';
 import { exportToCSV, exportToJSON, exportDetailedReport } from './utils/exportHelpers';
 import ReactMarkdown from 'react-markdown';
 
@@ -550,7 +550,7 @@ function App() {
         { id: 'dashboard', icon: BarChart3,         label: 'Dashboard' },
         { id: 'compare',   icon: ChevronsLeftRight, label: 'Comparar' },
         { id: 'alerts',    icon: Bell,              label: 'Alertas' },
-        { id: 'discovery', icon: SearchCheck,       label: 'Descoberta' },
+        { id: 'discovery', icon: Search,             label: 'Descoberta' },
     ] as const;
 
     return (
