@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { startScheduler, startSchedulerWithInitialRun, runScrapingJob } from './scheduler.js';
+import { startScheduler, startSchedulerWithInitialRun, runScrapingJob, runDiscoveryJob } from './scheduler.js';
 import { scrapeFacebookAdsCount } from './scraper.js';
-import { getOffersWithFacebookLinks } from './supabaseService.js';
+import { discoverOffersByKeyword } from './discoveryService.js';
+import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
 
 dotenv.config();
@@ -157,6 +158,59 @@ app.post('/api/scrape/test', async (req, res) => {
         });
     }
 });
+
+// ── DISCOVERY ENDPOINTS ───────────────────────────────────────────────────────
+
+// Dispara o job de discovery para todas as keywords ativas
+app.post('/api/discovery/run', async (req, res) => {
+    try {
+        console.log('🔍 Discovery job disparado manualmente');
+
+        // Roda em background para não bloquear a resposta
+        runDiscoveryJob()
+            .then(results => console.log('✅ Discovery manual concluído:', results))
+            .catch(error => console.error('❌ Erro no discovery manual:', error));
+
+        res.json({
+            success: true,
+            message: 'Job de discovery iniciado em background',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Testa discovery para uma keyword específica (síncrono, para debug)
+app.post('/api/discovery/test', async (req, res) => {
+    req.setTimeout(300000); // 5 min
+    res.setTimeout(300000);
+
+    try {
+        const { keyword, minAdCount = 20, minDaysRunning = 2, maxAdvertisers = 5 } = req.body;
+
+        if (!keyword) {
+            return res.status(400).json({ success: false, error: 'keyword é obrigatória' });
+        }
+
+        console.log(`🔍 Testando discovery para: "${keyword}"`);
+
+        const result = await discoverOffersByKeyword(keyword, {
+            minAdCount,
+            minDaysRunning,
+            maxAdvertisers
+        });
+
+        res.json({
+            ...result,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Endpoint para listar ofertas monitoradas
 app.get('/api/offers', async (req, res) => {

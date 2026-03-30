@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple } from './scraper.js';
-import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult } from './supabaseService.js';
+import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
+import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
 
 /**
@@ -111,6 +112,71 @@ export async function runScrapingJob() {
 }
 
 /**
+ * Job de descoberta automática de ofertas
+ * Processa todas as keywords ativas de todos os usuários
+ */
+export async function runDiscoveryJob() {
+    console.log('\n====================================');
+    console.log('🔍 INICIANDO JOB DE DISCOVERY');
+    console.log(`⏰ ${new Date().toLocaleString('pt-BR')}`);
+    console.log('====================================\n');
+
+    try {
+        const keywords = await getActiveDiscoveryKeywords();
+
+        if (keywords.length === 0) {
+            console.log('⚠️  Nenhuma keyword de discovery ativa encontrada.');
+            return { processed: 0, found: 0 };
+        }
+
+        console.log(`🔑 Keywords a processar: ${keywords.length}`);
+
+        let totalFound = 0;
+
+        for (const kw of keywords) {
+            console.log(`\n🔑 Processando keyword: "${kw.keyword}" (user: ${kw.user_id.substring(0, 8)}...)`);
+
+            const result = await discoverOffersByKeyword(kw.keyword, {
+                minAdCount: 20,
+                minDaysRunning: 2,
+                maxAdvertisers: 15,
+                country: 'BR'
+            });
+
+            if (result.success && result.offers.length > 0) {
+                await saveDiscoveredOffers(kw.user_id, result.offers);
+                totalFound += result.offers.length;
+                console.log(`✅ "${kw.keyword}": ${result.offers.length} oferta(s) qualificada(s) salvas`);
+            } else {
+                console.log(`ℹ️  "${kw.keyword}": nenhuma oferta qualificada`);
+            }
+
+            await updateKeywordLastRun(kw.id);
+
+            // Pausa entre keywords para não sobrecarregar
+            if (keywords.indexOf(kw) < keywords.length - 1) {
+                const pause = 10000 + Math.random() * 5000;
+                console.log(`⏸️  Aguardando ${(pause / 1000).toFixed(0)}s antes da próxima keyword...`);
+                await new Promise(r => setTimeout(r, pause));
+            }
+        }
+
+        console.log('\n====================================');
+        console.log('📊 RESUMO DO JOB DE DISCOVERY');
+        console.log(`   Keywords processadas: ${keywords.length}`);
+        console.log(`   Ofertas encontradas: ${totalFound}`);
+        console.log(`   ⏰ ${new Date().toLocaleString('pt-BR')}`);
+        console.log('====================================\n');
+
+        return { processed: keywords.length, found: totalFound };
+
+    } catch (error) {
+        console.error('\n❌ ERRO CRÍTICO NO JOB DE DISCOVERY:', error);
+        throw error;
+    }
+}
+
+/**
  * Inicia o agendamento automático
  * Roda a cada 12 horas (às 00:00 e 12:00)
  */
@@ -158,6 +224,20 @@ export function startScheduler() {
     const nextRun = nextNoon < nextMidnight ? nextNoon : nextMidnight;
     console.log(`📅 Próxima execução: ${nextRun.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
+    // Job de Discovery: 1x por dia às 08:00 BRT (11:00 UTC)
+    cron.schedule('0 11 * * *', async () => {
+        const now = new Date();
+        console.log('\n🔔 ====================================');
+        console.log(`🔔 DISCOVERY CRON! ${now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+        console.log('🔔 ====================================\n');
+        try {
+            await runDiscoveryJob();
+        } catch (error) {
+            console.error('❌ Erro no discovery agendado:', error);
+        }
+    }, { timezone: 'America/Sao_Paulo' });
+
+    console.log('🔍 Discovery agendado: 08:00 BRT (diário)');
     console.log('✅ Scheduler configurado e rodando!\n');
 }
 

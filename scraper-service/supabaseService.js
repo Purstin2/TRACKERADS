@@ -101,6 +101,125 @@ export async function updateOfferAdCount(offerId, adCount) {
     }
 }
 
+// ─── DISCOVERY FUNCTIONS ─────────────────────────────────────────────────────
+
+/**
+ * Busca todas as keywords de discovery ativas (todos os usuários)
+ */
+export async function getActiveDiscoveryKeywords() {
+    try {
+        const { data, error } = await supabase
+            .from('discovery_keywords')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao buscar keywords:', error);
+        return [];
+    }
+}
+
+/**
+ * Atualiza o last_run_at de uma keyword
+ */
+export async function updateKeywordLastRun(keywordId) {
+    try {
+        const { error } = await supabase
+            .from('discovery_keywords')
+            .update({ last_run_at: new Date().toISOString() })
+            .eq('id', keywordId);
+
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao atualizar last_run_at:', error);
+        return false;
+    }
+}
+
+/**
+ * Salva ofertas descobertas no banco.
+ * Usa upsert por (user_id, facebook_link) para evitar duplicatas —
+ * se já existir e ainda estiver 'pending', atualiza o ad_count.
+ */
+export async function saveDiscoveredOffers(userId, offers) {
+    if (!offers || offers.length === 0) return true;
+
+    try {
+        const rows = offers.map(o => ({
+            user_id: userId,
+            keyword: o.keyword,
+            advertiser_name: o.advertiser_name,
+            facebook_page_id: o.facebook_page_id,
+            facebook_link: o.facebook_link,
+            ad_count: o.ad_count,
+            days_running: o.days_running,
+            oldest_ad_date: o.oldest_ad_date,
+            status: 'pending',
+            discovered_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
+            .from('discovered_offers')
+            .upsert(rows, {
+                onConflict: 'user_id,facebook_link',
+                ignoreDuplicates: false
+            });
+
+        if (error) throw error;
+
+        console.log(`[SUPABASE] ${rows.length} ofertas descobertas salvas para user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao salvar discovered_offers:', error);
+        return false;
+    }
+}
+
+/**
+ * Busca descobertas de um usuário específico
+ */
+export async function getDiscoveredOffers(userId) {
+    try {
+        const { data, error } = await supabase
+            .from('discovered_offers')
+            .select('*')
+            .eq('user_id', userId)
+            .order('discovered_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao buscar discovered_offers:', error);
+        return [];
+    }
+}
+
+/**
+ * Atualiza o status de uma oferta descoberta
+ * @param {string} id - ID da discovered_offer
+ * @param {'pending'|'added'|'dismissed'} status
+ */
+export async function updateDiscoveredOfferStatus(id, status) {
+    try {
+        const { error } = await supabase
+            .from('discovered_offers')
+            .update({ status })
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.error('[SUPABASE] Erro ao atualizar status:', error);
+        return false;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Registra um log de scraping (opcional - para histórico)
  * @param {string} offerId - ID da oferta

@@ -7,11 +7,12 @@ import OfferDetailScreen from './components/screens/OfferDetailScreen';
 import ComparativeAnalysisScreen from './components/screens/ComparativeAnalysisScreen';
 import DashboardScreen from './components/screens/DashboardScreen';
 import AlertsScreen from './components/screens/AlertsScreen';
+import DiscoveryScreen from './components/screens/DiscoveryScreen';
 import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
 import AuthForm from './components/auth/AuthForm';
 import AdvancedFilters from './components/ui/AdvancedFilters';
-import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter } from 'lucide-react';
+import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter, SearchCheck } from 'lucide-react';
 import { exportToCSV, exportToJSON, exportDetailedReport } from './utils/exportHelpers';
 import ReactMarkdown from 'react-markdown';
 
@@ -549,6 +550,7 @@ function App() {
         { id: 'dashboard', icon: BarChart3,         label: 'Dashboard' },
         { id: 'compare',   icon: ChevronsLeftRight, label: 'Comparar' },
         { id: 'alerts',    icon: Bell,              label: 'Alertas' },
+        { id: 'discovery', icon: SearchCheck,       label: 'Descoberta' },
     ] as const;
 
     return (
@@ -698,6 +700,14 @@ function App() {
                             supabaseClient={activeSupabaseClient}
                             offers={offers}
                             showToast={showToast}
+                        />
+                    )}
+                    {currentScreen === 'discovery' && (
+                        <DiscoveryScreen
+                            userId={userId}
+                            supabaseClient={activeSupabaseClient}
+                            showToast={showToast}
+                            onAddOffer={handleAddOffer}
                         />
                     )}
                     {currentScreen === 'detail' && selectedOfferId && (

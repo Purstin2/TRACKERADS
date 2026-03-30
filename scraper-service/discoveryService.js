@@ -1,0 +1,298 @@
+import { chromium } from 'playwright';
+
+/**
+ * Serviço de Descoberta Automática de Ofertas
+ *
+ * Busca por anunciantes na Biblioteca de Anúncios do Facebook
+ * com base em uma keyword e retorna apenas os que passam nos filtros:
+ *  - Mínimo de adCount anúncios ativos
+ *  - Rodando há pelo menos minDaysRunning dias
+ */
+
+const MONTHS_PT = {
+    'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+    'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11,
+    'janeiro': 0, 'fevereiro': 1, 'marco': 2, 'março': 2, 'abril': 3,
+    'maio': 4, 'junho': 5, 'julho': 6, 'agosto': 7, 'setembro': 8,
+    'outubro': 9, 'novembro': 10, 'dezembro': 11
+};
+
+/**
+ * Extrai a contagem de anúncios ativos do texto da página
+ */
+function extractAdCountFromText(bodyText) {
+    const patterns = [
+        /~?\s*([\d.,]+)\s+resultados?/i,
+        /([\d.,]+)\s+resultados?/i,
+        /~?\s*([\d.,]+)\s+anúncios?/i,
+        /([\d.,]+)\s+anúncios?\s+ativos?/i,
+        /~?\s*([\d.,]+)\s+results?/i,
+        /([\d.,]+)\s+results?/i,
+        /([\d.,]+)\s+active\s+ads?/i,
+    ];
+    for (const pat of patterns) {
+        const m = bodyText.match(pat);
+        if (m) {
+            const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+            if (n > 0 && n <= 1000000 && (n < 2020 || n > 2030)) return n;
+        }
+    }
+    return null;
+}
+
+/**
+ * Descobre ofertas escalando para uma keyword específica
+ * @param {string} keyword - Palavra-chave para busca
+ * @param {Object} options
+ * @param {number} options.minAdCount - Mínimo de anúncios ativos (padrão: 20)
+ * @param {number} options.minDaysRunning - Mínimo de dias rodando (padrão: 2)
+ * @param {number} options.maxAdvertisers - Máximo de anunciantes a processar (padrão: 15)
+ * @param {string} options.country - País (padrão: 'BR')
+ * @returns {Promise<{success: boolean, offers: Array, keyword: string, error?: string}>}
+ */
+export async function discoverOffersByKeyword(keyword, options = {}) {
+    const {
+        minAdCount = 20,
+        minDaysRunning = 2,
+        maxAdvertisers = 15,
+        country = 'BR'
+    } = options;
+
+    let browser;
+    const qualifiedOffers = [];
+
+    try {
+        console.log(`\n[DISCOVERY] ========================================`);
+        console.log(`[DISCOVERY] Iniciando busca por: "${keyword}"`);
+        console.log(`[DISCOVERY] Filtros: ≥${minAdCount} ads | ≥${minDaysRunning} dias | país: ${country}`);
+        console.log(`[DISCOVERY] ========================================`);
+
+        browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            locale: 'pt-BR',
+            timezoneId: 'America/Sao_Paulo'
+        });
+
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' });
+            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
+        });
+
+        // ── PASSO 1: Busca por keyword ──────────────────────────────────────
+        const searchPage = await context.newPage();
+        searchPage.setDefaultTimeout(30000);
+
+        const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(keyword)}&search_type=keyword_unordered`;
+        console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
+
+        await searchPage.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await searchPage.waitForTimeout(5000);
+
+        // Scroll para carregar mais resultados
+        for (let s = 0; s < 4; s++) {
+            await searchPage.evaluate(() => window.scrollBy(0, 900));
+            await searchPage.waitForTimeout(1500);
+        }
+
+        // ── PASSO 2: Extrai page IDs únicos dos resultados ──────────────────
+        const advertisers = await searchPage.evaluate(() => {
+            const seen = new Set();
+            const result = [];
+
+            // Links que contêm view_all_page_id são os botões "Ver todos os anúncios"
+            const links = document.querySelectorAll('a[href*="view_all_page_id"]');
+            links.forEach(link => {
+                const match = link.href.match(/view_all_page_id=(\d+)/);
+                if (!match || seen.has(match[1])) return;
+                seen.add(match[1]);
+
+                // Tenta extrair o nome do anunciante do card pai
+                const card = link.closest('[data-testid]') || link.closest('div[role="article"]') || link.parentElement;
+                const strongEl = card?.querySelector('strong');
+                const h2El = card?.querySelector('h2, h3');
+                const nameFromLink = link.textContent?.trim();
+                const name = (strongEl?.textContent?.trim() || h2El?.textContent?.trim() || nameFromLink || '').substring(0, 120);
+
+                result.push({
+                    pageId: match[1],
+                    name: name || `Anunciante ${match[1]}`
+                });
+            });
+
+            return result;
+        });
+
+        await searchPage.close();
+
+        console.log(`[DISCOVERY] Anunciantes únicos encontrados: ${advertisers.length}`);
+
+        if (advertisers.length === 0) {
+            console.log('[DISCOVERY] Nenhum anunciante encontrado para essa keyword.');
+            await browser.close();
+            return { success: true, offers: [], keyword };
+        }
+
+        // ── PASSO 3: Verifica cada anunciante contra os filtros ─────────────
+        const toProcess = advertisers.slice(0, maxAdvertisers);
+
+        for (let i = 0; i < toProcess.length; i++) {
+            const { pageId, name } = toProcess[i];
+            console.log(`\n[DISCOVERY] [${i + 1}/${toProcess.length}] Verificando: ${name}`);
+
+            const adPage = await context.newPage();
+            adPage.setDefaultTimeout(30000);
+
+            try {
+                const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${pageId}`;
+
+                await adPage.goto(libUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await adPage.waitForTimeout(4000);
+
+                // Scroll para garantir carregamento de datas
+                await adPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+                await adPage.waitForTimeout(1500);
+                await adPage.evaluate(() => window.scrollTo(0, 0));
+                await adPage.waitForTimeout(1000);
+
+                // Verifica contagem de anúncios
+                const adCount = await adPage.evaluate((extractFn) => {
+                    const bodyText = document.body.innerText || '';
+                    const patterns = [
+                        /~?\s*([\d.,]+)\s+resultados?/i,
+                        /([\d.,]+)\s+resultados?/i,
+                        /~?\s*([\d.,]+)\s+anúncios?/i,
+                        /([\d.,]+)\s+anúncios?\s+ativos?/i,
+                        /~?\s*([\d.,]+)\s+results?/i,
+                        /([\d.,]+)\s+results?/i,
+                        /([\d.,]+)\s+active\s+ads?/i,
+                    ];
+                    for (const pat of patterns) {
+                        const m = bodyText.match(pat);
+                        if (m) {
+                            const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+                            if (n > 0 && n <= 1000000 && (n < 2020 || n > 2030)) return n;
+                        }
+                    }
+                    return null;
+                });
+
+                if (adCount === null || adCount < minAdCount) {
+                    console.log(`[DISCOVERY] ✗ ${name}: ${adCount ?? 0} ads ativos (mínimo: ${minAdCount})`);
+                    await adPage.close();
+                    await randomDelay(3000, 6000);
+                    continue;
+                }
+
+                console.log(`[DISCOVERY] ✓ ${name}: ${adCount} ads — verificando datas...`);
+
+                // Extrai a data do anúncio mais antigo ativo
+                const oldestDateStr = await adPage.evaluate(() => {
+                    const text = document.body.innerText;
+                    const timestamps = [];
+
+                    const monthsPt = {
+                        'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+                        'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11,
+                        'janeiro': 0, 'fevereiro': 1, 'marco': 2, 'março': 2, 'abril': 3,
+                        'maio': 4, 'junho': 5, 'julho': 6, 'agosto': 7, 'setembro': 8,
+                        'outubro': 9, 'novembro': 10, 'dezembro': 11
+                    };
+
+                    // Português: "Iniciado em 15 de jan. de 2024"
+                    const ptRegex = /Iniciado em\s+(\d{1,2})\s+de\s+(\w+)\.?\s+de\s+(\d{4})/gi;
+                    let m;
+                    while ((m = ptRegex.exec(text)) !== null) {
+                        const day = parseInt(m[1]);
+                        const monthKey = m[2].toLowerCase().replace('.', '').replace('ç', 'c');
+                        const year = parseInt(m[3]);
+                        const month = monthsPt[monthKey];
+                        if (month !== undefined && year >= 2020) {
+                            timestamps.push(new Date(year, month, day).getTime());
+                        }
+                    }
+
+                    // Inglês: "Started running on January 15, 2024"
+                    const enRegex = /Started running on\s+(\w+\s+\d{1,2},?\s+\d{4})/gi;
+                    while ((m = enRegex.exec(text)) !== null) {
+                        const d = new Date(m[1]);
+                        if (!isNaN(d.getTime()) && d.getFullYear() >= 2020) {
+                            timestamps.push(d.getTime());
+                        }
+                    }
+
+                    if (timestamps.length === 0) return null;
+                    return new Date(Math.min(...timestamps)).toISOString();
+                });
+
+                const daysRunning = oldestDateStr
+                    ? Math.floor((Date.now() - new Date(oldestDateStr).getTime()) / (1000 * 60 * 60 * 24))
+                    : null;
+
+                if (daysRunning !== null && daysRunning < minDaysRunning) {
+                    console.log(`[DISCOVERY] ✗ ${name}: apenas ${daysRunning} dia(s) rodando (mínimo: ${minDaysRunning})`);
+                    await adPage.close();
+                    await randomDelay(3000, 6000);
+                    continue;
+                }
+
+                // Tenta refinar o nome do anunciante via título da página
+                let advertiserName = name;
+                if (!advertiserName || advertiserName.startsWith('Anunciante ')) {
+                    const pageTitle = await adPage.title();
+                    if (pageTitle && !pageTitle.toLowerCase().includes('facebook')) {
+                        advertiserName = pageTitle.split(' - ')[0].trim();
+                    }
+                }
+
+                console.log(`[DISCOVERY] ✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias`);
+
+                qualifiedOffers.push({
+                    advertiser_name: advertiserName,
+                    facebook_page_id: pageId,
+                    facebook_link: libUrl,
+                    ad_count: adCount,
+                    days_running: daysRunning,
+                    oldest_ad_date: oldestDateStr
+                        ? new Date(oldestDateStr).toISOString().split('T')[0]
+                        : null,
+                    keyword
+                });
+
+            } catch (err) {
+                console.log(`[DISCOVERY] Erro ao processar ${pageId}: ${err.message}`);
+            } finally {
+                await adPage.close().catch(() => {});
+            }
+
+            // Delay aleatório entre requests (anti-bloqueio)
+            await randomDelay(4000, 9000);
+        }
+
+        await browser.close();
+
+        console.log(`\n[DISCOVERY] ========================================`);
+        console.log(`[DISCOVERY] Resultado para "${keyword}": ${qualifiedOffers.length} qualificadas`);
+        console.log(`[DISCOVERY] ========================================\n`);
+
+        return { success: true, offers: qualifiedOffers, keyword };
+
+    } catch (error) {
+        console.error('[DISCOVERY] Erro crítico:', error);
+        if (browser) await browser.close().catch(() => {});
+        return { success: false, offers: [], keyword, error: error.message };
+    }
+}
+
+/**
+ * Helper: delay aleatório entre min e max ms
+ */
+function randomDelay(min, max) {
+    const ms = Math.floor(min + Math.random() * (max - min));
+    console.log(`[DISCOVERY] Aguardando ${(ms / 1000).toFixed(1)}s...`);
+    return new Promise(r => setTimeout(r, ms));
+}
