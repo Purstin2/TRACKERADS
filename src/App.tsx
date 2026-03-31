@@ -504,42 +504,48 @@ function App() {
 
     if (!isAuthReady) {
         return (
-            <div className="bg-[#080C14] min-h-screen flex items-center justify-center">
-                <div className="text-center space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center mx-auto">
-                        <Database size={24} className="text-blue-400 animate-pulse" />
+            <div className="bg-[#060A12] min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-5 animate-fade-in">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-600/15 border border-blue-500/20 flex items-center justify-center mx-auto shadow-lg shadow-blue-900/30">
+                        <Database size={26} className="text-blue-400 animate-pulse" />
                     </div>
-                    <p className="text-slate-400 text-sm font-medium tracking-wider">INICIALIZANDO...</p>
+                    <div>
+                        <p className="text-white font-semibold text-sm tracking-wide" style={{fontFamily: 'Outfit, sans-serif'}}>Purstinlab</p>
+                        <p className="text-slate-600 text-xs tracking-widest uppercase mt-1">Inicializando...</p>
+                    </div>
                 </div>
             </div>
         );
     }
-    
+
     if (!userId) {
         return (
-            <div className="bg-[#080C14] min-h-screen flex items-center justify-center p-4">
-                <div className="w-full max-w-md">
+            <div className="bg-[#060A12] min-h-screen flex items-center justify-center p-4" style={{backgroundImage: 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79,142,247,0.08) 0%, transparent 60%)'}}>
+                <div className="w-full max-w-md animate-fade-in-scale">
                     <div className="text-center mb-8">
-                        <div className="w-14 h-14 rounded-2xl bg-blue-600/15 border border-blue-500/20 flex items-center justify-center mx-auto mb-4">
-                            <Database size={28} className="text-blue-400" />
+                        <div className="w-16 h-16 rounded-2xl bg-blue-600/12 border border-blue-500/20 flex items-center justify-center mx-auto mb-5 shadow-xl shadow-blue-900/20">
+                            <Database size={30} className="text-blue-400" />
                         </div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Purstinlab</h1>
-                        <p className="text-slate-500 text-sm mt-1">Plataforma de Inteligência em Anúncios</p>
+                        <h1 className="text-3xl font-bold text-white tracking-tight" style={{fontFamily: 'Outfit, sans-serif'}}>Purstinlab</h1>
+                        <p className="text-slate-500 text-sm mt-1.5">Plataforma de Inteligência em Anúncios</p>
                     </div>
                     <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
                 </div>
             </div>
         );
     }
-    
+
     if (isAuthReady && isLoading && userId && activeSupabaseClient) {
         return (
-            <div className="bg-[#080C14] min-h-screen flex items-center justify-center">
-                <div className="text-center space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center mx-auto">
+            <div className="bg-[#060A12] min-h-screen flex items-center justify-center">
+                <div className="text-center space-y-4 animate-fade-in">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600/15 border border-blue-500/20 flex items-center justify-center mx-auto shadow-lg shadow-blue-900/25">
                         <Database size={24} className="text-blue-400 animate-pulse" />
                     </div>
-                    <p className="text-slate-400 text-sm font-medium tracking-wider">CARREGANDO DADOS...</p>
+                    <div>
+                        <p className="text-white font-semibold text-sm" style={{fontFamily: 'Outfit, sans-serif'}}>Purstinlab</p>
+                        <p className="text-slate-600 text-xs tracking-widest uppercase mt-1">Carregando dados...</p>
+                    </div>
                 </div>
             </div>
         );
@@ -554,30 +560,30 @@ function App() {
     ] as const;
 
     return (
-        <div className="bg-[#080C14] text-slate-100 min-h-screen flex flex-row">
+        <div className="bg-[#060A12] text-slate-100 min-h-screen flex flex-row">
             {/* ── Sidebar ──────────────────────────────────────────────── */}
             <aside className={`h-screen ${
-                sidebarCollapsed ? 'w-[68px]' : 'w-64'
-            } flex flex-col fixed left-0 top-0 z-40 bg-[#080C14] border-r border-white/[0.05] transition-all duration-300`}>
+                sidebarCollapsed ? 'w-[64px]' : 'w-60'
+            } flex flex-col fixed left-0 top-0 z-40 bg-[#060A12] border-r border-white/[0.045] transition-all duration-300`}>
 
                 {/* Logo */}
                 <div
-                    className="flex items-center gap-3 px-4 py-5 cursor-pointer group border-b border-white/[0.05]"
+                    className="flex items-center gap-3 px-4 py-[18px] cursor-pointer group border-b border-white/[0.045]"
                     onClick={() => { setCurrentScreen('grid'); setSelectedOfferId(null); setShowNotes(false); setShowActiveOffers(false); }}
                 >
-                    <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/25 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-600/30 transition-colors">
-                        <Database size={18} className="text-blue-400" />
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500/25 to-violet-600/15 border border-blue-500/20 flex items-center justify-center flex-shrink-0 group-hover:from-blue-500/35 group-hover:border-blue-500/30 transition-all shadow-md shadow-blue-900/20">
+                        <Database size={15} className="text-blue-400" />
                     </div>
                     {!sidebarCollapsed && (
-                        <div>
-                            <span className="text-sm font-bold text-white tracking-tight leading-none">Purstinlab</span>
-                            <p className="text-[10px] text-slate-500 leading-none mt-0.5">Ad Intelligence</p>
+                        <div className="min-w-0">
+                            <span className="text-[13px] font-bold text-white tracking-tight leading-none" style={{fontFamily: 'Outfit, sans-serif'}}>Purstinlab</span>
+                            <p className="text-[10px] text-slate-600 leading-none mt-[3px] font-medium tracking-wide">Ad Intelligence</p>
                         </div>
                     )}
                 </div>
 
                 {/* Nav */}
-                <nav className="flex flex-col gap-1 px-2 pt-4 flex-1">
+                <nav className="flex flex-col gap-0.5 px-2 pt-3 flex-1">
                     {navItems.map(({ id, icon: Icon, label }) => {
                         const isActive = currentScreen === id && !showNotes && !showActiveOffers;
                         return (
@@ -591,39 +597,39 @@ function App() {
                                     updateUrl(id);
                                 }}
                                 title={sidebarCollapsed ? label : undefined}
-                                className={`flex items-center ${
+                                className={`relative flex items-center ${
                                     sidebarCollapsed ? 'justify-center' : 'gap-3'
-                                } px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                                } px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
                                     isActive
-                                        ? 'bg-blue-600/15 text-blue-300 border border-blue-500/20'
-                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.05] border border-transparent'
+                                        ? 'bg-blue-600/12 text-blue-300 nav-active-dot'
+                                        : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'
                                 }`}
                             >
-                                <Icon size={18} className={isActive ? 'text-blue-400' : ''} />
-                                {!sidebarCollapsed && <span>{label}</span>}
+                                <Icon size={16} className={isActive ? 'text-blue-400' : 'text-slate-600'} strokeWidth={isActive ? 2.5 : 2} />
+                                {!sidebarCollapsed && <span className={isActive ? 'text-slate-200' : ''}>{label}</span>}
                             </button>
                         );
                     })}
                 </nav>
 
                 {/* Footer */}
-                <div className="px-2 pb-4">
+                <div className="px-2 pb-3 space-y-1.5">
                     {/* Collapse button */}
                     <button
                         onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-300 hover:bg-white/[0.05] transition-all border border-transparent hover:border-white/[0.06] mb-2"
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-400 hover:bg-white/[0.04] transition-all"
                         title={sidebarCollapsed ? 'Expandir' : 'Recolher'}
                     >
                         {sidebarCollapsed ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
                         ) : (
-                            <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg><span>Recolher</span></>
+                            <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg><span>Recolher</span></>
                         )}
                     </button>
                     {!sidebarCollapsed && (
-                        <div className="px-2 py-2 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-                            <p className="text-[10px] text-slate-600 mb-0.5 font-medium">SESSÃO</p>
-                            <p className="text-xs text-slate-400 font-mono truncate">{userId.substring(0, 14)}…</p>
+                        <div className="px-2.5 py-2 rounded-xl bg-white/[0.025] border border-white/[0.04]">
+                            <p className="text-[9px] text-slate-700 mb-0.5 font-semibold tracking-widest uppercase">Sessão</p>
+                            <p className="text-[11px] text-slate-500 font-mono truncate">{userId.substring(0, 14)}…</p>
                         </div>
                     )}
                 </div>
@@ -631,7 +637,7 @@ function App() {
 
             {/* ── Main content ─────────────────────────────────────────── */}
             <main className={`flex-1 ${
-                sidebarCollapsed ? 'ml-[68px]' : 'ml-64'
+                sidebarCollapsed ? 'ml-[64px]' : 'ml-60'
             } min-h-screen flex flex-col transition-all duration-300`}>
                 {/* Alerta de modo demo */}
                 {isSupabaseMockActive && (
@@ -724,9 +730,9 @@ function App() {
                     )}
                 </div>
                 <footer className="border-t border-white/[0.04] px-8 py-3 flex items-center justify-between">
-                    <span className="text-xs text-slate-600">Purstinlab © {new Date().getFullYear()}</span>
-                    <span className="text-xs text-emerald-500 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                    <span className="text-[11px] text-slate-700 font-medium" style={{fontFamily: 'Outfit, sans-serif'}}>Purstinlab © {new Date().getFullYear()}</span>
+                    <span className="text-[11px] text-emerald-500/70 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse-dot"></span>
                         Online
                     </span>
                 </footer>

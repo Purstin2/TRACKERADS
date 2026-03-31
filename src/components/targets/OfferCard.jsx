@@ -233,72 +233,78 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
     return (
         <div className={`
-            relative flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 group
-            bg-[#0D1220]/80 backdrop-blur-xl
+            relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 group
+            bg-[#0B1120]/85 backdrop-blur-xl
             ${isPinned
-                ? 'border-blue-500/35 shadow-xl shadow-blue-900/25 ring-1 ring-blue-500/15'
+                ? 'border border-blue-500/30 shadow-xl shadow-blue-950/40 ring-1 ring-blue-500/10'
                 : offer.is_archived
-                    ? 'border-white/[0.04] opacity-50 grayscale-[0.4]'
-                    : 'border-white/[0.07] hover:border-white/[0.14] hover:shadow-xl hover:shadow-black/40'
+                    ? 'border border-white/[0.04] opacity-45 grayscale-[0.5]'
+                    : 'border border-white/[0.055] hover:border-white/[0.12] hover:shadow-2xl hover:shadow-black/50'
             }
-        `}>
-            {/* Top accent line when pinned */}
-            {isPinned && <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />}
+        `} style={{boxShadow: isPinned ? '0 0 0 1px rgba(79,142,247,0.12), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)' : undefined}}>
+
+            {/* Top accent gradient */}
+            <div className={`absolute top-0 left-0 right-0 h-[1px] ${
+                isPinned
+                    ? 'bg-gradient-to-r from-transparent via-blue-400/60 to-transparent'
+                    : 'bg-gradient-to-r from-transparent via-white/[0.06] to-transparent'
+            }`} />
 
             {/* Header */}
             <div className="p-4 pb-3">
-                <div className="flex items-start justify-between gap-2 mb-2.5">
+                <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-slate-100 truncate group-hover:text-white transition-colors" title={offer.name}>
+                        <h3 className="text-[13px] font-semibold text-slate-200 truncate group-hover:text-white transition-colors leading-snug" title={offer.name} style={{fontFamily: 'Outfit, sans-serif'}}>
                             {offer.name}
                         </h3>
-                        <span className="text-xs text-slate-600 font-medium">{formatCreationDate(offer.created_at)}</span>
+                        <span className="text-[11px] text-slate-700 font-medium mt-0.5 block">{formatCreationDate(offer.created_at)}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
                         {isActive && (
-                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/8 border border-emerald-500/18 px-1.5 py-0.5 rounded-full tracking-wider">
                                 ATIVA
                             </span>
                         )}
                         {isPinned && (
-                            <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                                FIXADO
+                            <span className="text-[9px] font-bold text-blue-400 bg-blue-500/8 border border-blue-500/18 px-1.5 py-0.5 rounded-full tracking-wider">
+                                PIN
                             </span>
                         )}
                     </div>
                 </div>
 
                 {/* Status badge */}
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-[10px] font-bold tracking-wide uppercase ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
                     {statusInfo.label}
                 </span>
             </div>
 
             {/* Metric */}
-            <div className="px-4 pb-3 border-t border-white/[0.05] pt-3">
-                <p className="text-[10px] text-slate-600 font-semibold uppercase tracking-widest mb-1">AnÃºncios Ativos</p>
-                <div className="flex items-end gap-2">
-                    <span className="text-3xl font-bold text-white tabular-nums leading-none">{latestAdCount}</span>
+            <div className="px-4 pb-3 border-t border-white/[0.04] pt-3">
+                <p className="text-[9px] text-slate-700 font-bold uppercase tracking-[0.12em] mb-1.5">Anúncios Ativos</p>
+                <div className="flex items-end gap-2.5">
+                    <span className="text-[32px] font-bold text-white leading-none num-display">{latestAdCount}</span>
                     {dailyPercentageChangeDisplay && (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full mb-0.5 ${
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg mb-1 ${
                             isGrowing
-                                ? 'text-emerald-400 bg-emerald-500/10'
+                                ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/15'
                                 : isFalling
-                                    ? 'text-rose-400 bg-rose-500/10'
-                                    : 'text-slate-500 bg-white/[0.04]'
+                                    ? 'text-rose-400 bg-rose-500/10 border border-rose-500/15'
+                                    : 'text-slate-600 bg-white/[0.03] border border-white/[0.05]'
                         }`}>
                             {dailyPercentageChangeDisplay}
                         </span>
                     )}
                 </div>
                 {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <p className="text-[11px] text-slate-600 mt-1.5">
-                        7d: <span className={`font-semibold ${
+                    <p className="text-[11px] text-slate-700 mt-1.5 flex items-center gap-1">
+                        <span className="text-slate-600">7d:</span>
+                        <span className={`font-semibold ${
                             parseFloat(performanceAnalysis.weeklyChange) > 0
                                 ? 'text-emerald-400'
                                 : parseFloat(performanceAnalysis.weeklyChange) < 0
                                     ? 'text-rose-400'
-                                    : 'text-slate-500'
+                                    : 'text-slate-600'
                         }`}>{performanceAnalysis.weeklyChange}</span>
                     </p>
                 )}
@@ -306,8 +312,8 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
             {/* Mini chart */}
             {adCountsHistory.length > 1 && (
-                <div className="px-3 pb-3 border-t border-white/[0.05] pt-3">
-                    <div className="h-[56px] w-full">
+                <div className="px-3 pb-3 border-t border-white/[0.04] pt-3">
+                    <div className="h-[52px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart
                                 data={adCountsHistory.slice().reverse().map(ac => ({
@@ -317,31 +323,32 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                                 margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
                             >
                                 <defs>
-                                    <linearGradient id={`cg-${offer.id}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#4F8EF7" stopOpacity={0.8}/>
-                                        <stop offset="100%" stopColor="#4F8EF7" stopOpacity={0.1}/>
+                                    <linearGradient id={`cg-${offer.id}`} x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.9}/>
+                                        <stop offset="100%" stopColor="#4F8EF7" stopOpacity={1}/>
                                     </linearGradient>
                                 </defs>
                                 <Line
                                     type="monotone"
                                     dataKey="v"
-                                    stroke="#4F8EF7"
-                                    strokeWidth={2}
+                                    stroke={`url(#cg-${offer.id})`}
+                                    strokeWidth={1.5}
                                     dot={false}
                                     activeDot={{ r: 3, fill: '#4F8EF7', strokeWidth: 0 }}
-                                    animationDuration={800}
+                                    animationDuration={600}
                                 />
                                 <Tooltip
                                     contentStyle={{
-                                        backgroundColor: '#0D1220',
-                                        border: '1px solid rgba(255,255,255,0.08)',
-                                        borderRadius: '8px',
-                                        padding: '4px 8px',
+                                        backgroundColor: 'rgba(11,17,32,0.97)',
+                                        border: '1px solid rgba(255,255,255,0.07)',
+                                        borderRadius: '10px',
+                                        padding: '5px 10px',
                                         fontSize: '11px',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                                     }}
-                                    labelStyle={{ color: '#64748b', fontSize: '10px' }}
-                                    itemStyle={{ color: '#e2e8f0' }}
-                                    cursor={{ stroke: 'rgba(255,255,255,0.08)' }}
+                                    labelStyle={{ color: '#475569', fontSize: '10px' }}
+                                    itemStyle={{ color: '#e2e8f0', fontFamily: 'JetBrains Mono, monospace' }}
+                                    cursor={{ stroke: 'rgba(255,255,255,0.06)' }}
                                 />
                             </LineChart>
                         </ResponsiveContainer>
@@ -350,37 +357,36 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             )}
 
             {/* Footer */}
-            <div className="mt-auto border-t border-white/[0.05]">
+            <div className="mt-auto border-t border-white/[0.04]">
                 {/* Last update */}
-                <div className="px-4 py-2 text-[11px] text-slate-600 flex items-center justify-between border-b border-white/[0.04]">
-                    <span>Atualizado</span>
-                    <span className="text-slate-400 font-medium">{getSafeTimestamp(offer.last_ad_count_timestamp) || 'Nunca'}</span>
+                <div className="px-4 py-2 text-[10px] flex items-center justify-between">
+                    <span className="text-slate-700 font-medium">Atualizado</span>
+                    <span className="text-slate-500 font-medium font-mono">{getSafeTimestamp(offer.last_ad_count_timestamp) || 'N/A'}</span>
                 </div>
 
                 {/* Actions */}
-                <div className="p-3 space-y-2">
+                <div className="px-3 pb-3 space-y-2">
                     <div className="flex gap-2">
                         {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
                             <button
                                 onClick={handleLocalScraping}
                                 disabled={isScrapingRunning}
-                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all ${
                                     isScrapingRunning
-                                        ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
-                                        : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
+                                        ? 'bg-violet-600/30 cursor-not-allowed opacity-60 text-violet-300 border border-violet-500/20'
+                                        : 'bg-violet-600/90 hover:bg-violet-500 text-white shadow-md shadow-violet-900/30 border border-violet-500/20'
                                 }`}
-                                title="Scraping automÃ¡tico"
                             >
-                                <RefreshCw size={12} className={isScrapingRunning ? 'animate-spin' : ''} />
+                                <RefreshCw size={11} className={isScrapingRunning ? 'animate-spin' : ''} />
                                 {isScrapingRunning ? 'Buscando...' : 'Scraping'}
                             </button>
                         ) : (
                             <button
                                 onClick={() => onToggleActive(offer.id)}
-                                className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                className={`flex-1 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all ${
                                     isActive
-                                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20'
-                                        : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-400 hover:text-slate-200 border border-white/[0.07]'
+                                        ? 'bg-blue-600/90 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30 border border-blue-500/20'
+                                        : 'bg-white/[0.04] hover:bg-white/[0.08] text-slate-500 hover:text-slate-200 border border-white/[0.06]'
                                 }`}
                             >
                                 {isActive ? 'Ativa' : 'Ativar'}
@@ -392,53 +398,53 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                                 const currentUrl = window.location.origin + window.location.pathname;
                                 window.open(`${currentUrl}?view=detail&id=${offer.id}`, '_blank');
                             }}
-                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20 transition-all"
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-blue-600/90 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30 border border-blue-500/20 transition-all"
                         >
-                            <Eye size={12} />
+                            <Eye size={11} />
                             Detalhes
                         </button>
                     </div>
 
                     {/* Icon actions */}
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-0.5">
                         {offer.link && (
                             <a
                                 href={offer.link}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="p-1.5 text-slate-600 hover:text-sky-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                                className="p-2 text-slate-700 hover:text-sky-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                                 title="Abrir link"
                             >
-                                <ExternalLink size={13} />
+                                <ExternalLink size={12} />
                             </a>
                         )}
                         <button
                             onClick={isPinned ? onUnpin : onPin}
-                            className={`p-1.5 transition-colors rounded-lg hover:bg-white/[0.05] ${isPinned ? 'text-blue-400' : 'text-slate-600 hover:text-blue-400'}`}
+                            className={`p-2 transition-colors rounded-lg hover:bg-white/[0.04] ${isPinned ? 'text-blue-400' : 'text-slate-700 hover:text-blue-400'}`}
                             title={isPinned ? 'Desafixar' : 'Fixar'}
                         >
-                            {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
+                            {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
                         </button>
                         <button
                             onClick={() => onEditOffer(offer)}
-                            className="p-1.5 text-slate-600 hover:text-amber-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                            className="p-2 text-slate-700 hover:text-amber-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                             title="Editar"
                         >
-                            <Pencil size={13} />
+                            <Pencil size={12} />
                         </button>
                         <button
                             onClick={() => onToggleArchive(offer.id, offer.is_archived)}
-                            className="p-1.5 text-slate-600 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                            className="p-2 text-slate-700 hover:text-orange-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                             title={offer.is_archived ? 'Restaurar' : 'Arquivar'}
                         >
-                            {offer.is_archived ? <ArchiveRestore size={13}/> : <Archive size={13}/>}
+                            {offer.is_archived ? <ArchiveRestore size={12}/> : <Archive size={12}/>}
                         </button>
                         <button
                             onClick={() => onDeleteOffer(offer.id)}
-                            className="p-1.5 text-slate-600 hover:text-rose-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                            className="p-2 text-slate-700 hover:text-rose-400 transition-colors rounded-lg hover:bg-white/[0.04]"
                             title="Excluir"
                         >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                         </button>
                     </div>
                 </div>
