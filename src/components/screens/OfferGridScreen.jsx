@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw } from 'lucide-react';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
@@ -33,7 +33,15 @@ const OfferGridScreen = ({
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [localFilteredOffers, setLocalFilteredOffers] = useState(offers);
+    const [filtersActive, setFiltersActive] = useState(false);
     const [isScrapingAll, setIsScrapingAll] = useState(false);
+
+    // Sync localFilteredOffers when offers prop changes (only if no active advanced filter)
+    useEffect(() => {
+        if (!filtersActive) {
+            setLocalFilteredOffers(offers);
+        }
+    }, [offers, filtersActive]);
 
     // Sort options
     const sortOptions = [
@@ -87,8 +95,8 @@ const OfferGridScreen = ({
         return { maxAds, consistency, trend, lastActivity };
     };
 
-    // Cards fixados no topo
-    const sortedOffers = [...offers].sort((a, b) => {
+    // Cards fixados no topo — usa localFilteredOffers quando filtros avançados estão ativos
+    const sortedOffers = [...localFilteredOffers].sort((a, b) => {
         const aPinnedIdx = pinnedOfferIds.indexOf(a.id);
         const bPinnedIdx = pinnedOfferIds.indexOf(b.id);
         
@@ -338,7 +346,10 @@ const OfferGridScreen = ({
             {showAdvancedFilters && (
                 <AdvancedFilters
                     offers={offers}
-                    onFilterChange={(filtered) => setLocalFilteredOffers(filtered)}
+                    onFilterChange={(filtered) => {
+                        setLocalFilteredOffers(filtered);
+                        setFiltersActive(filtered.length !== offers.length || filtered.some((f, i) => f.id !== offers[i]?.id));
+                    }}
                     onClose={() => setShowAdvancedFilters(false)}
                 />
             )}
