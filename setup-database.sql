@@ -36,6 +36,10 @@ CREATE POLICY "Users can update their own offers"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "Users can delete their own offers"
+  ON offers FOR DELETE TO authenticated
+  USING (auth.uid() = user_id);
+
 -- Create indexes
 CREATE INDEX IF NOT EXISTS offers_user_id_idx ON offers(user_id);
 CREATE INDEX IF NOT EXISTS offers_is_archived_idx ON offers(is_archived);
