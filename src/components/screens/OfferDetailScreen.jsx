@@ -20,6 +20,7 @@ const OfferDetailScreen = ({
     const [newComment, setNewCommentState] = useState(''); 
     const [isLoading, setIsLoading] = useState(true);
     const [isScrapingRunning, setIsScrapingRunning] = useState(false);
+    const [isManualScrapingRunning, setIsManualScrapingRunning] = useState(false);
     
     const performanceAnalysis = useMemo(
         () => analyzeOfferPerformance(adCounts, 7), 
@@ -251,18 +252,18 @@ const OfferDetailScreen = ({
     
     const handleAutoScraping = async () => {
         if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
-            showToast("Este target nÃ£o tem link da Biblioteca do Facebook", "error");
+            showToast("Este target não tem link da Biblioteca do Facebook", "error");
             return;
         }
         
         setIsScrapingRunning(true);
-        showToast("ðŸ¤– Iniciando scraping automÃ¡tico... Isso pode levar atÃ© 2 minutos.", "info");
+        showToast("🤖 Iniciando scraping automático... Isso pode levar até 2 minutos.", "info");
         
         // URL do serviço (local ou Railway via VITE_SCRAPER_URL)
         const scraperUrl = `${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/test`;
         
         try {
-            console.log(`[SCRAPING] Conectando com serviÃ§o local: ${scraperUrl}`);
+            console.log(`[SCRAPING] Conectando com serviço local: ${scraperUrl}`);
             
             // Cria um AbortController para timeout (2 minutos para scraping)
             const controller = new AbortController();
@@ -279,7 +280,7 @@ const OfferDetailScreen = ({
             
             clearTimeout(timeoutId);
             
-            // Verifica se a resposta Ã© vÃ¡lida
+            // Verifica se a resposta é válida
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
@@ -311,7 +312,7 @@ const OfferDetailScreen = ({
                 
                 if (offerUpdateError) throw offerUpdateError;
                 
-                showToast(`âœ… Scraping concluÃ­do! ${data.adCount} anÃºncios encontrados`, "success");
+                showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
                 
                 // Aguarda um pouco para garantir que o banco foi atualizado
                 setTimeout(() => {
@@ -320,10 +321,10 @@ const OfferDetailScreen = ({
                 }, 500);
                 
                 setIsScrapingRunning(false);
-                return; // Sucesso, sai da funÃ§Ã£o
+                return; // Sucesso, sai da função
             } else {
                 // Se falhou mas recebeu resposta, mostra o erro especÃ­fico
-                throw new Error(data.error || 'NÃ£o foi possÃ­vel extrair dados');
+                throw new Error(data.error || 'Não foi possível extrair dados');
             }
         } catch (error) {
             console.error(`[SCRAPING] Erro ao conectar com ${scraperUrl}:`, error);
@@ -339,6 +340,54 @@ const OfferDetailScreen = ({
             
             showToast(`❌ ${errorMessage}`, "error");
             setIsScrapingRunning(false);
+        }
+    };
+
+    // Scraping manual — sempre usa a máquina local (localhost:3001)
+    const handleManualScraping = async () => {
+        if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
+            showToast("Este target não tem link da Biblioteca do Facebook", "error");
+            return;
+        }
+        setIsManualScrapingRunning(true);
+        showToast("💻 Iniciando scraping na sua máquina... até 2 min.", "info");
+        const scraperUrl = 'http://localhost:3001/api/scrape/test';
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
+            const response = await fetch(scraperUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: offer.link }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (data.success && data.adCount !== null) {
+                await supabaseClient.from('ad_counts').insert([{
+                    offer_id: offerId, count: data.adCount,
+                    user_id: userId, timestamp: new Date().toISOString()
+                }]);
+                await supabaseClient.from('offers').update({
+                    last_ad_count: data.adCount,
+                    last_ad_count_timestamp: new Date().toISOString()
+                }).eq('id', offerId);
+                showToast(`✅ Manual: ${data.adCount} anúncios encontrados`, "success");
+                setTimeout(() => { fetchOfferData(); if (globalFetchOffers) globalFetchOffers(); }, 500);
+            } else {
+                throw new Error(data.error || 'Não foi possível extrair dados');
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showToast("❌ Timeout: scraper demorou muito.", "error");
+            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                showToast("❌ Serviço local não está rodando. Inicie o scraper-service na sua máquina.", "error");
+            } else {
+                showToast(`❌ Erro: ${error.message}`, "error");
+            }
+        } finally {
+            setIsManualScrapingRunning(false);
         }
     };
 
@@ -463,7 +512,7 @@ const OfferDetailScreen = ({
                         <p className="text-slate-500 text-sm mt-0.5">{performanceAnalysis.details}</p>
                         {performanceAnalysis.weeklyChange !== 'N/A' && (
                             <p className="text-xs text-slate-600 mt-1.5">
-                                VariaÃ§Ã£o 7d: <span className={`font-semibold ${parseFloat(performanceAnalysis.weeklyChange) > 0 ? 'text-emerald-400' : parseFloat(performanceAnalysis.weeklyChange) < 0 ? 'text-rose-400' : 'text-slate-500'}`}>{performanceAnalysis.weeklyChange}</span>
+                                Variação 7d: <span className={`font-semibold ${parseFloat(performanceAnalysis.weeklyChange) > 0 ? 'text-emerald-400' : parseFloat(performanceAnalysis.weeklyChange) < 0 ? 'text-rose-400' : 'text-slate-500'}`}>{performanceAnalysis.weeklyChange}</span>
                             </p>
                         )}
                     </div>
@@ -515,7 +564,7 @@ const OfferDetailScreen = ({
                     <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-5">
                         <div className="flex items-center justify-between mb-5">
                             <div>
-                                <h3 className="text-sm font-semibold text-white">HistÃ³rico de Performance</h3>
+                                <h3 className="text-sm font-semibold text-white">Histórico de Performance</h3>
                                 <p className="text-xs text-slate-500 mt-0.5">{adCounts.length} registros</p>
                             </div>
                             <Activity size={15} className="text-blue-400" />
@@ -550,23 +599,42 @@ const OfferDetailScreen = ({
                 <div className="space-y-5">
                     {/* Register count */}
                     <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-white mb-4">Registrar AnÃºncios</h3>
+                        <h3 className="text-sm font-semibold text-white mb-4">Registrar Anúncios</h3>
 
                         {offer?.link && offer.link.includes('facebook.com/ads/library') && (
-                            <div className="mb-4 p-3 bg-violet-500/8 border border-violet-500/15 rounded-xl">
-                                <p className="text-xs text-slate-400 mb-3 leading-relaxed">Este target tem link da Biblioteca do Facebook. VocÃª pode extrair dados automaticamente.</p>
-                                <button
-                                    onClick={handleAutoScraping}
-                                    disabled={isScrapingRunning}
-                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                                        isScrapingRunning
-                                            ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
-                                            : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
-                                    }`}
-                                >
-                                    <RefreshCw size={14} className={isScrapingRunning ? 'animate-spin' : ''} />
-                                    {isScrapingRunning ? 'Buscando...' : 'Scraping AutomÃ¡tico'}
-                                </button>
+                            <div className="mb-4 space-y-2">
+                                {/* Auto: usa VITE_SCRAPER_URL (cloud/Railway) */}
+                                <div className="p-3 bg-violet-500/8 border border-violet-500/15 rounded-xl">
+                                    <p className="text-[11px] text-slate-500 mb-2">⚡ Automático — via serviço cloud (Railway)</p>
+                                    <button
+                                        onClick={handleAutoScraping}
+                                        disabled={isScrapingRunning || isManualScrapingRunning}
+                                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                            isScrapingRunning
+                                                ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
+                                                : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
+                                        }`}
+                                    >
+                                        <RefreshCw size={14} className={isScrapingRunning ? 'animate-spin' : ''} />
+                                        {isScrapingRunning ? 'Buscando...' : 'Scraping Automático'}
+                                    </button>
+                                </div>
+                                {/* Manual: sempre usa localhost:3001 (máquina local) */}
+                                <div className="p-3 bg-teal-500/8 border border-teal-500/15 rounded-xl">
+                                    <p className="text-[11px] text-slate-500 mb-2">💻 Manual — usa sua máquina (localhost:3001)</p>
+                                    <button
+                                        onClick={handleManualScraping}
+                                        disabled={isScrapingRunning || isManualScrapingRunning}
+                                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                            isManualScrapingRunning
+                                                ? 'bg-teal-600/40 cursor-not-allowed opacity-60 text-white'
+                                                : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-700/20'
+                                        }`}
+                                    >
+                                        <RefreshCw size={14} className={isManualScrapingRunning ? 'animate-spin' : ''} />
+                                        {isManualScrapingRunning ? 'Buscando...' : 'Scraping Manual (Local)'}
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -581,7 +649,7 @@ const OfferDetailScreen = ({
                                 type="number"
                                 value={newAdCount}
                                 onChange={(e) => setNewAdCountState(e.target.value)}
-                                placeholder="NÃºmero de anÃºncios"
+                                placeholder="Número de anúncios"
                                 required
                                 min="0"
                                 className="w-full bg-[#131929] border border-white/[0.08] focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 outline-none text-slate-200 placeholder:text-slate-600 rounded-xl py-2.5 px-4 text-sm transition-all"
@@ -597,7 +665,7 @@ const OfferDetailScreen = ({
 
                     {/* Ad count history */}
                     <div className="bg-[#0D1220]/80 backdrop-blur-xl border border-white/[0.07] rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-white mb-4">HistÃ³rico</h3>
+                        <h3 className="text-sm font-semibold text-white mb-4">Histórico</h3>
                         {adCounts.length > 0 ? (
                             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                                 {adCounts.map((ac, i) => {

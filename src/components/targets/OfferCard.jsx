@@ -8,8 +8,9 @@ import { smartClassifyOffer } from '../../utils/smartClassification';
 const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
     const [isScrapingRunning, setIsScrapingRunning] = useState(false);
+    const [isManualScrapingRunning, setIsManualScrapingRunning] = useState(false);
     
-    // FunÃ§Ã£o para buscar histÃ³rico de ad_counts
+    // Função para buscar histórico de ad_counts
     const fetchAdCounts = useCallback(async () => {
         if (!userId || !supabaseClient || !supabaseClient.from) return;
         
@@ -33,20 +34,20 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     
     // Atualiza o histÃ³rico quando o offer.last_ad_count ou offer.last_ad_count_timestamp mudarem
     useEffect(() => {
-        // ForÃ§a atualizaÃ§Ã£o do histÃ³rico quando o offer for atualizado
+        // Força atualização do histórico quando o offer for atualizado
         if (offer.last_ad_count !== null && offer.last_ad_count !== undefined && offer.last_ad_count_timestamp) {
-            // Verifica se o Ãºltimo valor do offer estÃ¡ no histÃ³rico com timestamp similar
+            // Verifica se o último valor do offer está no histórico com timestamp similar
             const hasLatestInHistory = adCountsHistory.some(ac => {
                 const countMatch = ac.count === offer.last_ad_count;
                 if (!countMatch) return false;
                 
-                // Verifica se o timestamp estÃ¡ prÃ³ximo (dentro de 2 minutos)
+                // Verifica se o timestamp está próximo (dentro de 2 minutos)
                 const acTime = new Date(ac.timestamp).getTime();
                 const offerTime = new Date(offer.last_ad_count_timestamp).getTime();
                 return Math.abs(acTime - offerTime) < 120000; // 2 minutos
             });
             
-            // Se o Ãºltimo valor do offer nÃ£o estÃ¡ no histÃ³rico, forÃ§a refetch
+            // Se o último valor do offer não está no histórico, força refetch
             if (!hasLatestInHistory) {
                 // Aguarda um pouco para garantir que o banco foi atualizado
                 const timeoutId = setTimeout(() => {
@@ -58,7 +59,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     }, [offer.last_ad_count, offer.last_ad_count_timestamp, adCountsHistory, fetchAdCounts]);
     
     // Polling para atualizar o histÃ³rico quando o timestamp for recente (Ãºltimos 5 minutos)
-    // Isso garante que os cards sejam atualizados mesmo quando o scraping Ã© feito em massa
+    // Isso garante que os cards sejam atualizados mesmo quando o scraping é feito em massa
     useEffect(() => {
         if (!offer.last_ad_count_timestamp) return;
         
@@ -66,7 +67,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         const now = Date.now();
         const age = now - timestamp;
         
-        // Se o timestamp Ã© recente (Ãºltimos 5 minutos), faz polling a cada 5 segundos
+        // Se o timestamp é recente (Ãºltimos 5 minutos), faz polling a cada 5 segundos
         if (age < 300000) { // 5 minutos
             const interval = setInterval(() => {
                 fetchAdCounts();
@@ -82,21 +83,21 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         [adCountsHistory]
     );
 
-    // MantÃ©m anÃ¡lise antiga para compatibilidade (variaÃ§Ã£o 7d)
+    // Mantém anÃ¡lise antiga para compatibilidade (variaÃ§Ã£o 7d)
     const performanceAnalysis = useMemo(
         () => analyzeOfferPerformance(adCountsHistory, 7), 
         [adCountsHistory]
     ); 
     
-    // FunÃ§Ã£o para executar scraping local
+    // Função para executar scraping local
     const handleLocalScraping = useCallback(async () => {
         if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
-            showToast && showToast("Este target nÃ£o tem link da Biblioteca do Facebook", "error");
+            showToast && showToast("Este target não tem link da Biblioteca do Facebook", "error");
             return;
         }
         
         setIsScrapingRunning(true);
-        showToast && showToast("ðŸ¤– Iniciando scraping automÃ¡tico... Isso pode levar atÃ© 2 minutos.", "info");
+        showToast && showToast("🤖 Iniciando scraping automático... Isso pode levar até 2 minutos.", "info");
         
         const scraperUrl = `${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/test`;
         
@@ -146,9 +147,9 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 if (offerUpdateError) throw offerUpdateError;
                 
-                showToast && showToast(`âœ… Scraping concluÃ­do! ${data.adCount} anÃºncios encontrados`, "success");
+                showToast && showToast(`✅ Scraping concluído! ${data.adCount} anúncios encontrados`, "success");
                 
-                // Atualiza o histÃ³rico imediatamente
+                // Atualiza o histórico imediatamente
                 await fetchAdCounts();
                 
                 // Atualiza a lista de offers
@@ -160,7 +161,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 
                 setIsScrapingRunning(false);
             } else {
-                throw new Error(data.error || 'NÃ£o foi possÃ­vel extrair dados');
+                throw new Error(data.error || 'Não foi possível extrair dados');
             }
         } catch (error) {
             console.error('[SCRAPING] Erro:', error);
@@ -178,9 +179,58 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             setIsScrapingRunning(false);
         }
     }, [offer, userId, supabaseClient, fetchAdCounts, fetchOffers, showToast]);
-    
-    // Prioriza offer.last_ad_count porque Ã© atualizado diretamente apÃ³s scraping
-    // Se nÃ£o existir, usa o histÃ³rico
+
+    // Scraping manual — sempre usa a máquina local (localhost:3001)
+    const handleManualScraping = useCallback(async () => {
+        if (!offer?.link || !offer.link.includes('facebook.com/ads/library')) {
+            showToast && showToast("Este target não tem link da Biblioteca do Facebook", "error");
+            return;
+        }
+        setIsManualScrapingRunning(true);
+        showToast && showToast("💻 Iniciando scraping na sua máquina... até 2 min.", "info");
+        const scraperUrl = 'http://localhost:3001/api/scrape/test';
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
+            const response = await fetch(scraperUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: offer.link }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (data.success && data.adCount !== null) {
+                await supabaseClient.from('ad_counts').insert([{
+                    offer_id: offer.id, count: data.adCount,
+                    user_id: userId, timestamp: new Date().toISOString()
+                }]);
+                await supabaseClient.from('offers').update({
+                    last_ad_count: data.adCount,
+                    last_ad_count_timestamp: new Date().toISOString()
+                }).eq('id', offer.id);
+                showToast && showToast(`✅ Manual: ${data.adCount} anúncios encontrados`, "success");
+                await fetchAdCounts();
+                if (fetchOffers) setTimeout(fetchOffers, 500);
+            } else {
+                throw new Error(data.error || 'Não foi possível extrair dados');
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                showToast && showToast("❌ Timeout: scraper demorou muito.", "error");
+            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                showToast && showToast("❌ Serviço local não está rodando. Inicie o scraper-service.", "error");
+            } else {
+                showToast && showToast(`❌ Erro: ${error.message}`, "error");
+            }
+        } finally {
+            setIsManualScrapingRunning(false);
+        }
+    }, [offer, userId, supabaseClient, fetchAdCounts, fetchOffers, showToast]);
+
+    // Prioriza offer.last_ad_count porque é atualizado diretamente após scraping
+    // Se não existir, usa o histórico
     const latestAdCount = offer.last_ad_count ?? adCountsHistory[0]?.count ?? 0; 
     
     const previousEntryCount = adCountsHistory[1]?.count;
@@ -189,7 +239,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
     if (typeof previousEntryCount === 'number' && previousEntryCount !== null) {
         if (previousEntryCount === 0 && latestAdCount > 0) {
-            dailyPercentageChangeDisplay = "+âˆž"; 
+            dailyPercentageChangeDisplay = "+∞"; 
             dailyChangeColor = "text-green-400";
         } else if (previousEntryCount > 0) {
             const change = ((latestAdCount - previousEntryCount) / previousEntryCount) * 100;
@@ -366,32 +416,62 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
 
                 {/* Actions */}
                 <div className="px-3 pb-3 space-y-2">
+                    {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
+                        <div className="space-y-1.5">
+                            <div className="flex gap-1.5">
+                                {/* Auto scraping — usa cloud/Railway se configurado */}
+                                <button
+                                    onClick={handleLocalScraping}
+                                    disabled={isScrapingRunning || isManualScrapingRunning}
+                                    title="Scraping automático via serviço cloud"
+                                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                                        isScrapingRunning
+                                            ? 'bg-violet-600/30 cursor-not-allowed opacity-60 text-violet-300 border border-violet-500/20'
+                                            : 'bg-violet-600/90 hover:bg-violet-500 text-white border border-violet-500/20'
+                                    }`}
+                                >
+                                    <RefreshCw size={10} className={isScrapingRunning ? 'animate-spin' : ''} />
+                                    {isScrapingRunning ? 'Auto...' : '⚡ Auto'}
+                                </button>
+                                {/* Manual scraping — sempre usa localhost:3001 */}
+                                <button
+                                    onClick={handleManualScraping}
+                                    disabled={isScrapingRunning || isManualScrapingRunning}
+                                    title="Scraping manual via sua máquina local (localhost:3001)"
+                                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                                        isManualScrapingRunning
+                                            ? 'bg-teal-600/30 cursor-not-allowed opacity-60 text-teal-300 border border-teal-500/20'
+                                            : 'bg-teal-600/80 hover:bg-teal-500 text-white border border-teal-500/20'
+                                    }`}
+                                >
+                                    <RefreshCw size={10} className={isManualScrapingRunning ? 'animate-spin' : ''} />
+                                    {isManualScrapingRunning ? 'Local...' : '💻 Local'}
+                                </button>
+                                <button
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        const currentUrl = window.location.origin + window.location.pathname;
+                                        window.open(`${currentUrl}?view=detail&id=${offer.id}`, '_blank');
+                                    }}
+                                    className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-blue-600/90 hover:bg-blue-500 text-white border border-blue-500/20 transition-all"
+                                >
+                                    <Eye size={10} />
+                                    Ver
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
                     <div className="flex gap-2">
-                        {offer?.link && offer.link.includes('facebook.com/ads/library') ? (
-                            <button
-                                onClick={handleLocalScraping}
-                                disabled={isScrapingRunning}
-                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all ${
-                                    isScrapingRunning
-                                        ? 'bg-violet-600/30 cursor-not-allowed opacity-60 text-violet-300 border border-violet-500/20'
-                                        : 'bg-violet-600/90 hover:bg-violet-500 text-white shadow-md shadow-violet-900/30 border border-violet-500/20'
-                                }`}
-                            >
-                                <RefreshCw size={11} className={isScrapingRunning ? 'animate-spin' : ''} />
-                                {isScrapingRunning ? 'Buscando...' : 'Scraping'}
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => onToggleActive(offer.id)}
-                                className={`flex-1 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all ${
-                                    isActive
-                                        ? 'bg-blue-600/90 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30 border border-blue-500/20'
-                                        : 'bg-white/[0.04] hover:bg-white/[0.08] text-slate-500 hover:text-slate-200 border border-white/[0.06]'
-                                }`}
-                            >
-                                {isActive ? 'Ativa' : 'Ativar'}
-                            </button>
-                        )}
+                        <button
+                            onClick={() => onToggleActive(offer.id)}
+                            className={`flex-1 px-3 py-2 rounded-xl text-[12px] font-semibold transition-all ${
+                                isActive
+                                    ? 'bg-blue-600/90 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30 border border-blue-500/20'
+                                    : 'bg-white/[0.04] hover:bg-white/[0.08] text-slate-500 hover:text-slate-200 border border-white/[0.06]'
+                            }`}
+                        >
+                            {isActive ? 'Ativa' : 'Ativar'}
+                        </button>
                         <button
                             onClick={(e) => {
                                 e.preventDefault();
@@ -404,7 +484,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                             Detalhes
                         </button>
                     </div>
-
+                    )}
                     {/* Icon actions */}
                     <div className="flex items-center justify-center gap-0.5">
                         {offer.link && (
