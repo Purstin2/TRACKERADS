@@ -36,6 +36,7 @@ const OfferGridScreen = ({
     const [localFilteredOffers, setLocalFilteredOffers] = useState(offers);
     const [filtersActive, setFiltersActive] = useState(false);
     const [isScrapingAll, setIsScrapingAll] = useState(false);
+    const [isScrapingAllLocal, setIsScrapingAllLocal] = useState(false);
     const [adCountsMap, setAdCountsMap] = useState({});
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -223,56 +224,74 @@ const OfferGridScreen = ({
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* Scrape All */}
+                        {/* Scrape All — Auto (cloud) + Local */}
                         {(() => {
                             const offersToScrape = offers.filter(o => o.link && o.link.includes('facebook.com/ads/library') && !o.is_archived);
                             if (offersToScrape.length === 0) return null;
-                            return (
-                                <button
-                                    onClick={async () => {
-                                        setIsScrapingAll(true);
-                                        try {
-                                            showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
-                                            const response = await fetch(`${import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001'}/api/scrape/run`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' }
-                                            });
-                                            const data = await response.json();
-                                            if (response.ok) {
-                                                showToast && showToast(`Scraping em andamento para ${offersToScrape.length} targets.`, 'success');
-                                                if (fetchOffers) fetchOffers();
-                                                const estimatedTime = offersToScrape.length * 5 + 30;
-                                                let attempts = 0;
-                                                const maxAttempts = Math.ceil(estimatedTime / 10) + 5;
-                                                const interval = setInterval(() => {
-                                                    attempts++;
-                                                    if (fetchOffers) fetchOffers();
-                                                    if (attempts >= maxAttempts) {
-                                                        clearInterval(interval);
-                                                        showToast && showToast('Atualização automática finalizada.', 'info');
-                                                    }
-                                                }, 10000);
-                                                setTimeout(() => { clearInterval(interval); if (fetchOffers) fetchOffers(); }, estimatedTime * 1000);
-                                            } else {
-                                                showToast && showToast(`Erro: ${data.error || 'Falha'}`, 'error');
+
+                            const runScraping = async (baseUrl, setLoading) => {
+                                setLoading(true);
+                                try {
+                                    showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
+                                    const response = await fetch(`${baseUrl}/api/scrape/run`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' }
+                                    });
+                                    const data = await response.json();
+                                    if (response.ok) {
+                                        showToast && showToast(`Scraping em andamento para ${offersToScrape.length} targets.`, 'success');
+                                        if (fetchOffers) fetchOffers();
+                                        const estimatedTime = offersToScrape.length * 5 + 30;
+                                        let attempts = 0;
+                                        const maxAttempts = Math.ceil(estimatedTime / 10) + 5;
+                                        const interval = setInterval(() => {
+                                            attempts++;
+                                            if (fetchOffers) fetchOffers();
+                                            if (attempts >= maxAttempts) {
+                                                clearInterval(interval);
+                                                showToast && showToast('Atualização finalizada.', 'info');
                                             }
-                                        } catch {
-                                            showToast && showToast('Serviço local não está rodando.', 'error');
-                                        } finally {
-                                            setTimeout(() => setIsScrapingAll(false), 30000);
-                                        }
-                                    }}
-                                    disabled={isScrapingAll}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                                        isScrapingAll
-                                            ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
-                                            : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
-                                    }`}
-                                    title={`Scraping automático para ${offersToScrape.length} targets`}
-                                >
-                                    <RefreshCw size={15} className={isScrapingAll ? 'animate-spin' : ''} />
-                                    {isScrapingAll ? 'Scraping...' : `Scraping (${offersToScrape.length})`}
-                                </button>
+                                        }, 10000);
+                                        setTimeout(() => { clearInterval(interval); if (fetchOffers) fetchOffers(); }, estimatedTime * 1000);
+                                    } else {
+                                        showToast && showToast(`Erro: ${data.error || 'Falha'}`, 'error');
+                                    }
+                                } catch {
+                                    showToast && showToast('Serviço não está rodando.', 'error');
+                                } finally {
+                                    setTimeout(() => setLoading(false), 30000);
+                                }
+                            };
+
+                            return (
+                                <>
+                                    <button
+                                        onClick={() => runScraping(import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001', setIsScrapingAll)}
+                                        disabled={isScrapingAll || isScrapingAllLocal}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                                            isScrapingAll
+                                                ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
+                                                : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
+                                        }`}
+                                        title={`Scraping automático (cloud) para ${offersToScrape.length} targets`}
+                                    >
+                                        <RefreshCw size={15} className={isScrapingAll ? 'animate-spin' : ''} />
+                                        {isScrapingAll ? 'Auto...' : `⚡ Auto (${offersToScrape.length})`}
+                                    </button>
+                                    <button
+                                        onClick={() => runScraping('http://localhost:3001', setIsScrapingAllLocal)}
+                                        disabled={isScrapingAll || isScrapingAllLocal}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+                                            isScrapingAllLocal
+                                                ? 'bg-teal-600/40 cursor-not-allowed opacity-60 text-white'
+                                                : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-700/20'
+                                        }`}
+                                        title={`Scraping local (localhost:3001) para ${offersToScrape.length} targets`}
+                                    >
+                                        <RefreshCw size={15} className={isScrapingAllLocal ? 'animate-spin' : ''} />
+                                        {isScrapingAllLocal ? 'Local...' : `💻 Local (${offersToScrape.length})`}
+                                    </button>
+                                </>
                             );
                         })()}
                         <button
