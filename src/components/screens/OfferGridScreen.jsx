@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw } from 'lucide-react';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
@@ -35,6 +35,7 @@ const OfferGridScreen = ({
     const [localFilteredOffers, setLocalFilteredOffers] = useState(offers);
     const [filtersActive, setFiltersActive] = useState(false);
     const [isScrapingAll, setIsScrapingAll] = useState(false);
+    const [adCountsMap, setAdCountsMap] = useState({});
 
     // Sync localFilteredOffers when offers prop changes (only if no active advanced filter)
     useEffect(() => {
@@ -43,20 +44,47 @@ const OfferGridScreen = ({
         }
     }, [offers, filtersActive]);
 
+    // Fetch ad_counts for all visible offers (last 30 days) to enable time-based sorting
+    const offerIds = useMemo(() => offers.map(o => o.id), [offers]);
+
+    const fetchAdCounts = useCallback(async () => {
+        if (!supabaseClient?.from || offerIds.length === 0) return;
+        const since = new Date();
+        since.setDate(since.getDate() - 30);
+        const { data, error } = await supabaseClient
+            .from('ad_counts')
+            .select('offer_id, count, timestamp')
+            .in('offer_id', offerIds)
+            .gte('timestamp', since.toISOString())
+            .order('timestamp', { ascending: false });
+        if (!error && data) {
+            const map = {};
+            data.forEach(ac => {
+                if (!map[ac.offer_id]) map[ac.offer_id] = [];
+                map[ac.offer_id].push(ac);
+            });
+            setAdCountsMap(map);
+        }
+    }, [supabaseClient, offerIds.join(',')]);
+
+    useEffect(() => {
+        fetchAdCounts();
+    }, [fetchAdCounts]);
+
     // Sort options
     const sortOptions = [
-        { value: 'newest', label: 'RecÃ©m Adicionados' },
-        { value: 'oldest', label: 'Mais Antigos' },
-        { value: 'alphabetical', label: 'Ordem AlfabÃ©tica' },
-        { value: 'most_ads_7d', label: 'Mais AnÃºncios (7 dias)' },
-        { value: 'most_ads_14d', label: 'Mais AnÃºncios (14 dias)' },
-        { value: 'most_ads_30d', label: 'Mais AnÃºncios (30 dias)' },
-        { value: 'consistency_7d', label: 'Maior ConsistÃªncia (7 dias)' },
-        { value: 'consistency_14d', label: 'Maior ConsistÃªncia (14 dias)' },
-        { value: 'consistency_30d', label: 'Maior ConsistÃªncia (30 dias)' },
-        { value: 'trending_up', label: 'Em Alta (crescimento)' },
-        { value: 'trending_down', label: 'Em Queda (decrescimento)' },
-        { value: 'most_active', label: 'Mais Ativos Recentemente' }
+        { value: 'newest',          label: 'Recém Adicionados' },
+        { value: 'oldest',          label: 'Mais Antigos' },
+        { value: 'alphabetical',    label: 'Ordem Alfabética' },
+        { value: 'most_ads_7d',     label: 'Mais Anúncios (7 dias)' },
+        { value: 'most_ads_14d',    label: 'Mais Anúncios (14 dias)' },
+        { value: 'most_ads_30d',    label: 'Mais Anúncios (30 dias)' },
+        { value: 'consistency_7d',  label: 'Maior Consistência (7 dias)' },
+        { value: 'consistency_14d', label: 'Maior Consistência (14 dias)' },
+        { value: 'consistency_30d', label: 'Maior Consistência (30 dias)' },
+        { value: 'trending_up',     label: 'Em Alta (crescimento)' },
+        { value: 'trending_down',   label: 'Em Queda (decrescimento)' },
+        { value: 'most_active',     label: 'Mais Ativos Recentemente' },
     ];
 
     // Function to calculate 7-day metrics for sorting
@@ -99,15 +127,14 @@ const OfferGridScreen = ({
     const sortedOffers = [...localFilteredOffers].sort((a, b) => {
         const aPinnedIdx = pinnedOfferIds.indexOf(a.id);
         const bPinnedIdx = pinnedOfferIds.indexOf(b.id);
-        
-        // Pinned offers always come first
-        if (aPinnedIdx !== -1 && bPinnedIdx !== -1) {
-            return aPinnedIdx - bPinnedIdx; // mantÃ©m ordem de fixaÃ§Ã£o
-        }
+
+        if (aPinnedIdx !== -1 && bPinnedIdx !== -1) return aPinnedIdx - bPinnedIdx;
         if (aPinnedIdx !== -1) return -1;
         if (bPinnedIdx !== -1) return 1;
-        
-        // Apply sorting to non-pinned offers
+
+        const aCounts = adCountsMap[a.id] || [];
+        const bCounts = adCountsMap[b.id] || [];
+
         switch (sortBy) {
             case 'newest':
                 return new Date(b.created_at) - new Date(a.created_at);
@@ -116,41 +143,23 @@ const OfferGridScreen = ({
             case 'alphabetical':
                 return a.name.localeCompare(b.name);
             case 'most_ads_7d':
-                const aMaxAds7 = calculateMetrics(a, [], 7).maxAds;
-                const bMaxAds7 = calculateMetrics(b, [], 7).maxAds;
-                return bMaxAds7 - aMaxAds7;
+                return calculateMetrics(b, bCounts, 7).maxAds - calculateMetrics(a, aCounts, 7).maxAds;
             case 'most_ads_14d':
-                const aMaxAds14 = calculateMetrics(a, [], 14).maxAds;
-                const bMaxAds14 = calculateMetrics(b, [], 14).maxAds;
-                return bMaxAds14 - aMaxAds14;
+                return calculateMetrics(b, bCounts, 14).maxAds - calculateMetrics(a, aCounts, 14).maxAds;
             case 'most_ads_30d':
-                const aMaxAds30 = calculateMetrics(a, [], 30).maxAds;
-                const bMaxAds30 = calculateMetrics(b, [], 30).maxAds;
-                return bMaxAds30 - aMaxAds30;
+                return calculateMetrics(b, bCounts, 30).maxAds - calculateMetrics(a, aCounts, 30).maxAds;
             case 'consistency_7d':
-                const aConsistency7 = calculateMetrics(a, [], 7).consistency;
-                const bConsistency7 = calculateMetrics(b, [], 7).consistency;
-                return bConsistency7 - aConsistency7;
+                return calculateMetrics(b, bCounts, 7).consistency - calculateMetrics(a, aCounts, 7).consistency;
             case 'consistency_14d':
-                const aConsistency14 = calculateMetrics(a, [], 14).consistency;
-                const bConsistency14 = calculateMetrics(b, [], 14).consistency;
-                return bConsistency14 - aConsistency14;
+                return calculateMetrics(b, bCounts, 14).consistency - calculateMetrics(a, aCounts, 14).consistency;
             case 'consistency_30d':
-                const aConsistency30 = calculateMetrics(a, [], 30).consistency;
-                const bConsistency30 = calculateMetrics(b, [], 30).consistency;
-                return bConsistency30 - aConsistency30;
+                return calculateMetrics(b, bCounts, 30).consistency - calculateMetrics(a, aCounts, 30).consistency;
             case 'trending_up':
-                const aTrendUp = calculateMetrics(a, [], 7).trend;
-                const bTrendUp = calculateMetrics(b, [], 7).trend;
-                return bTrendUp - aTrendUp;
+                return calculateMetrics(b, bCounts, 7).trend - calculateMetrics(a, aCounts, 7).trend;
             case 'trending_down':
-                const aTrendDown = calculateMetrics(a, [], 7).trend;
-                const bTrendDown = calculateMetrics(b, [], 7).trend;
-                return aTrendDown - bTrendDown;
+                return calculateMetrics(a, aCounts, 7).trend - calculateMetrics(b, bCounts, 7).trend;
             case 'most_active':
-                const aActivity = calculateMetrics(a, [], 7).lastActivity;
-                const bActivity = calculateMetrics(b, [], 7).lastActivity;
-                return bActivity - aActivity;
+                return calculateMetrics(b, bCounts, 7).lastActivity - calculateMetrics(a, aCounts, 7).lastActivity;
             default:
                 return 0;
         }
@@ -198,7 +207,7 @@ const OfferGridScreen = ({
                                                     if (fetchOffers) fetchOffers();
                                                     if (attempts >= maxAttempts) {
                                                         clearInterval(interval);
-                                                        showToast && showToast('AtualizaÃ§Ã£o automÃ¡tica finalizada.', 'info');
+                                                        showToast && showToast('Atualização automática finalizada.', 'info');
                                                     }
                                                 }, 10000);
                                                 setTimeout(() => { clearInterval(interval); if (fetchOffers) fetchOffers(); }, estimatedTime * 1000);
@@ -206,7 +215,7 @@ const OfferGridScreen = ({
                                                 showToast && showToast(`Erro: ${data.error || 'Falha'}`, 'error');
                                             }
                                         } catch {
-                                            showToast && showToast('ServiÃ§o local nÃ£o estÃ¡ rodando.', 'error');
+                                            showToast && showToast('Serviço local não está rodando.', 'error');
                                         } finally {
                                             setTimeout(() => setIsScrapingAll(false), 30000);
                                         }
@@ -217,7 +226,7 @@ const OfferGridScreen = ({
                                             ? 'bg-violet-600/40 cursor-not-allowed opacity-60 text-white'
                                             : 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-700/20'
                                     }`}
-                                    title={`Scraping automÃ¡tico para ${offersToScrape.length} targets`}
+                                    title={`Scraping automático para ${offersToScrape.length} targets`}
                                 >
                                     <RefreshCw size={15} className={isScrapingAll ? 'animate-spin' : ''} />
                                     {isScrapingAll ? 'Scraping...' : `Scraping (${offersToScrape.length})`}
@@ -294,7 +303,7 @@ const OfferGridScreen = ({
                         {/* View mode */}
                         <button
                             onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                            title="Alternar visualizaÃ§Ã£o"
+                            title="Alternar visualização"
                             className="p-2 bg-[#131929] border border-white/[0.07] hover:border-white/[0.14] rounded-xl text-slate-500 hover:text-slate-200 transition-all"
                         >
                             {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
@@ -304,7 +313,7 @@ const OfferGridScreen = ({
                         <button
                             onClick={() => setShowAdvancedFilters(true)}
                             className="p-2 bg-violet-600/10 border border-violet-500/20 hover:bg-violet-600/20 rounded-xl text-violet-400 transition-all"
-                            title="Filtros avanÃ§ados"
+                            title="Filtros avançados"
                         >
                             <Filter size={16} />
                         </button>
@@ -358,7 +367,7 @@ const OfferGridScreen = ({
             {!userId && isAuthReady && (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                     <AlertTriangle size={32} className="text-rose-500" />
-                    <p className="text-slate-500 text-sm">AutenticaÃ§Ã£o necessÃ¡ria.</p>
+                    <p className="text-slate-500 text-sm">Autenticação necessária.</p>
                 </div>
             )}
 
@@ -369,7 +378,7 @@ const OfferGridScreen = ({
                     </div>
                     <div className="text-center">
                         <p className="text-slate-300 font-medium">Nenhum target {showArchived ? 'arquivado' : 'ainda'}</p>
-                        <p className="text-slate-600 text-sm mt-1">{showArchived ? 'Nenhum target foi arquivado.' : 'Clique em "Novo Target" para comeÃ§ar.'}</p>
+                        <p className="text-slate-600 text-sm mt-1">{showArchived ? 'Nenhum target foi arquivado.' : 'Clique em "Novo Target" para começar.'}</p>
                     </div>
                 </div>
             )}
