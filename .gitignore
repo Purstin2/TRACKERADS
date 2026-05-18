@@ -32,3 +32,4 @@ dist-ssr
 scraper-service/screenshots/*.png
 scraper-service/.env
 scraper-service/node_modules
+.vercel
