@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { startScheduler, startSchedulerWithInitialRun, runScrapingJob, runDiscoveryJob } from './scheduler.js';
 import { scrapeFacebookAdsCount } from './scraper.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
@@ -236,6 +239,77 @@ app.get('/api/offers', async (req, res) => {
         });
     }
 });
+
+// ── BOOKMARKS IMPORT ─────────────────────────────────────────────────────────
+
+function findFolderByName(node, targetName) {
+    if (node.type === 'folder' && node.name?.toLowerCase() === targetName.toLowerCase()) {
+        return node;
+    }
+    if (node.children) {
+        for (const child of node.children) {
+            const found = findFolderByName(child, targetName);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function extractUrls(node) {
+    const results = [];
+    if (node.type === 'url' && node.url) {
+        results.push({ name: node.name || node.url, url: node.url });
+    }
+    if (node.children) {
+        for (const child of node.children) {
+            results.push(...extractUrls(child));
+        }
+    }
+    return results;
+}
+
+function getBookmarksPaths() {
+    const home = os.homedir();
+    return [
+        path.join(home, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Bookmarks'),
+        path.join(home, 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Bookmarks'),
+        path.join(home, 'AppData', 'Local', 'BraveSoftware', 'Brave-Browser', 'User Data', 'Default', 'Bookmarks'),
+    ];
+}
+
+app.get('/api/bookmarks/:folder', (req, res) => {
+    const folderName = req.params.folder;
+    const paths = getBookmarksPaths();
+
+    for (const filePath of paths) {
+        if (!fs.existsSync(filePath)) continue;
+        try {
+            const raw = fs.readFileSync(filePath, 'utf-8');
+            const data = JSON.parse(raw);
+            const roots = data.roots || {};
+
+            let found = null;
+            for (const root of Object.values(roots)) {
+                found = findFolderByName(root, folderName);
+                if (found) break;
+            }
+
+            if (!found) {
+                return res.json({ success: false, error: `Pasta "${folderName}" não encontrada`, bookmarks: [] });
+            }
+
+            const bookmarks = extractUrls(found);
+            const browser = filePath.includes('Chrome') ? 'Chrome' : filePath.includes('Edge') ? 'Edge' : 'Brave';
+            return res.json({ success: true, folder: folderName, browser, count: bookmarks.length, bookmarks });
+        } catch (e) {
+            continue;
+        }
+    }
+
+    res.json({ success: false, error: 'Nenhum arquivo de bookmarks encontrado. Certifique-se de que o Chrome ou Edge está instalado.', bookmarks: [] });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Inicia o servidor
 app.listen(PORT, () => {

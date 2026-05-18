@@ -1,9 +1,10 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw, CheckSquare, Trash2 } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw, CheckSquare, Trash2, Bookmark } from 'lucide-react';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
 import AdvancedFilters from '../ui/AdvancedFilters';
+import ImportBookmarksModal from '../ui/ImportBookmarksModal';
 
 const OfferGridScreen = ({ 
     offers, 
@@ -38,6 +39,7 @@ const OfferGridScreen = ({
     const [adCountsMap, setAdCountsMap] = useState({});
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
+    const [showImportBookmarks, setShowImportBookmarks] = useState(false);
 
     // Sync localFilteredOffers when offers prop changes (only if no active advanced filter)
     useEffect(() => {
@@ -274,6 +276,14 @@ const OfferGridScreen = ({
                             );
                         })()}
                         <button
+                            onClick={() => setShowImportBookmarks(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 hover:bg-amber-400 text-black shadow-lg shadow-amber-700/20 transition-all"
+                            title="Importar favoritos da pasta 'ofertas' do navegador"
+                        >
+                            <Bookmark size={15} />
+                            Importar Favoritos
+                        </button>
+                        <button
                             onClick={onAddOffer}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-700/20 transition-all"
                         >
@@ -488,6 +498,16 @@ const OfferGridScreen = ({
         </div>
 
             {/* Bulk selection floating bar */}
+            {showImportBookmarks && (
+                <ImportBookmarksModal
+                    onClose={() => setShowImportBookmarks(false)}
+                    onImport={() => { if (fetchOffers) fetchOffers(); }}
+                    userId={userId}
+                    supabaseClient={supabaseClient}
+                    showToast={showToast}
+                />
+            )}
+
             {selectionMode && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#0D1220] border border-white/[0.12] rounded-2xl px-5 py-3 shadow-2xl shadow-black/70">
                     <span className="text-sm text-slate-300 font-semibold">
