@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw, CheckSquare, Trash2 } from 'lucide-react';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
@@ -36,6 +36,8 @@ const OfferGridScreen = ({
     const [filtersActive, setFiltersActive] = useState(false);
     const [isScrapingAll, setIsScrapingAll] = useState(false);
     const [adCountsMap, setAdCountsMap] = useState({});
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
     // Sync localFilteredOffers when offers prop changes (only if no active advanced filter)
     useEffect(() => {
@@ -43,6 +45,43 @@ const OfferGridScreen = ({
             setLocalFilteredOffers(offers);
         }
     }, [offers, filtersActive]);
+
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectionMode = () => {
+        setSelectionMode(prev => !prev);
+        setSelectedIds(new Set());
+    };
+
+    const handleSelectAll = () => {
+        if (selectedIds.size === sortedOffers.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(sortedOffers.map(o => o.id)));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!window.confirm(`Excluir ${selectedIds.size} target(s)? Esta ação não pode ser desfeita.`)) return;
+        const ids = Array.from(selectedIds);
+        const { error } = await supabaseClient.from('offers').delete().in('id', ids);
+        if (error) {
+            showToast && showToast('Erro ao excluir targets.', 'error');
+        } else {
+            showToast && showToast(`${ids.length} target(s) excluído(s).`, 'success');
+            setSelectedIds(new Set());
+            setSelectionMode(false);
+            if (fetchOffers) fetchOffers();
+        }
+    };
 
     // Fetch ad_counts for all visible offers (last 30 days) to enable time-based sorting
     const offerIds = useMemo(() => offers.map(o => o.id), [offers]);
@@ -166,6 +205,7 @@ const OfferGridScreen = ({
     });
 
     return (
+        <>
         <div className="px-6 lg:px-8 max-w-7xl mx-auto py-7 animate-fade-in">
 
             {/* Header */}
@@ -309,6 +349,19 @@ const OfferGridScreen = ({
                             {viewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
                         </button>
 
+                        {/* Selection mode */}
+                        <button
+                            onClick={toggleSelectionMode}
+                            className={`p-2 rounded-xl border transition-all ${
+                                selectionMode
+                                    ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
+                                    : 'bg-[#131929] border-white/[0.07] text-slate-500 hover:text-slate-200 hover:border-white/[0.14]'
+                            }`}
+                            title="Modo seleção"
+                        >
+                            <CheckSquare size={16} />
+                        </button>
+
                         {/* Advanced filters */}
                         <button
                             onClick={() => setShowAdvancedFilters(true)}
@@ -416,6 +469,9 @@ const OfferGridScreen = ({
                             }}
                             fetchOffers={fetchOffers}
                             showToast={showToast}
+                            selectionMode={selectionMode}
+                            isSelected={selectedIds.has(offer.id)}
+                            onToggleSelect={() => toggleSelect(offer.id)}
                         />
                     ))}
                 </div>
@@ -430,6 +486,37 @@ const OfferGridScreen = ({
                 />
             )}
         </div>
+
+            {/* Bulk selection floating bar */}
+            {selectionMode && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#0D1220] border border-white/[0.12] rounded-2xl px-5 py-3 shadow-2xl shadow-black/70">
+                    <span className="text-sm text-slate-300 font-semibold">
+                        {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}
+                    </span>
+                    <button
+                        onClick={handleSelectAll}
+                        className="text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                    >
+                        {selectedIds.size === sortedOffers.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                    </button>
+                    <div className="w-px h-5 bg-white/10" />
+                    <button
+                        onClick={handleBulkDelete}
+                        disabled={selectedIds.size === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-all"
+                    >
+                        <Trash2 size={14} />
+                        Excluir ({selectedIds.size})
+                    </button>
+                    <button
+                        onClick={toggleSelectionMode}
+                        className="text-sm text-slate-500 hover:text-slate-300 font-medium transition-colors"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            )}
+        </>
     );
 };
 

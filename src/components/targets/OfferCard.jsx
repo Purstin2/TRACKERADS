@@ -1,11 +1,11 @@
 ﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Eye, Trash2, Pencil, ExternalLink, Archive, ArchiveRestore, Pin, PinOff, RefreshCw } from 'lucide-react';
+import { Eye, Trash2, Pencil, ExternalLink, Archive, ArchiveRestore, Pin, PinOff, RefreshCw, Check } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 import { smartClassifyOffer } from '../../utils/smartClassification';
 
-const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast }) => {
+const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast, selectionMode, isSelected, onToggleSelect }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
     const [isScrapingRunning, setIsScrapingRunning] = useState(false);
     const [isManualScrapingRunning, setIsManualScrapingRunning] = useState(false);
@@ -282,16 +282,34 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     const isFalling = dailyPercentageChangeDisplay && dailyPercentageChangeDisplay.startsWith('-') && dailyPercentageChangeDisplay !== '-âˆž';
 
     return (
-        <div className={`
-            relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 group
-            bg-[#0B1120]/85 backdrop-blur-xl
-            ${isPinned
-                ? 'border border-blue-500/30 shadow-xl shadow-blue-950/40 ring-1 ring-blue-500/10'
-                : offer.is_archived
-                    ? 'border border-white/[0.04] opacity-45 grayscale-[0.5]'
-                    : 'border border-white/[0.055] hover:border-white/[0.12] hover:shadow-2xl hover:shadow-black/50'
-            }
-        `} style={{boxShadow: isPinned ? '0 0 0 1px rgba(79,142,247,0.12), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)' : undefined}}>
+        <div
+            className={`
+                relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 group
+                bg-[#0B1120]/85 backdrop-blur-xl
+                ${isSelected
+                    ? 'border border-blue-500/70 shadow-xl shadow-blue-950/50 ring-1 ring-blue-500/30'
+                    : isPinned
+                        ? 'border border-blue-500/30 shadow-xl shadow-blue-950/40 ring-1 ring-blue-500/10'
+                        : offer.is_archived
+                            ? 'border border-white/[0.04] opacity-45 grayscale-[0.5]'
+                            : 'border border-white/[0.055] hover:border-white/[0.12] hover:shadow-2xl hover:shadow-black/50'
+                }
+                ${selectionMode ? 'cursor-pointer' : ''}
+            `}
+            style={{boxShadow: isSelected ? '0 0 0 1px rgba(79,142,247,0.3), 0 8px 32px rgba(0,0,0,0.5)' : isPinned ? '0 0 0 1px rgba(79,142,247,0.12), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)' : undefined}}
+            onClick={selectionMode ? onToggleSelect : undefined}
+        >
+
+            {/* Selection checkbox */}
+            {selectionMode && (
+                <div className="absolute top-3 right-3 z-10">
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                        isSelected ? 'bg-blue-500 border-blue-500' : 'bg-[#0B1120]/80 border-white/30'
+                    }`}>
+                        {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </div>
+                </div>
+            )}
 
             {/* Top accent gradient */}
             <div className={`absolute top-0 left-0 right-0 h-[1px] ${
@@ -407,7 +425,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             )}
 
             {/* Footer */}
-            <div className="mt-auto border-t border-white/[0.04]">
+            <div className={`mt-auto border-t border-white/[0.04] ${selectionMode ? 'pointer-events-none opacity-40' : ''}`}>
                 {/* Last update */}
                 <div className="px-4 py-2 text-[10px] flex items-center justify-between">
                     <span className="text-slate-700 font-medium">Atualizado</span>
