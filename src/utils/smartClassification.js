@@ -82,7 +82,20 @@ export const smartClassifyOffer = (adCountsHistory = [], options = {}) => {
 
     const now = new Date();
 
-    // ── 2. CAMPANHA PAUSADA (sem atualização há 5+ dias) ────────────────────
+    // ── 2. OFERTA MORTA (0 anúncios ativos na última leitura) ───────────────
+    //    O scraper agora detecta explicitamente quando o Facebook mostra
+    //    "0 resultados / nenhum anúncio" — isso é o sinal definitivo de que
+    //    a oferta foi desligada AGORA. Antes isso virava "erro" e ficava oculto.
+    if (latestCount === 0) {
+        const peak = Math.max(...adCountsHistory.map(e => e.count || 0));
+        return makeTag('DEAD', 'MORTA', 'text-red-500', 'bg-red-950/60', 'border-red-600/50', 1,
+            peak > 0
+                ? `0 anúncios ativos — oferta desligada (já teve ${peak} ads no pico)`
+                : 'Nenhum anúncio ativo — oferta fora do ar',
+            'Oferta encerrada/pausada — parar de gastar atenção nela', 'high');
+    }
+
+    // ── 3. CAMPANHA PAUSADA (sem atualização há 5+ dias) ────────────────────
     const daysSinceUpdate = Math.floor((now - latestDate) / (1000 * 60 * 60 * 24));
     if (daysSinceUpdate >= 5 && latestCount > 0) {
         return makeTag('INACTIVE', 'PAUSADO', 'text-slate-400', 'bg-slate-900/40', 'border-slate-600/40', 0,

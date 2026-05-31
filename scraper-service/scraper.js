@@ -1,549 +1,379 @@
 import { chromium } from 'playwright';
 
 /**
- * Extrai o número de anúncios ativos da Biblioteca de Anúncios do Facebook
- * @param {string} facebookAdsLibraryUrl - URL da biblioteca de anúncios
- * @returns {Promise<{success: boolean, adCount: number|null, error: string|null}>}
+ * ════════════════════════════════════════════════════════════════════════════
+ *  MOTOR DE SCRAPING — Biblioteca de Anúncios do Facebook
+ * ════════════════════════════════════════════════════════════════════════════
+ *  Objetivo: extrair com PRECISÃO a quantidade de anúncios ativos + sinais de
+ *  vitalidade (oferta morta? há quantos dias roda?) para classificar se a
+ *  oferta está escalando ou já morreu.
+ *
+ *  Melhorias-chave em relação à versão anterior:
+ *   • Detecta explicitamente oferta MORTA (0 anúncios) — antes virava "erro".
+ *   • Espera inteligente (waitForFunction) em vez de sleep fixo → +rápido e +confiável.
+ *   • Bloqueia imagens/vídeo/fontes → carregamento muito mais rápido.
+ *   • Reuso de navegador/contexto (passar { context }) para jobs em lote.
+ *   • Extração unificada e robusta, sem falsos positivos do "ad" solto.
+ *   • Captura data do anúncio mais antigo + dias rodando.
+ * ════════════════════════════════════════════════════════════════════════════
  */
-export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl) {
-    let browser;
-    
+
+const DEFAULT_NAV_TIMEOUT = 30000;   // navegação
+const CONTENT_WAIT_TIMEOUT = 20000;  // espera o conteúdo dinâmico do FB aparecer
+
+// ─── Stealth / performance ────────────────────────────────────────────────────
+const LAUNCH_ARGS = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-default-browser-check'
+];
+
+const USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+/**
+ * Cria um navegador com configuração otimizada. Reaproveite em jobs em lote.
+ */
+export async function createBrowser() {
+    return chromium.launch({ headless: true, args: LAUNCH_ARGS });
+}
+
+/**
+ * Cria um contexto "stealth" pt-BR com bloqueio de recursos pesados.
+ * Bloqueia imagem/vídeo/fonte (não precisamos delas para ler o texto) — isso
+ * derruba drasticamente o tempo de carregamento da página do Facebook.
+ */
+export async function createStealthContext(browser) {
+    const context = await browser.newContext({
+        userAgent: USER_AGENT,
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
+        viewport: { width: 1366, height: 900 },
+        extraHTTPHeaders: { 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' }
+    });
+
+    // Mascarar sinais de automação
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' });
+        Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+
+    // Bloqueia recursos que não ajudam na extração de texto (ganho de velocidade)
+    await context.route('**/*', (route) => {
+        const type = route.request().resourceType();
+        if (type === 'image' || type === 'media' || type === 'font') {
+            return route.abort();
+        }
+        return route.continue();
+    });
+
+    return context;
+}
+
+// ─── Extração de número (lado Node) ─────────────────────────────────────────────
+
+function parseIntWithSeparators(str) {
+    return parseInt(String(str).replace(/[.,\s ]/g, ''), 10);
+}
+
+/**
+ * Analisa o texto da página e retorna { adCount, isDead }.
+ *  - isDead = true  → o Facebook explicitamente diz que não há anúncios ativos.
+ *  - adCount = 0    → oferta morta (acompanha isDead).
+ *  - adCount = N>0  → anúncios ativos encontrados.
+ *  - adCount = null → não foi possível determinar (não confundir com morta!).
+ */
+export function extractAdData(bodyText) {
+    if (!bodyText) return { adCount: null, isDead: false };
+    const text = bodyText.replace(/ /g, ' ');
+
+    // 1) OFERTA MORTA / ZERO — detecção explícita (CRÍTICO p/ saber se morreu)
+    const deadPatterns = [
+        /\b0\s+resultados?\b/i,
+        /\b0\s+results?\b/i,
+        /\b0\s+an[úu]ncios?\b/i,
+        /nenhum\s+an[úu]ncio/i,
+        /nenhum\s+resultado/i,
+        /n[ãa]o\s+encontramos\s+(?:nenhum\s+)?an[úu]ncio/i,
+        /n[ãa]o\s+h[áa]\s+an[úu]ncios?/i,
+        /no\s+ads?\s+(?:found|match|to\s+show)/i,
+        /no\s+results?\s+found/i
+    ];
+    for (const p of deadPatterns) {
+        if (p.test(text)) return { adCount: 0, isDead: true };
+    }
+
+    // 2) CONTAGEM POSITIVA — padrões adjacentes à palavra-chave (mais específico → genérico).
+    //    Não usamos "ad" solto (evita casar "download", "carregando", etc.).
+    const patterns = [
+        /mostrando\s+~?\s*([\d.,]{1,9})\s+resultados?/i,
+        /~?\s*([\d.,]{1,9})\s+resultados?/i,
+        /~?\s*([\d.,]{1,9})\s+results?/i,
+        /([\d.,]{1,9})\s+an[úu]ncios?\s+ativos?/i,
+        /~?\s*([\d.,]{1,9})\s+an[úu]ncios?/i,
+        /([\d.,]{1,9})\s+active\s+ads?\b/i,
+        /약?\s*([\d.,]{1,9})\s*개?\s*결과/i,   // coreano
+        /約?\s*([\d.,]{1,9})\s*條?\s*結果/i    // chinês
+    ];
+
+    for (const p of patterns) {
+        const m = text.match(p);
+        if (m) {
+            const n = parseIntWithSeparators(m[1]);
+            if (Number.isFinite(n) && n >= 1 && n <= 2000000) {
+                return { adCount: n, isDead: false };
+            }
+        }
+    }
+
+    return { adCount: null, isDead: false };
+}
+
+// ─── Extração de data do anúncio mais antigo (sinal de vitalidade) ──────────────
+
+/**
+ * Roda dentro da página. Encontra a data do anúncio ativo mais antigo,
+ * que indica há quanto tempo a oferta está no ar.
+ */
+function inPageOldestAdDate() {
+    const text = document.body.innerText || '';
+    const timestamps = [];
+
+    const monthsPt = {
+        jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
+        jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
+        janeiro: 0, fevereiro: 1, marco: 2, abril: 3, maio: 4, junho: 5,
+        julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
+    };
+
+    // PT: "Iniciado em 15 de jan. de 2024" / "Veiculação iniciada em 15 de jan de 2024"
+    const ptRegex = /(?:iniciad[oa] em|come[çc]ou em)\s+(\d{1,2})\s+de\s+([a-zç]+)\.?\s+de\s+(\d{4})/gi;
+    let m;
+    while ((m = ptRegex.exec(text)) !== null) {
+        const day = parseInt(m[1], 10);
+        const monthKey = m[2].toLowerCase().replace('.', '').replace('ç', 'c');
+        const year = parseInt(m[3], 10);
+        const month = monthsPt[monthKey];
+        if (month !== undefined && year >= 2018) {
+            timestamps.push(new Date(year, month, day).getTime());
+        }
+    }
+
+    // EN: "Started running on January 15, 2024"
+    const enRegex = /started running on\s+([a-z]+\s+\d{1,2},?\s+\d{4})/gi;
+    while ((m = enRegex.exec(text)) !== null) {
+        const d = new Date(m[1]);
+        if (!isNaN(d.getTime()) && d.getFullYear() >= 2018) {
+            timestamps.push(d.getTime());
+        }
+    }
+
+    if (timestamps.length === 0) return null;
+    return new Date(Math.min(...timestamps)).toISOString();
+}
+
+// ─── URL ────────────────────────────────────────────────────────────────────
+
+/**
+ * Garante que a URL da biblioteca tenha os parâmetros que estabilizam o resultado.
+ * Não destrói parâmetros existentes do usuário.
+ */
+export function normalizeAdsLibraryUrl(url) {
     try {
-        console.log(`[SCRAPER] Iniciando scraping para: ${facebookAdsLibraryUrl}`);
-        
-        // Lança o navegador (headless para rodar em background)
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        const u = new URL(url);
+        if (!u.searchParams.has('active_status')) u.searchParams.set('active_status', 'active');
+        if (!u.searchParams.has('ad_type')) u.searchParams.set('ad_type', 'all');
+        if (!u.searchParams.has('media_type')) u.searchParams.set('media_type', 'all');
+        return u.toString();
+    } catch {
+        return url;
+    }
+}
+
+// ─── Core: extrai a partir de uma page já criada ────────────────────────────────
+
+/**
+ * Faz o scraping usando uma `page` do Playwright já existente.
+ * Espera o conteúdo dinâmico aparecer (sem sleeps cegos) e extrai os dados.
+ *
+ * @returns {Promise<{success, adCount, isDead, oldestAdDate, daysRunning, error}>}
+ */
+async function scrapePage(page, url) {
+    page.setDefaultTimeout(DEFAULT_NAV_TIMEOUT);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: DEFAULT_NAV_TIMEOUT });
+
+    // Espera INTELIGENTE: resolve assim que aparece a contagem OU o aviso de "sem anúncios".
+    // Em vez de dormir 5s sempre, retorna no instante em que o dado existe.
+    await page
+        .waitForFunction(
+            () => {
+                const t = document.body ? document.body.innerText || '' : '';
+                const hasCount = /[\d.,]+\s*(resultados?|results?|an[úu]ncios?)/i.test(t);
+                const isEmpty =
+                    /nenhum (an[úu]ncio|resultado)|n[ãa]o encontramos|no ads?\b|\b0\s+(resultados?|results?|an[úu]ncios?)/i.test(t);
+                return hasCount || isEmpty;
+            },
+            { timeout: CONTENT_WAIT_TIMEOUT }
+        )
+        .catch(() => {
+            // Se estourar o timeout, seguimos com o que houver carregado.
         });
-        
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            locale: 'pt-BR', // Força português
-            timezoneId: 'America/Sao_Paulo'
-        });
-        
-        // Força idioma português no navegador
-        await context.addInitScript(() => {
-            Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' });
-            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
-        });
-        
-        const page = await context.newPage();
-        
-        // Define timeout maior para páginas do Facebook
-        page.setDefaultTimeout(30000);
-        
-        console.log('[SCRAPER] Navegando para a página...');
-        await page.goto(facebookAdsLibraryUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-        });
-        
-        // Aguarda a página carregar completamente
-        console.log('[SCRAPER] Aguardando página carregar...');
-        await page.waitForTimeout(5000); // Aguarda 5 segundos para conteúdo dinâmico
-        
-        // Tenta esperar por elementos específicos do Facebook
-        try {
-            await page.waitForSelector('[role="main"]', { timeout: 15000 });
-            console.log('[SCRAPER] ✓ Elemento principal encontrado');
-        } catch (e) {
-            console.log('[SCRAPER] ⚠️  Elemento principal não encontrado, continuando...');
+
+    // 1ª leitura
+    let bodyText = await page.evaluate(() => document.body.innerText || '');
+    let data = extractAdData(bodyText);
+
+    // Se não achou nada (nem morta, nem contagem), faz 1 scroll e tenta de novo —
+    // às vezes o header de contagem só renderiza após interação.
+    if (data.adCount === null && !data.isDead) {
+        await page.evaluate(() => window.scrollTo(0, Math.floor(document.body.scrollHeight / 3)));
+        await page.waitForTimeout(1200);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.waitForTimeout(600);
+        bodyText = await page.evaluate(() => document.body.innerText || '');
+        data = extractAdData(bodyText);
+    }
+
+    // Data do anúncio mais antigo (best-effort, não bloqueia o resultado principal)
+    let oldestAdDate = null;
+    let daysRunning = null;
+    try {
+        oldestAdDate = await page.evaluate(inPageOldestAdDate);
+        if (oldestAdDate) {
+            daysRunning = Math.floor((Date.now() - new Date(oldestAdDate).getTime()) / 86400000);
         }
-        
-        // Aguarda mais um pouco para conteúdo dinâmico carregar
-        await page.waitForTimeout(2000);
-        
-        // Tenta rolar a página para garantir que o conteúdo carregou
-        try {
-            await page.evaluate(() => {
-                window.scrollTo(0, document.body.scrollHeight / 2);
-            });
-            await page.waitForTimeout(1000);
-            await page.evaluate(() => {
-                window.scrollTo(0, 0);
-            });
-            await page.waitForTimeout(1000);
-        } catch (e) {
-            console.log('[SCRAPER] ⚠️  Erro ao rolar página:', e.message);
-        }
-        
-        // Tenta encontrar o número de anúncios com múltiplos seletores
-        let adCount = null;
-        
-        // Estratégia 0: Procura por elementos específicos do Facebook que mostram o número
-        console.log('[SCRAPER] Estratégia 0: Buscando elementos específicos do Facebook...');
-        try {
-            adCount = await page.evaluate(() => {
-                // Procura por elementos com aria-label ou texto que contenha números de resultados
-                const selectors = [
-                    '[aria-label*="resultado"]',
-                    '[aria-label*="result"]',
-                    '[aria-label*="anúncio"]',
-                    '[aria-label*="ad"]',
-                    'span[dir="auto"]',
-                    'div[role="status"]',
-                    'div[role="alert"]'
-                ];
-                
-                for (const selector of selectors) {
-                    const elements = document.querySelectorAll(selector);
-                    for (const el of elements) {
-                        const text = el.textContent || el.innerText || el.getAttribute('aria-label') || '';
-                        // Procura por padrões como "110 resultados", "~110 resultados", etc.
-                        const match = text.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
-                        if (match) {
-                            const numStr = match[1].replace(/[.,]/g, '');
-                            const num = parseInt(numStr, 10);
-                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                                return num;
-                            }
-                        }
-                    }
-                }
-                return null;
-            });
-            
-            if (adCount !== null) {
-                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando elementos específicos do Facebook`);
-            } else {
-                console.log('[SCRAPER] ⚠️  Estratégia 0 não encontrou número');
-            }
-        } catch (e) {
-            console.log('[SCRAPER] ⚠️  Erro na estratégia 0:', e.message);
-        }
-        
-        // Estratégia 1: Usa JavaScript direto no DOM para encontrar o número
-        if (adCount === null) {
-            console.log('[SCRAPER] Estratégia 1: Buscando no DOM com JavaScript...');
-            
-            adCount = await page.evaluate(() => {
-            // Função para encontrar número de resultados (FUNCIONA EM QUALQUER IDIOMA!)
-            function findAdCount() {
-                const bodyText = document.body.innerText || document.body.textContent || '';
-                
-                // Padrões específicos em MÚLTIPLOS IDIOMAS
-                // IMPORTANTE: Suporta números com separadores (1.100, 1,100) e números grandes
-                const patterns = [
-                    // Português - com separadores de milhar (mais específicos primeiro)
-                    /~?\s*([\d.,]+)\s+resultados?/i,
-                    /([\d.,]+)\s+resultados?/i,
-                    /~?\s*([\d.,]+)\s+anúncios?/i,
-                    /([\d.,]+)\s+anúncios?\s+ativos?/i,
-                    /mostrando\s+([\d.,]+)\s+resultados?/i,
-                    /([\d.,]+)\s+anúncios?\s+encontrados?/i,
-                    // Inglês - com separadores
-                    /~?\s*([\d.,]+)\s+results?/i,
-                    /([\d.,]+)\s+results?/i,
-                    /([\d.,]+)\s+active\s+ads?/i,
-                    /([\d.,]+)\s+ads?\s+active/i,
-                    /showing\s+([\d.,]+)\s+results?/i,
-                    /([\d.,]+)\s+ads?/i,
-                    // Chinês (约 = aproximadamente, 条 = unidade, 结果 = resultado)
-                    /约?\s*([\d.,]+)\s*条\s*结果/i,
-                    /([\d.,]+)\s*条\s*结果/i,
-                    /约\s*([\d.,]+)/i,
-                    // Espanhol
-                    /~?\s*([\d.,]+)\s+resultados?/i,
-                    /mostrando\s+([\d.,]+)\s+resultados?/i,
-                    // Francês
-                    /~?\s*([\d.,]+)\s+résultats?/i,
-                    /affichage\s+de\s+([\d.,]+)\s+résultats?/i,
-                    // Alemão
-                    /~?\s*([\d.,]+)\s+ergebnisse?/i,
-                    // Padrões mais genéricos (últimos)
-                    /~?\s*([\d.,]+)\s+\w+/i,
-                    // Procura apenas números grandes próximos de palavras-chave
-                    /\b([\d.,]{1,7})\b(?=.*(?:resultado|result|anúncio|ad|结果|条))/i
-                ];
-                
-                // Função para converter número com separadores para inteiro
-                function parseNumberWithSeparators(str) {
-                    // Remove pontos e vírgulas (separadores de milhar)
-                    const cleaned = str.replace(/[.,]/g, '');
-                    return parseInt(cleaned, 10);
-                }
-                
-                // Procura em todo o texto
-                for (const pattern of patterns) {
-                    try {
-                        const matches = bodyText.matchAll(new RegExp(pattern, 'gi'));
-                        for (const match of matches) {
-                            const numStr = match[1];
-                            const num = parseNumberWithSeparators(numStr);
-                            const fullMatch = match[0].toLowerCase();
-                            
-                            // Validações: suporta até 1 milhão de anúncios
-                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                                // Para padrões mais genéricos, verifica se há palavras-chave próximas
-                                if (pattern.source.includes('\\w+') || pattern.source.includes('\\b')) {
-                                    // Procura contexto ao redor do número
-                                    const matchIndex = bodyText.toLowerCase().indexOf(fullMatch);
-                                    const contextStart = Math.max(0, matchIndex - 50);
-                                    const contextEnd = Math.min(bodyText.length, matchIndex + fullMatch.length + 50);
-                                    const context = bodyText.substring(contextStart, contextEnd).toLowerCase();
-                                    
-                                    if (context.includes('resultado') || 
-                                        context.includes('anúncio') || 
-                                        context.includes('result') ||
-                                        context.includes('ad') ||
-                                        context.includes('结果') ||
-                                        context.includes('条')) {
-                                        return num;
-                                    }
-                                } else {
-                                    // Para padrões específicos, confia no match
-                                    if (fullMatch.includes('resultado') || 
-                                        fullMatch.includes('anúncio') || 
-                                        fullMatch.includes('result') ||
-                                        fullMatch.includes('ad') ||
-                                        fullMatch.includes('结果') ||
-                                        fullMatch.includes('条')) {
-                                        return num;
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        // Ignora erros de regex e continua
-                        continue;
-                    }
-                }
-                
-                // Procura linha por linha (FUNCIONA EM QUALQUER IDIOMA)
-                const lines = bodyText.split('\n');
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    // Procura por palavras-chave em múltiplos idiomas
-                    const hasResultKeyword = 
-                        trimmed.toLowerCase().includes('resultado') || 
-                        trimmed.toLowerCase().includes('anúncio') ||
-                        trimmed.toLowerCase().includes('result') ||
-                        trimmed.toLowerCase().includes('ad') ||
-                        trimmed.includes('结果') || // Chinês: resultado
-                        trimmed.includes('条') || // Chinês: unidade
-                        trimmed.includes('约'); // Chinês: aproximadamente
-                    
-                    if (hasResultKeyword && !trimmed.match(/20\d{2}/)) {
-                        // Procura número com ou sem ~ ou 约, suporta separadores
-                        const match = trimmed.match(/(?:~|约)?\s*([\d.,]+)/);
-                        if (match) {
-                            const numStr = match[1].replace(/[.,]/g, '');
-                            const num = parseInt(numStr, 10);
-                            if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                                return num;
-                            }
-                        }
-                    }
-                }
-                
-                return null;
-            }
-            
-            return findAdCount();
-        });
-            
-            if (adCount !== null) {
-                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando JavaScript no DOM`);
-            } else {
-                console.log('[SCRAPER] ⚠️  Estratégia 1 não encontrou número');
-            }
-        }
-        
-        // Estratégia 2: Extrai todo o texto visível e procura padrões ESPECÍFICOS
-        if (adCount === null) {
-            console.log('[SCRAPER] Estratégia 2: Analisando todo o conteúdo da página...');
-            const bodyText = await page.evaluate(() => document.body.innerText);
-            
-            console.log('[SCRAPER] DEBUG - Tamanho total do texto:', bodyText.length, 'caracteres');
-            console.log('[SCRAPER] DEBUG - Primeiras 2000 caracteres do texto:');
-            console.log(bodyText.substring(0, 2000));
-            
-            // Procura especificamente por linhas que contenham números próximos de "resultado"
-            console.log('[SCRAPER] DEBUG - Procurando linhas com "resultado"...');
-            const lines = bodyText.split('\n');
-            const relevantLines = lines.filter(line => 
-                line.toLowerCase().includes('resultado') || 
-                line.toLowerCase().includes('anúncio') ||
-                line.toLowerCase().includes('result')
-            );
-            console.log(`[SCRAPER] DEBUG - Encontradas ${relevantLines.length} linhas relevantes:`);
-            relevantLines.slice(0, 10).forEach((line, i) => {
-                console.log(`[SCRAPER] DEBUG - Linha ${i + 1}: "${line.trim()}"`);
-            });
-            
-            // Padrões MUITO específicos - MÚLTIPLOS IDIOMAS
-            // IMPORTANTE: Suporta números com separadores (1.100, 1,100)
-            const patterns = [
-                // Português - com separadores
-                /~?\s*([\d.,]+)\s+resultados?/i,
-                /([\d.,]+)\s+resultados?/i,
-                /~?\s*([\d.,]+)\s+anúncios?/i,
-                /([\d.,]+)\s+anúncios?\s+ativos?/i,
-                /mostrando\s+([\d.,]+)\s+resultados?/i,
-                /([\d.,]+)\s+anúncios?\s+encontrados?/i,
-                // Inglês - com separadores
-                /~?\s*([\d.,]+)\s+results?/i,
-                /([\d.,]+)\s+results?/i,
-                /([\d.,]+)\s+active\s+ads?/i,
-                /([\d.,]+)\s+ads?\s+active/i,
-                /showing\s+([\d.,]+)\s+results?/i,
-                /([\d.,]+)\s+ads?/i,
-                // Chinês (约110条结果 = aproximadamente 110 resultados)
-                /约?\s*([\d.,]+)\s*条\s*结果/i,
-                /([\d.,]+)\s*条\s*结果/i,
-                /约\s*([\d.,]+)/i,
-                // Padrões genéricos
-                /\b([\d.,]{1,7})\b(?=.*(?:resultado|result|anúncio|ad|结果|条))/i
-            ];
-            
-            // Função para converter número com separadores
-            function parseNumberWithSeparators(str) {
-                return parseInt(str.replace(/[.,]/g, ''), 10);
-            }
-            
-            for (const pattern of patterns) {
-                try {
-                    const matches = [...bodyText.matchAll(new RegExp(pattern, 'gi'))];
-                    
-                    for (const match of matches) {
-                        const numStr = match[1];
-                        const num = parseNumberWithSeparators(numStr);
-                        const fullMatch = match[0];
-                        
-                        // Validações rigorosas:
-                        // 1. Não é ano (2020-2030)
-                        // 2. Range válido (1-1000000) - suporta até 1 milhão
-                        // 3. O match deve conter palavras-chave em QUALQUER IDIOMA
-                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                            const lowerMatch = fullMatch.toLowerCase();
-                            const hasKeyword = 
-                                lowerMatch.includes('resultado') || 
-                                lowerMatch.includes('anúncio') || 
-                                lowerMatch.includes('result') ||
-                                lowerMatch.includes('ad') ||
-                                fullMatch.includes('结果') || // Chinês
-                                fullMatch.includes('条') || // Chinês
-                                fullMatch.includes('约'); // Chinês
-                            
-                            // Para padrões genéricos, verifica contexto
-                            if (pattern.source.includes('\\b')) {
-                                const matchIndex = bodyText.toLowerCase().indexOf(lowerMatch);
-                                const contextStart = Math.max(0, matchIndex - 100);
-                                const contextEnd = Math.min(bodyText.length, matchIndex + lowerMatch.length + 100);
-                                const context = bodyText.substring(contextStart, contextEnd).toLowerCase();
-                                
-                                if (context.includes('resultado') || 
-                                    context.includes('anúncio') || 
-                                    context.includes('result') ||
-                                    context.includes('ad') ||
-                                    context.includes('结果') ||
-                                    context.includes('条')) {
-                                    adCount = num;
-                                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
-                                    console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
-                                    console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
-                                    break;
-                                }
-                            } else if (hasKeyword) {
-                                adCount = num;
-                                console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando regex: ${pattern}`);
-                                console.log(`[SCRAPER] ✓ Match completo: "${fullMatch}"`);
-                                console.log(`[SCRAPER] ✓ Número original: "${numStr}"`);
-                                break;
-                            }
-                        }
-                    }
-                    if (adCount !== null) break;
-                } catch (e) {
-                    // Ignora erros de regex e continua
-                    continue;
-                }
-            }
-        }
-        
-        // Estratégia 3: Procura linha por linha (mais preciso)
-        if (adCount === null) {
-            console.log('[SCRAPER] Estratégia 3: Analisando linha por linha...');
-            const bodyText = await page.evaluate(() => document.body.innerText);
-            const lines = bodyText.split('\n');
-            
-            for (const line of lines) {
-                const trimmedLine = line.trim();
-                // Procura linhas que contenham palavras-chave em QUALQUER IDIOMA mas NÃO anos
-                const hasKeyword = 
-                    trimmedLine.toLowerCase().includes('resultado') || 
-                    trimmedLine.toLowerCase().includes('anúncio') ||
-                    trimmedLine.toLowerCase().includes('result') ||
-                    trimmedLine.toLowerCase().includes('ad') ||
-                    trimmedLine.includes('结果') || // Chinês
-                    trimmedLine.includes('条') || // Chinês
-                    trimmedLine.includes('约'); // Chinês
-                
-                if (hasKeyword && !trimmedLine.match(/20\d{2}/)) {
-                    // Procura número com ~, 约 ou sem prefixo, suporta separadores
-                    const match = trimmedLine.match(/(?:~|约)?\s*([\d.,]+)/);
-                    if (match) {
-                        const numStr = match[1].replace(/[.,]/g, '');
-                        const num = parseInt(numStr, 10);
-                        if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                            adCount = num;
-                            console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios na linha: "${trimmedLine}"`);
-                            console.log(`[SCRAPER] ✓ Número original: "${match[1]}"`);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Estratégia 4: Procura no HTML por atributos data-* ou aria-* que possam conter o número
-        if (adCount === null) {
-            console.log('[SCRAPER] Estratégia 4: Buscando em atributos HTML...');
-            try {
-                adCount = await page.evaluate(() => {
-                    // Procura por todos os elementos que possam conter o número
-                    const allElements = document.querySelectorAll('*');
-                    
-                    for (const el of allElements) {
-                        // Verifica atributos
-                        const attrs = ['aria-label', 'title', 'data-testid', 'data-content'];
-                        for (const attr of attrs) {
-                            const value = el.getAttribute(attr);
-                            if (value) {
-                                const match = value.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
-                                if (match) {
-                                    const numStr = match[1].replace(/[.,]/g, '');
-                                    const num = parseInt(numStr, 10);
-                                    if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                                        return num;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Verifica texto do elemento
-                        const text = el.textContent || el.innerText;
-                        if (text && text.length < 100) { // Apenas textos curtos (mais prováveis de conter o número)
-                            const match = text.match(/(?:~|约)?\s*([\d.,]+)\s*(?:resultados?|results?|anúncios?|ads?)/i);
-                            if (match) {
-                                const numStr = match[1].replace(/[.,]/g, '');
-                                const num = parseInt(numStr, 10);
-                                if (num > 0 && num <= 1000000 && (num < 2020 || num > 2030)) {
-                                    return num;
-                                }
-                            }
-                        }
-                    }
-                    return null;
-                });
-                
-                if (adCount !== null) {
-                    console.log(`[SCRAPER] ✓ Encontrado ${adCount} anúncios usando atributos HTML`);
-                } else {
-                    console.log('[SCRAPER] ⚠️  Estratégia 4 não encontrou número');
-                }
-            } catch (e) {
-                console.log('[SCRAPER] ⚠️  Erro na estratégia 4:', e.message);
-            }
-        }
-        
-        // Debug: Salva HTML e screenshot
-        if (adCount === null) {
-            console.log('[SCRAPER] ⚠️  Não encontrou número, salvando debug...');
-            try {
-                const html = await page.content();
-                const bodyText = await page.evaluate(() => document.body.innerText);
-                
-                console.log('[SCRAPER] DEBUG - Primeiros 2000 caracteres do texto:');
-                console.log(bodyText.substring(0, 2000));
-                console.log('[SCRAPER] DEBUG - Procurando por "resultado" no texto...');
-                const resultadoMatches = bodyText.match(/resultado/gi);
-                console.log(`[SCRAPER] DEBUG - Encontrou "resultado" ${resultadoMatches ? resultadoMatches.length : 0} vezes`);
-                
-                // Tira screenshot
-                await page.screenshot({ 
-                    path: `/tmp/debug-${Date.now()}.png`,
-                    fullPage: true 
-                }).catch(e => console.log('[SCRAPER] Erro ao salvar screenshot:', e.message));
-            } catch (e) {
-                console.log('[SCRAPER] Erro no debug:', e.message);
-            }
-        }
-        
-        await browser.close();
-        
-        if (adCount !== null) {
-            console.log(`[SCRAPER] ✅ Scraping concluído com sucesso! Anúncios encontrados: ${adCount}`);
-            return { success: true, adCount, error: null };
-        } else {
-            console.log('[SCRAPER] ⚠️  Não foi possível encontrar o número de anúncios');
-            return { 
-                success: false, 
-                adCount: null, 
-                error: 'Não foi possível extrair o número de anúncios da página' 
-            };
-        }
-        
-    } catch (error) {
-        console.error('[SCRAPER] ❌ Erro durante o scraping:', error);
-        if (browser) {
-            await browser.close();
-        }
-        return { 
-            success: false, 
-            adCount: null, 
-            error: error.message 
+    } catch {
+        /* ignora */
+    }
+
+    if (data.adCount !== null) {
+        return {
+            success: true,
+            adCount: data.adCount,
+            isDead: data.isDead,
+            oldestAdDate,
+            daysRunning,
+            error: null
         };
+    }
+
+    return {
+        success: false,
+        adCount: null,
+        isDead: false,
+        oldestAdDate,
+        daysRunning,
+        error: 'Não foi possível extrair o número de anúncios da página'
+    };
+}
+
+// ─── API pública (compatível com a versão antiga) ──────────────────────────────
+
+/**
+ * Extrai o número de anúncios ativos da Biblioteca de Anúncios do Facebook.
+ *
+ * @param {string} facebookAdsLibraryUrl - URL da biblioteca de anúncios
+ * @param {Object} [options]
+ * @param {import('playwright').BrowserContext} [options.context] - reaproveita um
+ *        contexto já criado (jobs em lote). Se omitido, abre/fecha o próprio navegador.
+ * @returns {Promise<{success, adCount, isDead, oldestAdDate, daysRunning, error}>}
+ */
+export async function scrapeFacebookAdsCount(facebookAdsLibraryUrl, options = {}) {
+    const url = normalizeAdsLibraryUrl(facebookAdsLibraryUrl);
+    const sharedContext = options.context || null;
+
+    let browser = null;
+    let context = sharedContext;
+    let page = null;
+    const startTime = Date.now();
+
+    try {
+        console.log(`[SCRAPER] ▶ ${url}`);
+
+        if (!context) {
+            browser = await createBrowser();
+            context = await createStealthContext(browser);
+        }
+
+        page = await context.newPage();
+        const result = await scrapePage(page, url);
+
+        const secs = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (result.success) {
+            console.log(
+                `[SCRAPER] ✅ ${result.isDead ? 'MORTA (0 ads)' : result.adCount + ' ads'}` +
+                    `${result.daysRunning != null ? ` | rodando há ${result.daysRunning}d` : ''} (${secs}s)`
+            );
+        } else {
+            console.log(`[SCRAPER] ⚠️  Sem contagem (${secs}s): ${result.error}`);
+        }
+        return result;
+    } catch (error) {
+        console.error('[SCRAPER] ❌ Erro:', error.message);
+        return {
+            success: false,
+            adCount: null,
+            isDead: false,
+            oldestAdDate: null,
+            daysRunning: null,
+            error: error.message
+        };
+    } finally {
+        if (page) await page.close().catch(() => {});
+        // Só fecha o navegador se nós criamos (não fechar o contexto compartilhado)
+        if (browser) await browser.close().catch(() => {});
     }
 }
 
 /**
- * Versão simplificada que tenta extrair diretamente do HTML
- * Útil como fallback
+ * Versão simplificada/fallback. Mantida por compatibilidade — agora também
+ * detecta oferta morta e usa a mesma extração robusta.
  */
-export async function scrapeFacebookAdsCountSimple(facebookAdsLibraryUrl) {
-    let browser;
-    
+export async function scrapeFacebookAdsCountSimple(facebookAdsLibraryUrl, options = {}) {
+    const url = normalizeAdsLibraryUrl(facebookAdsLibraryUrl);
+    const sharedContext = options.context || null;
+
+    let browser = null;
+    let context = sharedContext;
+    let page = null;
+
     try {
-        browser = await chromium.launch({ headless: true });
-        const page = await browser.newPage();
-        
-        await page.goto(facebookAdsLibraryUrl, { 
-            waitUntil: 'domcontentloaded',
-            timeout: 20000 
-        });
-        
-        await page.waitForTimeout(5000);
-        
-        // Executa JavaScript diretamente na página para pegar o número
-        const adCount = await page.evaluate(() => {
-            // Procura por elementos que contenham números de resultados
-            // Suporta números com separadores (1.100, 1,100)
-            const bodyText = document.body.innerText;
-            const match = bodyText.match(/([\d.,]+)\s+(resultados|anúncios|results?)/i);
-            if (match) {
-                const numStr = match[1].replace(/[.,]/g, '');
-                return parseInt(numStr, 10);
-            }
-            return null;
-        });
-        
-        await browser.close();
-        
-        if (adCount !== null) {
-            return { success: true, adCount, error: null };
-        } else {
-            return { 
-                success: false, 
-                adCount: null, 
-                error: 'Não foi possível extrair o número de anúncios' 
-            };
+        if (!context) {
+            browser = await createBrowser();
+            context = await createStealthContext(browser);
         }
-        
+        page = await context.newPage();
+        page.setDefaultTimeout(DEFAULT_NAV_TIMEOUT);
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: DEFAULT_NAV_TIMEOUT });
+        await page
+            .waitForFunction(
+                () => {
+                    const t = document.body ? document.body.innerText || '' : '';
+                    return /[\d.,]+\s*(resultados?|results?|an[úu]ncios?)/i.test(t) ||
+                        /nenhum (an[úu]ncio|resultado)|no ads?\b|\b0\s+(resultados?|results?)/i.test(t);
+                },
+                { timeout: 12000 }
+            )
+            .catch(() => {});
+
+        const bodyText = await page.evaluate(() => document.body.innerText || '');
+        const data = extractAdData(bodyText);
+
+        if (data.adCount !== null) {
+            return { success: true, adCount: data.adCount, isDead: data.isDead, error: null };
+        }
+        return { success: false, adCount: null, isDead: false, error: 'Não foi possível extrair o número de anúncios' };
     } catch (error) {
-        if (browser) await browser.close();
-        return { success: false, adCount: null, error: error.message };
+        return { success: false, adCount: null, isDead: false, error: error.message };
+    } finally {
+        if (page) await page.close().catch(() => {});
+        if (browser) await browser.close().catch(() => {});
     }
 }

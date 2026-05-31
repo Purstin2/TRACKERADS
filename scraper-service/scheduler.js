@@ -1,93 +1,108 @@
 import cron from 'node-cron';
-import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple } from './scraper.js';
+import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, createStealthContext } from './scraper.js';
 import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
 
+// Quantas ofertas processar em paralelo. Mais = mais rápido, porém mais risco
+// de o Facebook limitar requisições. 3 é um equilíbrio seguro. Configurável por env.
+const SCRAPE_CONCURRENCY = parseInt(process.env.SCRAPE_CONCURRENCY || '3', 10);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const jitter = (min, max) => Math.floor(min + Math.random() * (max - min));
+
 /**
- * Executa o scraping para todas as ofertas
+ * Processa UMA oferta: tenta o método principal e, se falhar, o alternativo,
+ * com uma 2ª tentativa. Aceita uma oferta MORTA (0 anúncios) como sucesso.
+ */
+async function processOffer(offer, context, index, total) {
+    const tag = `[${index}/${total}] ${offer.name}`;
+    let result = null;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        if (attempt > 1) {
+            console.log(`   🔄 ${tag}: tentativa ${attempt}/2`);
+            await sleep(jitter(3000, 6000));
+        }
+
+        result = await scrapeFacebookAdsCount(offer.link, { context });
+
+        // Fallback: método simplificado quando o principal não conseguiu ler a contagem
+        if (!result.success) {
+            const alt = await scrapeFacebookAdsCountSimple(offer.link, { context });
+            if (alt.success) result = alt;
+        }
+
+        if (result.success && result.adCount !== null) break;
+    }
+
+    // adCount === 0 É um resultado VÁLIDO (oferta morta) — precisa ser gravado!
+    if (result && result.success && result.adCount !== null) {
+        const saved = await updateOfferAdCount(offer.id, result.adCount, {
+            oldestAdDate: result.oldestAdDate,
+            daysRunning: result.daysRunning
+        });
+        await logScrapingResult(offer.id, result.adCount, saved);
+        const label = result.adCount === 0 ? '💀 MORTA (0 ads)' : `${result.adCount} ads`;
+        console.log(`   ${saved ? '✅' : '❌'} ${tag}: ${label}${saved ? ' salvo' : ' (erro ao salvar)'}`);
+        return saved ? 'success' : 'failed';
+    }
+
+    console.log(`   ❌ ${tag}: falha — ${result?.error || 'desconhecido'}`);
+    await logScrapingResult(offer.id, null, false, result?.error || 'Erro desconhecido');
+    return 'failed';
+}
+
+/**
+ * Executa o scraping para todas as ofertas.
+ * Reusa UM navegador para todo o job e processa em paralelo controlado.
  */
 export async function runScrapingJob() {
     console.log('\n====================================');
     console.log('🚀 INICIANDO JOB DE SCRAPING');
     console.log(`⏰ ${new Date().toLocaleString('pt-BR')}`);
     console.log('====================================\n');
-    
+
+    let browser = null;
+
     try {
-        // Busca todas as ofertas com links do Facebook
         const offers = await getOffersWithFacebookLinks();
-        
+
         if (offers.length === 0) {
             console.log('⚠️  Nenhuma oferta com link do Facebook encontrada.');
-            return;
+            return { success: 0, failed: 0, total: 0 };
         }
-        
-        console.log(`📊 Processando ${offers.length} ofertas...\n`);
-        
-        const results = {
-            success: 0,
-            failed: 0,
-            total: offers.length
+
+        console.log(`📊 Processando ${offers.length} ofertas (concorrência: ${SCRAPE_CONCURRENCY})...\n`);
+
+        const results = { success: 0, failed: 0, total: offers.length };
+
+        // Um navegador + um contexto reaproveitados por todo o job
+        browser = await createBrowser();
+        const context = await createStealthContext(browser);
+
+        // Fila com workers paralelos (concorrência controlada)
+        let cursor = 0;
+        const worker = async () => {
+            while (cursor < offers.length) {
+                const i = cursor++;
+                const offer = offers[i];
+                const status = await processOffer(offer, context, i + 1, offers.length);
+                if (status === 'success') results.success++;
+                else results.failed++;
+                // Pequeno respiro entre requisições para não parecer bot
+                await sleep(jitter(800, 2200));
+            }
         };
-        
-        // Processa cada oferta sequencialmente (para não sobrecarregar)
-        for (let i = 0; i < offers.length; i++) {
-            const offer = offers[i];
-            const progress = `[${i + 1}/${offers.length}]`;
-            
-            console.log(`\n🎯 ${progress} Processando: ${offer.name}`);
-            console.log(`   Link: ${offer.link}`);
-            
-            let result = null;
-            const maxRetries = 2; // Tenta até 2 vezes
-            
-            // Tenta com retry logic
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                if (attempt > 1) {
-                    console.log(`   🔄 Tentativa ${attempt}/${maxRetries}...`);
-                    // Aguarda mais tempo entre tentativas
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                }
-                
-                // Tenta primeiro o método principal
-                result = await scrapeFacebookAdsCount(offer.link);
-                
-                // Se falhou, tenta o método alternativo
-                if (!result.success) {
-                    console.log('   ⚠️  Método principal falhou, tentando alternativo...');
-                    result = await scrapeFacebookAdsCountSimple(offer.link);
-                }
-                
-                // Se conseguiu, para de tentar
-                if (result.success && result.adCount !== null) {
-                    break;
-                }
-            }
-            
-            if (result.success && result.adCount !== null) {
-                console.log(`   ✅ Sucesso! Encontrados ${result.adCount} anúncios`);
-                // Atualiza no banco de dados
-                const updated = await updateOfferAdCount(offer.id, result.adCount);
-                
-                if (updated) {
-                    console.log(`   ✅ Sucesso! ${result.adCount} anúncios encontrados e salvos`);
-                    results.success++;
-                } else {
-                    console.log(`   ❌ Erro ao salvar no banco de dados`);
-                    results.failed++;
-                }
-                
-                await logScrapingResult(offer.id, result.adCount, true);
-            } else {
-                console.log(`   ❌ Falha após ${maxRetries} tentativas: ${result?.error || 'Erro desconhecido'}`);
-                results.failed++;
-                await logScrapingResult(offer.id, null, false, result?.error || 'Erro desconhecido');
-            }
-            
-            // Aguarda 3 segundos entre cada scraping para não ser detectado como bot
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-        
+
+        const workers = Array.from(
+            { length: Math.min(SCRAPE_CONCURRENCY, offers.length) },
+            () => worker()
+        );
+        await Promise.all(workers);
+
+        await context.close().catch(() => {});
+
         console.log('\n====================================');
         console.log('📈 RESUMO DO JOB DE SCRAPING');
         console.log(`   Total: ${results.total}`);
@@ -95,19 +110,19 @@ export async function runScrapingJob() {
         console.log(`   ❌ Falhas: ${results.failed}`);
         console.log(`   ⏰ Concluído em: ${new Date().toLocaleString('pt-BR')}`);
         console.log('====================================\n');
-        
-        // Salva informações do último scraping
+
         setLastScrapingInfo({
             success: results.failed === 0,
             offersProcessed: results.total,
-            results: results
+            results
         });
-        
+
         return results;
-        
     } catch (error) {
         console.error('\n❌ ERRO CRÍTICO NO JOB DE SCRAPING:', error);
         throw error;
+    } finally {
+        if (browser) await browser.close().catch(() => {});
     }
 }
 

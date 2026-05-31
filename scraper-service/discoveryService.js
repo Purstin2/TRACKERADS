@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { createBrowser, createStealthContext, extractAdData } from './scraper.js';
 
 /**
  * Serviço de Descoberta Automática de Ofertas
@@ -8,37 +8,6 @@ import { chromium } from 'playwright';
  *  - Mínimo de adCount anúncios ativos
  *  - Rodando há pelo menos minDaysRunning dias
  */
-
-const MONTHS_PT = {
-    'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
-    'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11,
-    'janeiro': 0, 'fevereiro': 1, 'marco': 2, 'março': 2, 'abril': 3,
-    'maio': 4, 'junho': 5, 'julho': 6, 'agosto': 7, 'setembro': 8,
-    'outubro': 9, 'novembro': 10, 'dezembro': 11
-};
-
-/**
- * Extrai a contagem de anúncios ativos do texto da página
- */
-function extractAdCountFromText(bodyText) {
-    const patterns = [
-        /~?\s*([\d.,]+)\s+resultados?/i,
-        /([\d.,]+)\s+resultados?/i,
-        /~?\s*([\d.,]+)\s+anúncios?/i,
-        /([\d.,]+)\s+anúncios?\s+ativos?/i,
-        /~?\s*([\d.,]+)\s+results?/i,
-        /([\d.,]+)\s+results?/i,
-        /([\d.,]+)\s+active\s+ads?/i,
-    ];
-    for (const pat of patterns) {
-        const m = bodyText.match(pat);
-        if (m) {
-            const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
-            if (n > 0 && n <= 1000000 && (n < 2020 || n > 2030)) return n;
-        }
-    }
-    return null;
-}
 
 /**
  * Descobre ofertas escalando para uma keyword específica
@@ -67,21 +36,8 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         console.log(`[DISCOVERY] Filtros: ≥${minAdCount} ads | ≥${minDaysRunning} dias | país: ${country}`);
         console.log(`[DISCOVERY] ========================================`);
 
-        browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-
-        const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            locale: 'pt-BR',
-            timezoneId: 'America/Sao_Paulo'
-        });
-
-        await context.addInitScript(() => {
-            Object.defineProperty(navigator, 'language', { get: () => 'pt-BR' });
-            Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
-        });
+        browser = await createBrowser();
+        const context = await createStealthContext(browser);
 
         // ── PASSO 1: Busca por keyword ──────────────────────────────────────
         const searchPage = await context.newPage();
@@ -91,12 +47,20 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
 
         await searchPage.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await searchPage.waitForTimeout(5000);
+
+        // Espera os cards de anunciantes aparecerem (ou o aviso de vazio), sem sleep cego
+        await searchPage
+            .waitForFunction(
+                () => document.querySelector('a[href*="view_all_page_id"]') !== null ||
+                    /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(document.body?.innerText || ''),
+                { timeout: 15000 }
+            )
+            .catch(() => {});
 
         // Scroll para carregar mais resultados
         for (let s = 0; s < 4; s++) {
             await searchPage.evaluate(() => window.scrollBy(0, 900));
-            await searchPage.waitForTimeout(1500);
+            await searchPage.waitForTimeout(1200);
         }
 
         // ── PASSO 2: Extrai page IDs únicos dos resultados ──────────────────
@@ -151,35 +115,28 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                 const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${pageId}`;
 
                 await adPage.goto(libUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                await adPage.waitForTimeout(4000);
 
-                // Scroll para garantir carregamento de datas
+                // Espera a contagem (ou aviso de vazio) renderizar
+                await adPage
+                    .waitForFunction(
+                        () => {
+                            const t = document.body?.innerText || '';
+                            return /[\d.,]+\s*(resultados?|results?|an[úu]ncios?)/i.test(t) ||
+                                /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(t);
+                        },
+                        { timeout: 15000 }
+                    )
+                    .catch(() => {});
+
+                // Scroll para garantir carregamento das datas dos anúncios
                 await adPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
-                await adPage.waitForTimeout(1500);
+                await adPage.waitForTimeout(1200);
                 await adPage.evaluate(() => window.scrollTo(0, 0));
-                await adPage.waitForTimeout(1000);
+                await adPage.waitForTimeout(600);
 
-                // Verifica contagem de anúncios
-                const adCount = await adPage.evaluate((extractFn) => {
-                    const bodyText = document.body.innerText || '';
-                    const patterns = [
-                        /~?\s*([\d.,]+)\s+resultados?/i,
-                        /([\d.,]+)\s+resultados?/i,
-                        /~?\s*([\d.,]+)\s+anúncios?/i,
-                        /([\d.,]+)\s+anúncios?\s+ativos?/i,
-                        /~?\s*([\d.,]+)\s+results?/i,
-                        /([\d.,]+)\s+results?/i,
-                        /([\d.,]+)\s+active\s+ads?/i,
-                    ];
-                    for (const pat of patterns) {
-                        const m = bodyText.match(pat);
-                        if (m) {
-                            const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
-                            if (n > 0 && n <= 1000000 && (n < 2020 || n > 2030)) return n;
-                        }
-                    }
-                    return null;
-                });
+                // Verifica contagem de anúncios (extração unificada, lado Node)
+                const bodyText = await adPage.evaluate(() => document.body.innerText || '');
+                const { adCount } = extractAdData(bodyText);
 
                 if (adCount === null || adCount < minAdCount) {
                     console.log(`[DISCOVERY] ✗ ${name}: ${adCount ?? 0} ads ativos (mínimo: ${minAdCount})`);

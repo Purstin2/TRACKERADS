@@ -1,2 +1,6 @@
+# Quantas ofertas raspar em paralelo (mais rápido, porém mais risco de rate-limit do FB).
+# Padrão: 3. Aumente com cautela (4-5) se a máquina/IP aguentar.
+SCRAPE_CONCURRENCY=3
+
 SUPABASE_URL=https://asnqphrzfbflpocqcxbr.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzbnFwaHJ6ZmJmbHBvY3FjeGJyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODI2NzAxNywiZXhwIjoyMDgzODQzMDE3fQ.rkvB-mla_nYSPhA2Qkk4OWMDH_nC7NzdrKgNxcV5Le4

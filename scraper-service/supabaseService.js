@@ -45,12 +45,14 @@ export async function getOffersWithFacebookLinks() {
 
 /**
  * Atualiza o contador de anúncios de uma oferta
- * IMPORTANTE: Também cria um registro em ad_counts para manter o histórico
+ * IMPORTANTE: Também cria um registro em ad_counts para manter o histórico.
+ * adCount = 0 é VÁLIDO (oferta morta) e DEVE ser gravado.
  * @param {string} offerId - ID da oferta
- * @param {number} adCount - Número de anúncios
+ * @param {number} adCount - Número de anúncios (0 = morta)
+ * @param {{oldestAdDate?: string|null, daysRunning?: number|null}} [meta] - sinais de vitalidade
  * @returns {Promise<boolean>}
  */
-export async function updateOfferAdCount(offerId, adCount) {
+export async function updateOfferAdCount(offerId, adCount, meta = {}) {
     try {
         const timestamp = new Date().toISOString();
 
@@ -91,6 +93,27 @@ export async function updateOfferAdCount(offerId, adCount) {
             .eq('id', offerId);
 
         if (updateError) throw updateError;
+
+        // 4. Best-effort: grava sinais de vitalidade (data do anúncio mais antigo /
+        //    dias rodando / status). Não falha o job se as colunas ainda não existirem.
+        const enrich = {};
+        if (meta.oldestAdDate !== undefined && meta.oldestAdDate !== null) {
+            enrich.oldest_ad_date = String(meta.oldestAdDate).split('T')[0];
+        }
+        if (meta.daysRunning !== undefined && meta.daysRunning !== null) {
+            enrich.days_running = meta.daysRunning;
+        }
+        enrich.last_scrape_status = adCount === 0 ? 'dead' : 'active';
+
+        if (Object.keys(enrich).length > 0) {
+            const { error: enrichError } = await supabase
+                .from('offers')
+                .update(enrich)
+                .eq('id', offerId);
+            if (enrichError) {
+                console.warn(`[SUPABASE] (aviso) não gravou metadados de vitalidade — rode a migração SQL: ${enrichError.message}`);
+            }
+        }
 
         console.log(`[SUPABASE] ✓ Oferta ${offerId} atualizada: ${adCount} anúncios`);
         return true;

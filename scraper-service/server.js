@@ -146,6 +146,9 @@ app.post('/api/scrape/test', async (req, res) => {
         res.json({
             success: result.success,
             adCount: result.adCount,
+            isDead: result.isDead ?? false,
+            oldestAdDate: result.oldestAdDate ?? null,
+            daysRunning: result.daysRunning ?? null,
             error: result.error,
             url: url,
             duration: `${duration}s`,
