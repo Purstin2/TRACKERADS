@@ -8,11 +8,12 @@ import ComparativeAnalysisScreen from './components/screens/ComparativeAnalysisS
 import DashboardScreen from './components/screens/DashboardScreen';
 import AlertsScreen from './components/screens/AlertsScreen';
 import DiscoveryScreen from './components/screens/DiscoveryScreen';
+import TrajectoryScreen from './components/screens/TrajectoryScreen';
 import AddOfferModal from './components/modals/AddOfferModal';
 import EditOfferModal from './components/modals/EditOfferModal';
 import AuthForm from './components/auth/AuthForm';
 import AdvancedFilters from './components/ui/AdvancedFilters';
-import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter, Search } from 'lucide-react';
+import { Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Download, Filter, Search, History } from 'lucide-react';
 import { exportToCSV, exportToJSON, exportDetailedReport } from './utils/exportHelpers';
 import ReactMarkdown from 'react-markdown';
 
@@ -555,6 +556,7 @@ function App() {
         { id: 'grid',      icon: LayoutGrid,       label: 'Targets' },
         { id: 'dashboard', icon: BarChart3,         label: 'Dashboard' },
         { id: 'compare',   icon: ChevronsLeftRight, label: 'Comparar' },
+        { id: 'trajectory',icon: History,           label: 'Trajetória' },
         { id: 'alerts',    icon: Bell,              label: 'Alertas' },
         { id: 'discovery', icon: Search,             label: 'Descoberta' },
     ] as const;
@@ -714,6 +716,15 @@ function App() {
                             supabaseClient={activeSupabaseClient}
                             showToast={showToast}
                             onAddOffer={handleAddOffer}
+                        />
+                    )}
+                    {currentScreen === 'trajectory' && (
+                        <TrajectoryScreen
+                            offers={offers}
+                            userId={userId}
+                            supabaseClient={activeSupabaseClient}
+                            showToast={showToast}
+                            fetchOffers={fetchOffers}
                         />
                     )}
                     {currentScreen === 'detail' && selectedOfferId && (
