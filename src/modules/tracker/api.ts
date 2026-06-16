@@ -94,6 +94,42 @@ export async function addOffer(o: { name: string; link: string; tags?: string[];
   const { error } = await db().from('offers').insert([{ name: o.name, link: o.link, tags: o.tags || [], category: o.category || null }])
   if (error) throw new Error(error.message)
 }
+
+/** Importa várias ofertas de uma vez, pulando links já cadastrados.
+ *  Retorna quantas foram inseridas e quantas foram puladas (duplicadas). */
+export async function addOffersBulk(
+  items: { name: string; link: string; tags?: string[] }[]
+): Promise<{ inserted: number; skipped: number }> {
+  if (!items.length) return { inserted: 0, skipped: 0 }
+  // dedup contra o que já existe (por link) + dedup interno
+  const existing = await getOffers()
+  const have = new Set(existing.map((o) => normLink(o.link)))
+  const seen = new Set<string>()
+  const rows: { name: string; link: string; tags: string[]; category: null }[] = []
+  let skipped = 0
+  for (const it of items) {
+    const key = normLink(it.link)
+    if (!it.link || have.has(key) || seen.has(key)) {
+      skipped++
+      continue
+    }
+    seen.add(key)
+    rows.push({ name: it.name || it.link, link: it.link, tags: it.tags || [], category: null })
+  }
+  if (rows.length) {
+    const { error } = await db().from('offers').insert(rows)
+    if (error) throw new Error(error.message)
+  }
+  return { inserted: rows.length, skipped }
+}
+
+/** Normaliza um link da Ads Library pra comparar duplicatas (pelo page_id quando há). */
+export function normLink(link: string): string {
+  if (!link) return ''
+  const pid = link.match(/view_all_page_id=(\d+)/)?.[1] || link.match(/page_id=(\d+)/)?.[1]
+  if (pid) return 'pid:' + pid
+  return link.trim().replace(/[?#].*$/, '').toLowerCase()
+}
 export async function updateOffer(id: string, patch: Partial<Offer>) {
   const { error } = await db().from('offers').update(patch).eq('id', id)
   if (error) throw new Error(error.message)

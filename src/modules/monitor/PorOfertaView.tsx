@@ -35,6 +35,8 @@ export default function PorOfertaView() {
   const m = useMonitor()
   const [defs, setDefs] = useState<OfferDef[]>(loadDefs)
   const [period, setPeriod] = useState('last_7d')
+  const [customSince, setCustomSince] = useState('')
+  const [customUntil, setCustomUntil] = useState('')
   const [loading, setLoading] = useState(false)
   const [campData, setCampData] = useState<Record<string, CampMetric>>({})
   const [cur, setCur] = useState('$')
@@ -52,6 +54,8 @@ export default function PorOfertaView() {
     if (!m.token.trim()) return alert('Cole o token.')
     const accs = ACCOUNTS.filter((a) => m.selected.has(a.id))
     if (!accs.length) return
+    if (period === 'custom' && (!customSince || !customUntil)) return alert('Escolha as duas datas (de / até).')
+    const actualPeriod = period === 'custom' ? `custom:${customSince}:${customUntil}` : period
     setLoading(true)
     const statuses = STATUS_FILTERS[m.status]?.values || ['ACTIVE']
     const curs = [...new Set(accs.map((a) => a.cur))]
@@ -61,7 +65,7 @@ export default function PorOfertaView() {
     for (const acc of accs) {
       const fx = mx ? (acc.cur === 'BRL' ? 1 / m.settings.fx : 1) : 1
       try {
-        const rows = await fetchOffer(acc.id, period, m.token.trim(), statuses)
+        const rows = await fetchOffer(acc.id, actualPeriod, m.token.trim(), statuses)
         rows.forEach((r) => {
           const key = `${acc.id}::${r.campaign_id}`
           data[key] = {
@@ -140,7 +144,15 @@ export default function PorOfertaView() {
               {d.label}
             </option>
           ))}
+          <option value="custom">Personalizado</option>
         </select>
+        {period === 'custom' && (
+          <>
+            <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)} style={{ colorScheme: 'dark' }} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" />
+            <span className="text-[11px] text-muted2">até</span>
+            <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} style={{ colorScheme: 'dark' }} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" />
+          </>
+        )}
         <span className="ml-1 text-[10px] font-bold uppercase tracking-wide text-muted2">Ordenar</span>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
           <option value="spend">Maior gasto</option>

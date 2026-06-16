@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts'
-import { Database, ExternalLink, Plus, RefreshCw, Search, X, Archive, LogIn, LogOut } from 'lucide-react'
+import { Database, ExternalLink, Plus, RefreshCw, Search, X, Archive, LogIn, LogOut, Upload } from 'lucide-react'
 import { isConfigured, saveCreds, clearCreds, signIn, signOut, useSession } from '@/lib/supabase'
 import { classifyOffer, type AdCount } from './classification'
+import { parseLinksText, parseBookmarksHtml, type ParsedOffer } from './import'
 import {
   getOffers,
   getAllAdCounts,
   addOffer,
+  addOffersBulk,
   deleteOffer,
   updateOffer,
   addAdCount,
@@ -334,10 +336,17 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
   const [filterCode, setFilterCode] = useState('')
   const [detail, setDetail] = useState<Offer | null>(null)
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [newOffer, setNewOffer] = useState({ name: '', link: '' })
   const [statusMode, setStatusMode] = useState<'ativas' | 'inativas' | 'arquivadas' | 'todas'>('ativas')
-  const [sortKey, setSortKey] = useState<'count' | 'trend'>('count')
+  const [sortKey, setSortKey] = useState<'count' | 'trend' | 'days'>('count')
   const [trendWin, setTrendWin] = useState(7)
+  // filtros novos
+  const [minAds, setMinAds] = useState('') // faixa de nº de ads
+  const [maxAds, setMaxAds] = useState('')
+  const [tag, setTag] = useState('') // tag/nicho
+  const [minDays, setMinDays] = useState('') // dias rodando mínimos
+  const [trendDir, setTrendDir] = useState<'' | 'up' | 'down'>('') // só subindo / só caindo
   const [scraper, setScraper] = useState(() => {
     const def = { localUrl: 'http://localhost:3001', railwayUrl: (import.meta.env.VITE_SCRAPER_URL as string) || '', path: '/api/scrape' }
     try {
@@ -387,7 +396,20 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
     load()
   }, [])
 
+  // todas as tags presentes nas ofertas (pro select de nicho)
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    offers.forEach((o) => {
+      const t = Array.isArray(o.tags) ? o.tags : typeof o.tags === 'string' ? (o.tags as string).split(',') : []
+      t.forEach((x) => x && x.trim() && set.add(x.trim()))
+    })
+    return [...set].sort()
+  }, [offers])
+
   const filtered = useMemo(() => {
+    const lo = minAds ? parseInt(minAds) : -Infinity
+    const hi = maxAds ? parseInt(maxAds) : Infinity
+    const md = minDays ? parseInt(minDays) : 0
     return offers
       .filter((o) => {
         if (statusMode === 'todas') return true
@@ -399,11 +421,31 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
       })
       .filter((o) => !search || o.name.toLowerCase().includes(search.toLowerCase()))
       .filter((o) => !filterCode || classifyOffer(counts[o.id] || []).code === filterCode)
+      // faixa de nº de ads
+      .filter((o) => {
+        const n = o.last_ad_count ?? 0
+        return n >= lo && n <= hi
+      })
+      // dias rodando mínimos
+      .filter((o) => !md || (o.days_running ?? 0) >= md)
+      // tag / nicho
+      .filter((o) => {
+        if (!tag) return true
+        const t = Array.isArray(o.tags) ? o.tags : typeof o.tags === 'string' ? (o.tags as string).split(',') : []
+        return t.some((x) => x && x.trim() === tag)
+      })
+      // tendência real (subindo/caindo no período)
+      .filter((o) => {
+        if (!trendDir) return true
+        const ch = trendChange(counts[o.id] || [], trendWin)
+        return trendDir === 'up' ? ch > 5 : ch < -5
+      })
       .sort((a, b) => {
         if (sortKey === 'trend') return trendChange(counts[b.id] || [], trendWin) - trendChange(counts[a.id] || [], trendWin)
+        if (sortKey === 'days') return (b.days_running ?? 0) - (a.days_running ?? 0)
         return (b.last_ad_count ?? 0) - (a.last_ad_count ?? 0)
       })
-  }, [offers, counts, search, filterCode, statusMode, sortKey, trendWin])
+  }, [offers, counts, search, filterCode, statusMode, sortKey, trendWin, minAds, maxAds, tag, minDays, trendDir])
 
   return (
     <div className="flex flex-col gap-4">
@@ -418,12 +460,13 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
           <option value="arquivadas">Arquivadas</option>
           <option value="todas">Todas</option>
         </select>
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
-          <option value="count">Mais ads</option>
-          <option value="trend">Crescimento</option>
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Ordenar">
+          <option value="count">↓ Mais ads</option>
+          <option value="trend">↓ Crescimento</option>
+          <option value="days">↓ Dias rodando</option>
         </select>
-        {sortKey === 'trend' && (
-          <select value={trendWin} onChange={(e) => setTrendWin(+e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
+        {(sortKey === 'trend' || trendDir) && (
+          <select value={trendWin} onChange={(e) => setTrendWin(+e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Janela da tendência">
             <option value={7}>7d</option>
             <option value={14}>14d</option>
             <option value={30}>30d</option>
@@ -441,6 +484,44 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
           <option value="morrendo">Morrendo</option>
           <option value="morta">Morta</option>
         </select>
+        {/* tendência como filtro (não só sort) */}
+        <select value={trendDir} onChange={(e) => setTrendDir(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Filtrar por tendência">
+          <option value="">Tendência: tudo</option>
+          <option value="up">📈 Subindo</option>
+          <option value="down">📉 Caindo</option>
+        </select>
+        {/* faixa de nº de ads */}
+        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1 text-[12px]">
+          <span className="text-muted2">ads</span>
+          <input value={minAds} onChange={(e) => setMinAds(e.target.value.replace(/\D/g, ''))} placeholder="min" className="w-12 bg-transparent text-ink outline-none" inputMode="numeric" />
+          <span className="text-muted2">–</span>
+          <input value={maxAds} onChange={(e) => setMaxAds(e.target.value.replace(/\D/g, ''))} placeholder="max" className="w-12 bg-transparent text-ink outline-none" inputMode="numeric" />
+        </div>
+        {/* dias rodando mínimos */}
+        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1 text-[12px]">
+          <input value={minDays} onChange={(e) => setMinDays(e.target.value.replace(/\D/g, ''))} placeholder="0" className="w-9 bg-transparent text-ink outline-none" inputMode="numeric" />
+          <span className="text-muted2">+ dias</span>
+        </div>
+        {/* tag / nicho */}
+        {allTags.length > 0 && (
+          <select value={tag} onChange={(e) => setTag(e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
+            <option value="">Todos os nichos</option>
+            {allTags.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        )}
+        {(minAds || maxAds || minDays || tag || trendDir || filterCode || search) && (
+          <button
+            className="btn btn-ghost btn-sm"
+            title="Limpar filtros"
+            onClick={() => { setMinAds(''); setMaxAds(''); setMinDays(''); setTag(''); setTrendDir(''); setFilterCode(''); setSearch('') }}
+          >
+            <X className="h-3.5 w-3.5" /> limpar
+          </button>
+        )}
         <span className="text-[12px] text-muted2">{filtered.length} ofertas</span>
         <button className="btn btn-ghost btn-sm" onClick={load}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -456,6 +537,9 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
           )}
           <button className="btn btn-ghost btn-sm" onClick={() => setShowScraperCfg(true)} title="Configurar scraper">
             ⚙
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)} title="Importar vários links / favoritos">
+            <Upload className="h-3.5 w-3.5" /> Importar
           </button>
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
             <Plus className="h-3.5 w-3.5" /> Adicionar
@@ -510,6 +594,8 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
           }}
         />
       )}
+
+      {importing && <ImportModal onClose={() => setImporting(false)} onDone={load} />}
 
       {adding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setAdding(false)}>
@@ -674,6 +760,106 @@ function DiscoveryView() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/* ── importação em massa: colar links OU subir favoritos do Chrome ── */
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [text, setText] = useState('')
+  const [parsed, setParsed] = useState<ParsedOffer[]>([])
+  const [busy, setBusy] = useState(false)
+  const [fileName, setFileName] = useState('')
+
+  function reparse(t: string) {
+    setText(t)
+    setParsed(parseLinksText(t))
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setFileName(f.name)
+    const html = await f.text()
+    const fromHtml = parseBookmarksHtml(html)
+    // junta com o que já estava colado (sem duplicar)
+    const merged = [...parsed]
+    const have = new Set(parsed.map((p) => p.link))
+    fromHtml.forEach((p) => !have.has(p.link) && merged.push(p))
+    setParsed(merged)
+    toast(`${fromHtml.length} links da Ads Library encontrados no arquivo`, fromHtml.length ? 'ok' : 'warn')
+  }
+
+  async function doImport() {
+    if (!parsed.length) return toast('Nada pra importar', 'warn')
+    setBusy(true)
+    try {
+      const res = await addOffersBulk(parsed)
+      toast(`${res.inserted} importadas${res.skipped ? `, ${res.skipped} já existiam` : ''}`, 'ok')
+      onDone()
+      onClose()
+    } catch (e: any) {
+      toast(e.message, 'err')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="card flex max-h-[90vh] w-full max-w-[560px] flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="card-header">
+          <h3 className="text-[13px] font-bold">Importar ofertas em massa</h3>
+          <button onClick={onClose} className="text-muted2 hover:text-ink">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+          <p className="text-[12px] text-muted">
+            Cole vários links da Ads Library (um por linha — aceita <code>Nome | link</code>) ou suba a pasta de
+            favoritos exportada do Chrome. Eu pego só os links da Ads Library e ignoro o resto. Duplicados são pulados.
+          </p>
+
+          <textarea
+            value={text}
+            onChange={(e) => reparse(e.target.value)}
+            rows={5}
+            placeholder={'Pokémon BR | https://facebook.com/ads/library/?view_all_page_id=...\nhttps://facebook.com/ads/library/?q=impressao 3d'}
+            className="resize-y rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-2 text-[12px] text-ink"
+          />
+
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-[7px] border border-border bg-surface2 px-3 py-1.5 text-[12px] hover:bg-surface">
+            <Upload className="h-3.5 w-3.5" />
+            {fileName || 'Subir favoritos (.html)'}
+            <input type="file" accept=".html,.htm,text/html" className="hidden" onChange={onFile} />
+          </label>
+          <p className="-mt-1 text-[10.5px] text-muted2">
+            Chrome → ⋮ → Favoritos → Gerenciar favoritos → ⋮ → Exportar favoritos. Sobe o arquivo aqui.
+          </p>
+
+          {parsed.length > 0 && (
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-[7px] border border-border">
+              <div className="sticky top-0 flex items-center justify-between border-b border-border bg-surface2 px-3 py-1.5 text-[11px] font-bold">
+                <span>{parsed.length} ofertas prontas pra importar</span>
+                <button className="text-muted2 hover:text-danger" onClick={() => { setParsed([]); setText(''); setFileName('') }}>limpar</button>
+              </div>
+              {parsed.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-[12px] last:border-0">
+                  <span className="flex-1 truncate" title={p.name}>{p.name}</span>
+                  <a href={p.link} target="_blank" className="text-muted2 hover:text-brand-2"><ExternalLink className="h-3 w-3" /></a>
+                  <button className="text-muted2 hover:text-danger" onClick={() => setParsed(parsed.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={doImport} disabled={busy || !parsed.length}>
+              <Upload className="h-3.5 w-3.5" /> {busy ? 'Importando...' : `Importar ${parsed.length || ''}`}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
