@@ -1,32 +1,63 @@
 import crypto from 'node:crypto'
 
-// ─── hashing ────────────────────────────────────────────────────────────────
-const sha256 = (v) =>
-  v ? crypto.createHash('sha256').update(String(v).trim().toLowerCase()).digest('hex') : undefined
+// ─── normalização (regras EXATAS do Meta antes de hashear) ───────────────────
+// Remove acentos: "joão" → "joao". O Meta normaliza assim; se mandarmos com
+// acento o hash não casa e o sinal é descartado (foi o que derrubava o match rate).
+const stripAccents = (v) =>
+  String(v).normalize('NFD').replace(/[̀-ͯ]/g, '')
 
-// Phone: digits only → prefixes DDI 55 if missing → hash
+const norm = (v) => stripAccents(String(v).trim().toLowerCase())
+
+const sha = (v) => crypto.createHash('sha256').update(v).digest('hex')
+
+// hash genérico de texto (email, nome, cidade...) — já normalizado
+const sha256 = (v) => (v ? sha(norm(v)) : undefined)
+
+// Email: minúsculo + trim + remove acentos (Gmail dots ficam — Meta não exige tirar)
+const hashEmail = (v) => {
+  if (!v) return undefined
+  const e = norm(v)
+  return e.includes('@') ? sha(e) : undefined
+}
+
+// Phone E.164 só dígitos: DDI 55 + DDD + número. Remove o 0 de operadora se houver.
 const hashPhone = (v) => {
   if (!v) return undefined
   let d = String(v).replace(/\D/g, '')
   if (!d) return undefined
-  if (d.length <= 11) d = '55' + d
-  return crypto.createHash('sha256').update(d).digest('hex')
+  if (d.length <= 11) d = '55' + d          // sem DDI → assume Brasil
+  return sha(d)
 }
 
-// Name split: "João Silva" → { fn: hash("joão"), ln: hash("silva") }
+// Nome: separa primeiro/último, normaliza cada um. "João da Silva" → fn=joao ln=silva
 function hashName(fullName) {
   if (!fullName) return {}
-  const parts = String(fullName).trim().toLowerCase().split(/\s+/)
-  const fn = parts[0] ? sha256(parts[0]) : undefined
-  const ln = parts.length > 1 ? sha256(parts[parts.length - 1]) : undefined
+  const parts = norm(fullName).split(/\s+/).filter(Boolean)
+  if (!parts.length) return {}
+  const fn = sha(parts[0])
+  const ln = parts.length > 1 ? sha(parts[parts.length - 1]) : undefined
   return { fn, ln }
 }
 
-// CPF/CNPJ → hash (external_id extra)
+// CPF/CNPJ → só dígitos → hash. Identificador forte pro external_id.
 const hashDoc = (v) => {
   if (!v) return undefined
   const d = String(v).replace(/\D/g, '')
-  return d ? sha256(d) : undefined
+  return d.length >= 11 ? sha(d) : undefined
+}
+
+// Cidade/estado/país: sem espaço, sem acento, minúsculo. CEP só dígitos.
+const hashCity = (v) => (v ? sha(norm(v).replace(/\s+/g, '')) : undefined)
+const hashState = (v) => (v ? sha(norm(v).replace(/\s+/g, '')) : undefined)
+const hashZip = (v) => {
+  const d = String(v || '').replace(/\D/g, '')
+  return d ? sha(d) : undefined
+}
+const hashCountry = (v) => {
+  // país em ISO-2 minúsculo: "Brasil"/"BR"/"brazil" → "br"
+  let c = norm(v || 'br')
+  if (c === 'brasil' || c === 'brazil') c = 'br'
+  return sha(c.slice(0, 2))
 }
 
 // ─── parsers ────────────────────────────────────────────────────────────────
@@ -55,18 +86,35 @@ function canonicalStatus(event, rawStatus) {
   return s || 'PENDING'
 }
 
-// Extract fbc from checkout_url query string (?fbclid=...)
-function extractFbc(checkoutUrl) {
-  if (!checkoutUrl) return null
-  try {
-    const u = new URL(checkoutUrl)
-    const fbclid = u.searchParams.get('fbclid')
-    if (!fbclid) return null
-    const ts = Math.floor(Date.now() / 1000)
-    return `fb.1.${ts}.${fbclid}`
-  } catch {
-    return null
+// fbc é o sinal de clique mais forte. A Kirvano normalmente NÃO manda o _fbc
+// pronto — só o _fbp. Então reconstruímos a partir do fbclid achado em qualquer
+// lugar: cookie _fbc pronto, campo fbc, ou fbclid solto numa URL/campo.
+// Formato Meta: fb.1.<timestamp_ms>.<fbclid>
+function buildFbc({ rawFbc, fbclid, createdAt }) {
+  // já veio pronto e no formato certo?
+  if (rawFbc && /^fb\.1\.\d+\./.test(rawFbc)) return rawFbc
+  // veio um _fbc de cookie mas sem prefixo? tenta usar como fbclid
+  const id = fbclid || (rawFbc && !rawFbc.startsWith('fb.') ? rawFbc : null)
+  if (!id) return null
+  const ts = createdAt ? new Date(createdAt).getTime() : Date.now()
+  return `fb.1.${ts || Date.now()}.${id}`
+}
+
+// procura fbclid em URL (?fbclid=) ou string solta
+function findFbclid(...candidates) {
+  for (const c of candidates) {
+    if (!c) continue
+    const s = String(c)
+    try {
+      const u = new URL(s)
+      const q = u.searchParams.get('fbclid')
+      if (q) return q
+    } catch {
+      // não é URL — vê se é o próprio fbclid (heurística: longo, base64-ish)
+      if (/^[A-Za-z0-9_-]{20,}$/.test(s)) return s
+    }
   }
+  return null
 }
 
 // Parse Brazilian state from phone DDD (heuristic) — better than nothing
@@ -102,9 +150,26 @@ function parseOrder(gateway, body) {
     const products = Array.isArray(body.products) ? body.products : []
     const main = products.find((p) => !p.is_order_bump) || products[0] || {}
     const status = canonicalStatus(body.event, body.status)
-    const checkoutUrl = body.checkout_url || body.cart_url || null
+    const phone = c.phone_number || c.phone
     // IP real do comprador (Kirvano manda body.ip)
     const buyerIp = body.ip || null
+
+    // event_source_url: a Kirvano não manda checkout_url no payload de venda,
+    // mas dá pra montar do offer_id (URL real da oferta) — melhor que vazio.
+    const offerId = main.offer_id || products[0]?.offer_id
+    const checkoutUrl =
+      body.checkout_url ||
+      body.cart_url ||
+      (offerId && process.env.CHECKOUT_BASE ? `${process.env.CHECKOUT_BASE}/${offerId}` : null) ||
+      (offerId ? `https://pay.kirvano.com/${offerId}` : null)
+
+    // fbc: reconstrói do _fbc/fbclid achado em cookies, body ou URL
+    const fbclid = findFbclid(cookies.fbclid, body.fbclid, checkoutUrl, body.src_url, body.referer)
+    const fbc = buildFbc({
+      rawFbc: cookies.fbc || cookies._fbc || body.fbc || body.fb_click_id,
+      fbclid,
+      createdAt: body.created_at,
+    })
 
     return {
       gateway,
@@ -120,12 +185,12 @@ function parseOrder(gateway, body) {
       paymentMethod: body.payment?.method || body.payment_method || null,
       name: c.name,
       email: c.email,
-      phone: c.phone_number || c.phone,
+      phone,
       doc: c.document,
       buyerIp,
       // geo — Kirvano manda address (city/state podem ser null, fallback p/ DDD)
       city: addr.city || c.city || null,
-      state: addr.state || c.state || stateFromDDD(c.phone_number || c.phone),
+      state: addr.state || c.state || stateFromDDD(phone),
       zip: addr.zipcode || addr.zip || c.zip || null,
       country: addr.country || 'br',
       // UTM
@@ -135,9 +200,11 @@ function parseOrder(gateway, body) {
       utmContent: utm.content || body.utm_content,
       utmTerm: utm.term || body.utm_term,
       checkoutUrl,
-      // Facebook IDs — Kirvano manda cookies.fbp e cookies.fbc
-      fbc: cookies.fbc || body.fbc || body.fb_click_id || extractFbc(checkoutUrl),
-      fbp: cookies.fbp || body.fbp || body.fb_browser_id || null,
+      // Facebook IDs
+      fbc,
+      fbp: cookies.fbp || cookies._fbp || body.fbp || body.fb_browser_id || null,
+      // Google click id (rastreio próprio / futuro Google Ads)
+      gclid: cookies.gclid || body.gclid || null,
       orderedAt: body.created_at || null,
     }
   }
@@ -236,21 +303,35 @@ async function sendCAPI(o, req) {
   const isAbandoned = o.abandoned
   const eventName = isAbandoned ? 'InitiateCheckout' : 'Purchase'
 
+  // external_id: identificadores fortes e estáveis do mesmo usuário.
+  // CPF é o mais forte (único por pessoa); checkout_id ajuda a amarrar a sessão.
+  const externalIds = []
+  const docHash = hashDoc(o.doc)
+  if (docHash) externalIds.push(docHash)
+  if (o.checkoutId) externalIds.push(sha(norm(String(o.checkoutId))))
+
+  const emailHash = hashEmail(o.email)
+  const phoneHashed = hashPhone(o.phone)
+  const ctHash = hashCity(o.city)
+  const stHash = hashState(o.state)
+  const zpHash = hashZip(o.zip)
+  const countryHash = hashCountry(o.country)
+
   const userData = {
-    em: o.email ? [sha256(o.email)] : undefined,
-    ph: o.phone ? [hashPhone(o.phone)] : undefined,
+    em: emailHash ? [emailHash] : undefined,
+    ph: phoneHashed ? [phoneHashed] : undefined,
     fn: fn ? [fn] : undefined,
     ln: ln ? [ln] : undefined,
-    external_id: o.checkoutId ? [sha256(String(o.checkoutId))] : undefined,
-    // geo — hashed
-    ct: o.city ? [sha256(o.city.trim().toLowerCase().replace(/\s+/g, ''))] : undefined,
-    st: o.state ? [sha256(o.state.trim().toLowerCase())] : undefined,
-    zp: o.zip ? [sha256(String(o.zip).replace(/\D/g, ''))] : undefined,
-    country: o.country ? [sha256(o.country.toLowerCase())] : undefined,
-    // Facebook IDs (NÃO hasheados — são opacos)
+    external_id: externalIds.length ? externalIds : undefined,
+    // geo — hashed (normalização: sem acento/espaço, CEP só dígitos, país ISO-2)
+    ct: ctHash ? [ctHash] : undefined,
+    st: stHash ? [stHash] : undefined,
+    zp: zpHash ? [zpHash] : undefined,
+    country: countryHash ? [countryHash] : undefined,
+    // Facebook IDs (NÃO hasheados — são tokens opacos)
     fbc: o.fbc || undefined,
     fbp: o.fbp || undefined,
-    // client signals
+    // sinais de cliente (sobem o match rate sem precisar de PII extra)
     client_ip_address: clientIp || undefined,
     client_user_agent: clientUa || undefined,
   }
@@ -258,31 +339,31 @@ async function sendCAPI(o, req) {
   // Remove undefined keys
   Object.keys(userData).forEach((k) => userData[k] === undefined && delete userData[k])
 
-  const customData = isAbandoned
-    ? {
-        content_type: 'product',
-        contents,
-        num_items: numItems,
-        currency: 'BRL',
-        value: totalValue,
-      }
-    : {
-        content_type: 'product',
-        contents,
-        num_items: numItems,
-        currency: 'BRL',
-        value: totalValue,
-        order_id: String(o.saleId || o.checkoutId),
-      }
+  const contentIds = contents.map((c) => c.id)
+  const customData = {
+    content_type: 'product',
+    content_ids: contentIds,
+    content_name: o.product,
+    contents,
+    num_items: numItems,
+    currency: 'BRL',
+    value: totalValue,
+    ...(isAbandoned ? {} : { order_id: String(o.saleId || o.checkoutId) }),
+    // rastreio próprio (não é sinal de match, mas fica registrado no evento)
+    ...(o.gclid ? { gclid: o.gclid } : {}),
+  }
+
+  // event_time: usa o horário real da Kirvano, mas o Meta só aceita eventos
+  // dos últimos 7 dias — se vier algo fora da janela, usa agora.
+  const now = Math.floor(Date.now() / 1000)
+  let eventTime = o.orderedAt ? Math.floor(new Date(o.orderedAt).getTime() / 1000) : now
+  if (!eventTime || now - eventTime > 7 * 24 * 3600 || eventTime > now + 60) eventTime = now
 
   const eventPayload = {
     event_name: eventName,
-    event_time: o.orderedAt
-      ? Math.floor(new Date(o.orderedAt).getTime() / 1000)
-      : Math.floor(Date.now() / 1000),
-    // event_id para deduplicação com o pixel do browser:
-    // - Purchase usa saleId (único por transação)
-    // - InitiateCheckout usa checkoutId
+    event_time: eventTime,
+    // event_id = sale_id (Purchase) / checkout_id (InitiateCheckout).
+    // Único por transação → dedup automática caso futuramente haja pixel no browser.
     event_id: String(o.saleId || o.checkoutId),
     action_source: 'website',
     event_source_url: o.checkoutUrl || undefined,
