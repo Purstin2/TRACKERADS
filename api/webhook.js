@@ -293,6 +293,10 @@ function parseOrder(gateway, body) {
     const fbpRaw = origin.fbp || parseTrkField(trkBlob, 'fbp') || null
     const fbclid = findFbclid(origin.fbclid, parseTrkField(trkBlob, 'fbclid'))
     const fbc = buildFbc({ rawFbc: fbcRaw, fbclid, createdAt: body.creation_date })
+    // se sck/xcod carregam o blob de fbc/fbp (fbtrack.js empurrou), não usar como
+    // nome de campanha — pega o utm_campaign real. Senão, sck/xcod É a campanha.
+    const trkHasFb = /fb[cp]:/.test(trkBlob)
+    const campaign = origin.utm_campaign || (trkHasFb ? null : (origin.xcod || origin.sck)) || null
 
     return {
       gateway,
@@ -318,10 +322,9 @@ function parseOrder(gateway, body) {
       zip: addr.zipcode || addr.zip_code || null,  // costuma vir "" → null
       country: iso,
       currency: (price.currency_value || '').toUpperCase() || null,
-      // origin.src/sck guardam o nome da campanha → útil pro utm_campaign
-      utmSource: origin.src || null,
+      utmSource: trkHasFb ? (origin.utm_source || 'FB') : (origin.src || null),
       utmMedium: origin.utm_medium || null,
-      utmCampaign: origin.xcod || origin.sck || null,
+      utmCampaign: campaign,
       utmContent: origin.utm_content || null,
       utmTerm: origin.utm_term || null,
       checkoutUrl: offer.code ? `https://pay.hotmart.com/${offer.code}` : null,

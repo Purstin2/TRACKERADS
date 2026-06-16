@@ -16,8 +16,10 @@
   'use strict'
 
   var DOMAIN = location.hostname.replace(/^www\./, '')
-  // domínios de checkout pra onde devemos propagar os parâmetros
-  var CHECKOUT_HOSTS = ['kirvano.com', 'pay.kirvano.com']
+  // domínios de checkout pra onde propagar os parâmetros
+  var KIRVANO_HOSTS = ['kirvano.com', 'pay.kirvano.com']
+  var HOTMART_HOSTS = ['hotmart.com', 'pay.hotmart.com', 'go.hotmart.com', 'hotm.art']
+  var CHECKOUT_HOSTS = KIRVANO_HOSTS.concat(HOTMART_HOSTS)
 
   // ── cookies ────────────────────────────────────────────────────────────────
   function getCookie(name) {
@@ -75,9 +77,38 @@
     }
   }
 
+  function hostOf(url) {
+    try { return new URL(url, location.href).hostname.replace(/^www\./, '') } catch (e) { return '' }
+  }
+  function isHotmart(url) {
+    var h = hostOf(url)
+    return HOTMART_HOSTS.some(function (c) { return h === c || h.endsWith('.' + c) })
+  }
+
   function decorate(url) {
     try {
       var u = new URL(url, location.href)
+
+      if (isHotmart(url)) {
+        // Hotmart NÃO lê params soltos como fbc=/fbp=. Ela só DEVOLVE no webhook
+        // o que estiver em src/sck/xcod. Então empacotamos fbc/fbp/fbclid num blob
+        // compacto "fbc:VALOR|fbp:VALOR" que o nosso webhook (parseTrkField) lê.
+        var parts = []
+        if (fbc) parts.push('fbc:' + fbc)
+        if (fbp) parts.push('fbp:' + fbp)
+        if (fbclid) parts.push('fbclid:' + fbclid)
+        if (gclid) parts.push('gclid:' + gclid)
+        if (parts.length) {
+          var blob = parts.join('|')
+          u.searchParams.set('sck', blob)   // sck é o campo de tracking devolvido no webhook
+          u.searchParams.set('src', blob)   // redundância: a Hotmart às vezes usa src
+        }
+        // campanha vai pros UTMs normais (não no src, que agora carrega fbc/fbp)
+        UTM_KEYS.forEach(function (k) { if (utms[k]) u.searchParams.set(k, utms[k]) })
+        return u.toString()
+      }
+
+      // Kirvano e demais: params diretos
       if (fbc) u.searchParams.set('fbc', fbc)
       if (fbp) u.searchParams.set('fbp', fbp)
       if (fbclid) u.searchParams.set('fbclid', fbclid)
