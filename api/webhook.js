@@ -20,18 +20,20 @@ const hashEmail = (v) => {
   return e.includes('@') ? sha(e) : undefined
 }
 
-// Phone E.164 só dígitos. Detecta DDI (BR 55 / PT 351) pra não estragar
-// números portugueses. defaultDdi vem do país do pedido.
+// Phone E.164 só dígitos. defaultDdi vem do país do pedido (BR 55, PT 351, CL 56...).
+// Gateways como a Hotmart já mandam com DDI ("351911886395") — não duplicar.
+const KNOWN_DDIS = ['351', '598', '595', '593', '591', '55', '54', '57', '56', '52', '51', '34', '1']
 function normalizePhone(v, defaultDdi) {
   if (!v) return undefined
   let d = String(v).replace(/\D/g, '')
   if (!d) return undefined
-  // já tem DDI conhecido no começo?
-  if (d.startsWith('55') && d.length >= 12) return d          // BR com DDI
-  if (d.startsWith('351') && d.length >= 12) return d         // PT com DDI
-  if (d.startsWith('00')) return d.slice(2)                   // 00 internacional → tira
-  // sem DDI: usa o do país
+  if (d.startsWith('00')) d = d.slice(2)                      // 00 internacional → tira
   const ddi = defaultDdi || '55'
+  // já começa com o DDI do país? mantém.
+  if (d.startsWith(ddi) && d.length > ddi.length + 7) return d
+  // já começa com algum DDI conhecido (telefone internacional)? mantém.
+  if (KNOWN_DDIS.some((p) => d.startsWith(p) && d.length > p.length + 7)) return d
+  // sem DDI: prefixa o do país
   return ddi + d
 }
 const hashPhone = (v, defaultDdi) => {
@@ -63,19 +65,33 @@ const hashZip = (v) => {
   const d = String(v || '').replace(/\D/g, '')
   return d ? sha(d) : undefined
 }
-// país → ISO-2 minúsculo. "Brasil"/"BR"/"brazil"→br, "Portugal"/"PT"→pt
+// país → ISO-2 minúsculo. Aceita nome ("Brasil"/"Chile") ou ISO ("BR"/"PT"/"CL").
+const COUNTRY_NAME_TO_ISO = {
+  brasil: 'br', brazil: 'br', portugal: 'pt', chile: 'cl', espanha: 'es', spain: 'es',
+  espana: 'es', mexico: 'mx', argentina: 'ar', colombia: 'co', peru: 'pe',
+  'estados unidos': 'us', 'united states': 'us', uruguai: 'uy', uruguay: 'uy',
+  paraguai: 'py', paraguay: 'py', equador: 'ec', ecuador: 'ec', bolivia: 'bo',
+}
 function isoCountry(v) {
-  let c = norm(v || 'br')
-  if (c === 'brasil' || c === 'brazil') return 'br'
-  if (c === 'portugal') return 'pt'
-  return c.slice(0, 2)
+  const c = norm(v || 'br')
+  if (COUNTRY_NAME_TO_ISO[c]) return COUNTRY_NAME_TO_ISO[c]
+  return c.slice(0, 2)   // já é ISO-2
 }
 const hashCountry = (v) => sha(isoCountry(v))
 
-// país ISO-2 → DDI do telefone
-const ddiOf = (iso) => ({ br: '55', pt: '351' }[iso] || '55')
-// país ISO-2 → moeda (fallback se o gateway não mandar)
-const currencyOf = (iso) => ({ br: 'BRL', pt: 'EUR' }[iso] || 'BRL')
+// país ISO-2 → DDI do telefone (LATAM + ibéria)
+const DDI_BY_ISO = {
+  br: '55', pt: '351', es: '34', cl: '56', mx: '52', ar: '54', co: '57',
+  pe: '51', uy: '598', py: '595', ec: '593', bo: '591', us: '1',
+}
+const ddiOf = (iso) => DDI_BY_ISO[iso] || '55'
+
+// país ISO-2 → moeda (fallback se o gateway não mandar a moeda)
+const CURRENCY_BY_ISO = {
+  br: 'BRL', pt: 'EUR', es: 'EUR', cl: 'CLP', mx: 'MXN', ar: 'ARS', co: 'COP',
+  pe: 'PEN', uy: 'UYU', py: 'PYG', ec: 'USD', bo: 'BOB', us: 'USD',
+}
+const currencyOf = (iso) => CURRENCY_BY_ISO[iso] || 'BRL'
 
 // ─── parsers ────────────────────────────────────────────────────────────────
 // "R$ 1.234,56" | "1234.56" | 1234.56  →  1234.56
@@ -248,38 +264,35 @@ function parseOrder(gateway, body) {
   }
 
   if (gateway === 'hotmart') {
-    // Hotmart 2.0.0: tudo aninhado em body.data.*
+    // Hotmart 2.0.0: tudo aninhado em body.data.* (campos confirmados em payload real)
     const d = body.data || {}
     const buyer = d.buyer || {}
     const purchase = d.purchase || {}
     const addr = buyer.address || {}
-    const origin = purchase.origin || {}     // sck/src/xcod = nosso tracking
+    const origin = purchase.origin || {}     // src/sck/xcod = NOME da campanha, não fbc
     const product = d.product || {}
     const price = purchase.price || {}
+    const offer = purchase.offer || {}
     const status = canonicalStatus(body.event, purchase.status || body.status)
     const abandoned = String(body.event || '').toUpperCase().includes('ABANDON')
 
-    // País ISO-2. Hotmart manda checkout_country.iso ou address.country.
-    const iso = isoCountry(d.checkout_country?.iso || addr.country || buyer.checkout_country || 'br')
+    // País ISO-2: prioriza purchase.checkout_country.iso, depois address.country_iso.
+    const iso = isoCountry(
+      purchase.checkout_country?.iso || addr.country_iso || addr.country || 'br'
+    )
 
-    // Telefone: Hotmart pode mandar ddd + número separados ou checkout_phone junto.
-    const rawPhone = buyer.checkout_phone || buyer.phone ||
-      (buyer.ddd ? `${buyer.ddd}${buyer.phone_number || ''}` : null)
+    // Nome: Hotmart JÁ manda first_name/last_name separados — usa direto.
+    const firstName = buyer.first_name || null
+    const lastName = buyer.last_name || null
 
-    // tracking: a Hotmart NÃO repassa cookies do navegador. O jeito de levar
-    // fbc/fbp é empurrá-los via src/sck (campos de tracking que ela devolve).
-    // Aceita "fbc:VALOR|fbp:VALOR" ou JSON, ou params soltos em origin.
-    const trkBlob = origin.src || origin.sck || origin.xcod || purchase.tracking?.source_sck || ''
-    const fbcRaw = origin.fbc || parseTrkField(trkBlob, 'fbc')
-    const fbpRaw = origin.fbp || parseTrkField(trkBlob, 'fbp')
-    const fbclid = findFbclid(origin.fbclid, parseTrkField(trkBlob, 'fbclid'), fbcRaw)
+    // fbc/fbp via origin.src/sck/xcod SÓ se você empurrar "fbc:...|fbp:..." pela
+    // URL do anúncio. No payload normal, src="FB" e sck/xcod são nomes de campanha
+    // (sem fbc/fbp) — então geralmente fica null aqui. (Empty string vira null.)
+    const trkBlob = [origin.src, origin.sck, origin.xcod].filter(Boolean).join('|')
+    const fbcRaw = origin.fbc || parseTrkField(trkBlob, 'fbc') || null
+    const fbpRaw = origin.fbp || parseTrkField(trkBlob, 'fbp') || null
+    const fbclid = findFbclid(origin.fbclid, parseTrkField(trkBlob, 'fbclid'))
     const fbc = buildFbc({ rawFbc: fbcRaw, fbclid, createdAt: body.creation_date })
-
-    // produtos: Hotmart manda 1 principal; order bumps vêm em offer/items se houver
-    const items = Array.isArray(purchase.items) ? purchase.items : []
-    const products = items.length
-      ? items.map((it) => ({ id: it.id || product.id, name: it.name || product.name, price: it.price?.value ?? price.value, is_order_bump: !!it.is_order_bump }))
-      : [{ id: product.id, name: product.name, price: price.value, is_order_bump: false }]
 
     return {
       gateway,
@@ -287,28 +300,31 @@ function parseOrder(gateway, body) {
       status,
       approved: status === 'APPROVED',
       abandoned,
-      checkoutId: purchase.transaction || d.checkout?.id || body.id,
+      checkoutId: purchase.transaction || body.id,
       saleId: purchase.transaction || null,
       value: toNumber(price.value),
-      product: product.name || 'Produto',
-      products,
+      product: product.name || offer.name || 'Produto',
+      products: [{ id: product.id ? String(product.id) : (offer.code || product.name), name: product.name, price: price.value, is_order_bump: !!purchase.order_bump?.is_order_bump }],
       paymentMethod: purchase.payment?.type || null,
       name: buyer.name,
+      firstName,
+      lastName,
       email: buyer.email,
-      phone: rawPhone,
-      doc: buyer.document || buyer.document_number || null,
+      phone: buyer.checkout_phone || buyer.phone || null,
+      doc: buyer.document || null,                 // Hotmart costuma mandar "" → vira null
       buyerIp: d.ip || buyer.ip || null,
-      city: addr.city || null,
+      city: addr.city || null,                     // costuma vir "" → null
       state: addr.state || null,
-      zip: addr.zip_code || addr.zipcode || addr.zip || null,
+      zip: addr.zipcode || addr.zip_code || null,  // costuma vir "" → null
       country: iso,
-      currency: (price.currency_value || price.currency || '').toUpperCase() || null,
-      utmSource: origin.utm_source || origin.sck || null,
+      currency: (price.currency_value || '').toUpperCase() || null,
+      // origin.src/sck guardam o nome da campanha → útil pro utm_campaign
+      utmSource: origin.src || null,
       utmMedium: origin.utm_medium || null,
-      utmCampaign: origin.utm_campaign || origin.xcod || null,
+      utmCampaign: origin.xcod || origin.sck || null,
       utmContent: origin.utm_content || null,
       utmTerm: origin.utm_term || null,
-      checkoutUrl: d.checkout?.url || (product.id ? `https://pay.hotmart.com/${product.id}` : null),
+      checkoutUrl: offer.code ? `https://pay.hotmart.com/${offer.code}` : null,
       fbc,
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
       gclid: origin.gclid || parseTrkField(trkBlob, 'gclid') || null,
@@ -354,7 +370,10 @@ async function sendCAPI(o, req) {
   const token = process.env.META_CAPI_TOKEN
   if (!pixelId || !token) return false
 
-  const { fn, ln } = hashName(o.name)
+  // Nome: se o gateway já separou (Hotmart manda first_name/last_name), usa isso
+  // — mais confiável que quebrar o nome cheio. Senão, divide o name.
+  const fn = o.firstName ? sha256(o.firstName) : hashName(o.name).fn
+  const ln = o.lastName ? sha256(o.lastName) : hashName(o.name).ln
 
   // Build contents array (todos os produtos, com order bumps)
   const contents = o.products?.length
