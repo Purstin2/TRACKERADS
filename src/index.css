@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #07080f;
+    color: #e7eafc;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 480px at 12% -8%, rgba(99, 102, 241, 0.12), transparent 62%),
+      radial-gradient(760px 420px at 88% -4%, rgba(139, 92, 246, 0.07), transparent 62%);
+  }
+
+  ::selection {
+    background: #6366f1;
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2b3052;
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-border rounded-xl2 shadow-card-sm overflow-hidden;
+  }
+  .card-header {
+    @apply px-[18px] py-[13px] border-b border-border flex items-center justify-between bg-surface2 gap-[10px];
+  }
+  .card-body {
+    @apply p-5;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-[7px] px-[18px] py-[9px] rounded-[9px] cursor-pointer text-[13px] font-semibold transition-all duration-150 border-none;
+  }
+  .btn-primary {
+    @apply bg-brand text-white shadow-glow;
+  }
+  .btn-primary:hover {
+    filter: brightness(1.09);
+    transform: translateY(-1px);
+  }
+  .btn-ghost {
+    @apply bg-surface2 text-ink border border-border;
+  }
+  .btn-ghost:hover {
+    @apply border-brand text-brand;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-[11.5px] rounded-[7px];
+  }
+  .btn:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    transform: none !important;
+  }
+
+  .field {
+    @apply flex flex-col gap-1.5;
+  }
+  .field label {
+    @apply text-[11.5px] font-semibold text-muted;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    @apply px-[13px] py-[10px] border border-border rounded-[9px] text-[13px] font-medium bg-[#0a0c19] text-ink transition-colors;
+  }
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    @apply outline-none border-brand;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  }
+  .field input::placeholder,
+  .field textarea::placeholder {
+    @apply text-muted2 font-normal;
+  }
+}
+
+/* ── react-grid-layout ── */
+.react-grid-item {
+  transition: transform 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+.react-grid-item.react-grid-placeholder {
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px dashed #6366f1;
+  border-radius: 14px;
+  opacity: 1;
+}
+.react-grid-item.resizing,
+.react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  transition: none;
+}
+/* esconder o handle de resize quando NÃO está editando */
+.react-grid-item > .react-resizable-handle {
+  display: none;
+}
+.dash-editing .react-grid-item > .react-resizable-handle {
+  display: block;
+  width: 18px;
+  height: 18px;
+  right: 3px;
+  bottom: 3px;
+  background: none;
+  cursor: se-resize;
+}
+.dash-editing .react-grid-item > .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #8b5cf6;
+  border-bottom: 2px solid #8b5cf6;
+  border-bottom-right-radius: 2px;
+}
+.dash-editing {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dash-editing .wdg-head {
+  cursor: move;
+  touch-action: none;
+}
+.dash-editing .react-grid-item {
+  touch-action: none;
+}
+.dash-editing .react-grid-item {
+  outline: 1px dashed rgba(99, 102, 241, 0.35);
+  outline-offset: -1px;
+  border-radius: 14px;
+}
