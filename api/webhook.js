@@ -98,10 +98,13 @@ function parseOrder(gateway, body) {
     const c = body.customer || body.client || {}
     const utm = body.utm || {}
     const addr = c.address || {}
+    const cookies = body.cookies || {}
     const products = Array.isArray(body.products) ? body.products : []
     const main = products.find((p) => !p.is_order_bump) || products[0] || {}
     const status = canonicalStatus(body.event, body.status)
     const checkoutUrl = body.checkout_url || body.cart_url || null
+    // IP real do comprador (Kirvano manda body.ip)
+    const buyerIp = body.ip || null
 
     return {
       gateway,
@@ -114,15 +117,16 @@ function parseOrder(gateway, body) {
       value: toNumber(body.total_price ?? body.amount ?? body.value),
       product: main.name || body.product_name || 'Produto',
       products,
-      paymentMethod: body.payment_method || body.payment?.method || null,
+      paymentMethod: body.payment?.method || body.payment_method || null,
       name: c.name,
       email: c.email,
       phone: c.phone_number || c.phone,
       doc: c.document,
-      // geo — Kirvano pode mandar address
+      buyerIp,
+      // geo — Kirvano manda address (city/state podem ser null, fallback p/ DDD)
       city: addr.city || c.city || null,
       state: addr.state || c.state || stateFromDDD(c.phone_number || c.phone),
-      zip: addr.zip || addr.zipcode || c.zip || null,
+      zip: addr.zipcode || addr.zip || c.zip || null,
       country: addr.country || 'br',
       // UTM
       utmSource: utm.source || utm.src || body.utm_source,
@@ -131,9 +135,9 @@ function parseOrder(gateway, body) {
       utmContent: utm.content || body.utm_content,
       utmTerm: utm.term || body.utm_term,
       checkoutUrl,
-      // Facebook IDs — Kirvano pode passar se configurado no checkout
-      fbc: body.fbc || body.fb_click_id || extractFbc(checkoutUrl),
-      fbp: body.fbp || body.fb_browser_id || null,
+      // Facebook IDs — Kirvano manda cookies.fbp e cookies.fbc
+      fbc: cookies.fbc || body.fbc || body.fb_click_id || extractFbc(checkoutUrl),
+      fbp: cookies.fbp || body.fbp || body.fb_browser_id || null,
       orderedAt: body.created_at || null,
     }
   }
@@ -225,8 +229,8 @@ async function sendCAPI(o, req) {
   const numItems = o.products?.length || 1
   const totalValue = o.value || contents.reduce((s, c) => s + (c.item_price * c.quantity), 0)
 
-  // Captura client IP e UA dos headers reais do request (melhor sinal de correspondência)
-  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
+  // IP real do comprador vem no body.ip (Kirvano); fallback para header do request
+  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
   const clientUa = req.headers['user-agent'] || null
 
   const isAbandoned = o.abandoned
