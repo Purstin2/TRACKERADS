@@ -229,6 +229,8 @@ function parseOrder(gateway, body) {
       status,
       approved: status === 'APPROVED',
       abandoned: status === 'ABANDONED',
+      offerId: offerId || null,
+      productId: main.id ? String(main.id) : null,
       checkoutId: body.checkout_id || body.sale_id || body.id,
       saleId: body.sale_id || null,
       value: toNumber(body.total_price ?? body.amount ?? body.value),
@@ -304,6 +306,8 @@ function parseOrder(gateway, body) {
       status,
       approved: status === 'APPROVED',
       abandoned,
+      offerId: offer.code || null,
+      productId: product.id ? String(product.id) : null,
       checkoutId: purchase.transaction || body.id,
       saleId: purchase.transaction || null,
       value: toNumber(price.value),
@@ -367,10 +371,53 @@ function parseOrder(gateway, body) {
   }
 }
 
+// Resolve qual pixel/token usar pra esta venda: consulta pixel_routes pela
+// offer_id/product_id; se não achar, cai no pixel default da env var.
+async function resolvePixel(o) {
+  const def = {
+    pixelId: process.env.META_PIXEL_ID || null,
+    token: process.env.META_CAPI_TOKEN || null,
+    testCode: process.env.META_TEST_EVENT_CODE || null,
+    source: 'default',
+  }
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return def
+
+  // candidatos de match, em ordem de prioridade
+  const keys = [o.offerId, o.productId].filter(Boolean).map(String)
+  if (!keys.length) return def
+
+  try {
+    // busca rotas ativas que batam com offer_id OU product_id (ou match_type='any')
+    const inList = keys.map((k) => `"${k}"`).join(',')
+    const q = `${url}/rest/v1/pixel_routes?active=eq.true&or=(offer_id.in.(${inList}),match_type.eq.any)&select=offer_id,match_type,pixel_id,capi_token,test_code,gateways&order=match_type.asc`
+    const r = await fetch(q, { headers: sbHeaders(key) })
+    const rows = await r.json()
+    if (!Array.isArray(rows) || !rows.length) return def
+
+    // prioridade: match exato de offer/product > 'any'. E respeita gateways[] se setado.
+    const exact = rows.find(
+      (row) =>
+        row.match_type !== 'any' &&
+        keys.includes(String(row.offer_id)) &&
+        (!row.gateways || !row.gateways.length || row.gateways.includes(o.gateway))
+    )
+    const any = rows.find(
+      (row) => row.match_type === 'any' && (!row.gateways || !row.gateways.length || row.gateways.includes(o.gateway))
+    )
+    const hit = exact || any
+    if (!hit || !hit.pixel_id || !hit.capi_token) return def
+    return { pixelId: hit.pixel_id, token: hit.capi_token, testCode: hit.test_code || null, source: exact ? 'offer' : 'any' }
+  } catch {
+    return def
+  }
+}
+
 // ─── CAPI ────────────────────────────────────────────────────────────────────
-async function sendCAPI(o, req) {
-  const pixelId = process.env.META_PIXEL_ID
-  const token = process.env.META_CAPI_TOKEN
+async function sendCAPI(o, req, route) {
+  const pixelId = route?.pixelId
+  const token = route?.token
   if (!pixelId || !token) return false
 
   // Nome: se o gateway já separou (Hotmart manda first_name/last_name), usa isso
@@ -469,9 +516,10 @@ async function sendCAPI(o, req) {
     custom_data: customData,
   }
 
+  const testCode = route?.testCode || process.env.META_TEST_EVENT_CODE
   const payload = {
     data: [eventPayload],
-    ...(process.env.META_TEST_EVENT_CODE ? { test_event_code: process.env.META_TEST_EVENT_CODE } : {}),
+    ...(testCode ? { test_event_code: testCode } : {}),
   }
 
   // Retry 2x com backoff exponencial (100ms → 400ms)
@@ -560,9 +608,18 @@ export default async function handler(req, res) {
   const { gateway = 'kirvano', secret } = req.query
   const ip = (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || null
 
-  const secretOk = !process.env.WEBHOOK_SECRET || secret === process.env.WEBHOOK_SECRET
+  // Autenticação por gateway:
+  // - Kirvano/genérico: ?secret= na URL == WEBHOOK_SECRET
+  // - Hotmart: header X-HOTMART-HOTTOK (ou body.hottok) == HOTMART_HOTTOK
+  let secretOk
+  if (gateway === 'hotmart') {
+    const hottok = req.headers['x-hotmart-hottok'] || (typeof req.body === 'object' ? req.body?.hottok : null)
+    secretOk = !process.env.HOTMART_HOTTOK || hottok === process.env.HOTMART_HOTTOK
+  } else {
+    secretOk = !process.env.WEBHOOK_SECRET || secret === process.env.WEBHOOK_SECRET
+  }
   if (!secretOk) {
-    await logHit({ gateway, event: null, status: null, ok: false, http_status: 401, secret_ok: false, capi_ok: false, message: 'segredo inválido', ip, created_at: new Date().toISOString() })
+    await logHit({ gateway, event: null, status: null, ok: false, http_status: 401, secret_ok: false, capi_ok: false, message: 'token/segredo inválido', ip, created_at: new Date().toISOString() })
     return res.status(401).json({ error: 'invalid secret' })
   }
 
@@ -577,9 +634,12 @@ export default async function handler(req, res) {
   const o = parseOrder(gateway, body)
   o.raw = body
 
+  // resolve qual pixel/token usar (por oferta) antes de mandar
+  const route = await resolvePixel(o)
+
   // CAPI dispara em aprovada E em carrinho abandonado (InitiateCheckout)
   const shouldSendCAPI = o.approved || o.abandoned
-  const capiOk = shouldSendCAPI ? await sendCAPI(o, req) : false
+  const capiOk = shouldSendCAPI ? await sendCAPI(o, req, route) : false
 
   await upsertOrder(o, capiOk)
 
@@ -593,12 +653,12 @@ export default async function handler(req, res) {
     secret_ok: true,
     capi_ok: capiOk,
     message: shouldSendCAPI
-      ? `${eventLabel} → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
+      ? `${eventLabel} → pixel ${route?.pixelId || '—'} (${route?.source || 'default'}) → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
       : `registrado (${o.status})`,
     ip,
     raw: body,
     created_at: new Date().toISOString(),
   })
 
-  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, event: eventLabel })
+  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, event: eventLabel, pixel: route?.pixelId || null, route: route?.source || 'default' })
 }

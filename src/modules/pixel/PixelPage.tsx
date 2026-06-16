@@ -3,6 +3,7 @@ import { Crosshair, Copy, Check, Webhook, Plug, ShoppingCart, ScrollText } from 
 import { toast } from '@/components/ui/toast'
 import PedidosView from './PedidosView'
 import LogsView from './LogsView'
+import PixelsView from './PixelsView'
 
 interface PixelCfg {
   pixelId: string
@@ -22,6 +23,7 @@ function loadCfg(): PixelCfg {
 
 const TABS = [
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
+  { id: 'pixels', label: 'Pixels', icon: Crosshair },
   { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'webhook', label: 'Webhook', icon: Webhook },
   { id: 'conexoes', label: 'Conexões', icon: Plug },
@@ -58,7 +60,8 @@ export default function PixelPage() {
     toast('Configuração salva', 'ok')
   }
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const webhookUrl = `${origin}/api/webhook?gateway=${cfg.gateway}${cfg.webhookSecret ? `&secret=${cfg.webhookSecret}` : ''}`
+  const kirvanoUrl = `${origin}/api/webhook?gateway=kirvano${cfg.webhookSecret ? `&secret=${cfg.webhookSecret}` : ''}`
+  const hotmartUrl = `${origin}/api/webhook?gateway=hotmart`
 
   return (
     <div>
@@ -88,6 +91,7 @@ export default function PixelPage() {
       </div>
 
       {tab === 'pedidos' && <PedidosView />}
+      {tab === 'pixels' && <PixelsView />}
       {tab === 'logs' && <LogsView />}
 
       {tab === 'conexoes' && (
@@ -140,28 +144,39 @@ export default function PixelPage() {
       {tab === 'webhook' && (
         <div className="mx-auto flex max-w-[640px] flex-col gap-4">
           <div className="card card-body">
-            <h3 className="mb-3 text-[13px] font-bold">URL do webhook</h3>
+            <h3 className="mb-1 text-[13px] font-bold">Kirvano</h3>
             <p className="mb-3 text-[12px] text-muted">
-              Na Kirvano: <b>Integrações → Webhooks → Criar Webhook</b>. Cole esta URL e marque <b>TODOS os eventos</b> — principalmente
-              <b> Carrinho abandonado</b>, Compra aprovada, Compra recusada, Pix gerado, Reembolso e Chargeback. Use o mesmo segredo no campo <b>Token</b>.
+              <b>Integrações → Webhooks → Criar Webhook</b>. Cole a URL e marque <b>TODOS os eventos</b> (Carrinho abandonado, Compra aprovada/recusada,
+              Pix gerado, Reembolso, Chargeback). Use o mesmo segredo no campo <b>Token</b>.
             </p>
-            <CopyField label="Endpoint" value={webhookUrl} />
+            <CopyField label="Endpoint Kirvano" value={kirvanoUrl} />
             {!cfg.webhookSecret && (
               <div className="mt-2 text-[11px] text-warn">⚠ Defina um segredo na aba Conexões — sem ele qualquer um pode mandar pedidos falsos.</div>
             )}
           </div>
+
+          <div className="card card-body">
+            <h3 className="mb-1 text-[13px] font-bold">Hotmart</h3>
+            <p className="mb-3 text-[12px] text-muted">
+              <b>Ferramentas → Webhook (Postback) → Criar</b>. Cole a URL e marque <b>Compra aprovada</b>, <b>Compra completa</b> e <b>Carrinho abandonado</b>.
+              A Hotmart valida pelo <b>HOTTOK</b> — crie um API Token e salve o valor na Vercel como <code>HOTMART_HOTTOK</code>.
+            </p>
+            <CopyField label="Endpoint Hotmart" value={hotmartUrl} />
+          </div>
+
           <div className="card card-body text-[12px] text-muted">
             <h3 className="mb-2 text-[13px] font-bold text-ink">O que acontece em cada hit</h3>
             <ol className="ml-4 list-decimal space-y-1.5">
-              <li>A Kirvano dispara o webhook a cada evento (venda <i>e</i> carrinho abandonado).</li>
-              <li>A função serverless valida o segredo e <b>registra o hit</b> em <code>kirvano_webhook_logs</code> (aba Logs — é onde você confirma que tá pegando).</li>
-              <li><b>Salva/atualiza o pedido</b> em <code>kirvano_orders</code> pela <code>checkout_id</code> — o mesmo carrinho vira venda no mesmo registro (aba Pedidos).</li>
-              <li>Se for <b>aprovada</b>, reenvia um <b>Purchase</b> ao Meta (CAPI) com <code>event_id</code> = id da venda → dedup com o pixel do navegador.</li>
-              <li>Carrinho abandonado fica com botão de <b>recuperar no WhatsApp</b> (e, no futuro, disparo automático).</li>
+              <li>O gateway dispara o webhook a cada evento (venda <i>e</i> carrinho abandonado).</li>
+              <li>A função valida o token e <b>registra o hit</b> em <code>kirvano_webhook_logs</code> (aba Logs — onde você confirma que tá pegando).</li>
+              <li><b>Salva/atualiza o pedido</b> pela <code>checkout_id</code> — o mesmo carrinho vira venda no mesmo registro (aba Pedidos).</li>
+              <li>Se for <b>aprovada/abandonada</b>, manda <b>Purchase/InitiateCheckout</b> ao Meta (CAPI) com até 13 sinais, pro <b>pixel da oferta</b> (aba Pixels).</li>
+              <li>Carrinho abandonado ganha botão de <b>recuperar no WhatsApp</b>.</li>
             </ol>
             <div className="mt-3 rounded-[8px] border border-border bg-[#0a0c19] p-3 text-[11px]">
-              <b className="text-ink">Antes de funcionar:</b> rode o SQL <code>supabase/kirvano_orders.sql</code> na sua Supabase e configure na Vercel:
-              <code> META_PIXEL_ID</code>, <code>META_CAPI_TOKEN</code>, <code>WEBHOOK_SECRET</code>, <code>SUPABASE_URL</code>, <code>SUPABASE_SERVICE_KEY</code>.
+              <b className="text-ink">Antes de funcionar:</b> rode <code>supabase/kirvano_orders.sql</code> <b>e</b> <code>supabase/pixel_routes.sql</code> na Supabase, e na Vercel:
+              <code> SUPABASE_URL</code>, <code>SUPABASE_SERVICE_KEY</code>, <code>WEBHOOK_SECRET</code> (Kirvano), <code>HOTMART_HOTTOK</code> (Hotmart).
+              O <code>META_PIXEL_ID</code>/<code>META_CAPI_TOKEN</code> da Vercel viram o <b>pixel padrão</b> (fallback); cadastre os pixels por oferta na aba Pixels.
             </div>
           </div>
         </div>

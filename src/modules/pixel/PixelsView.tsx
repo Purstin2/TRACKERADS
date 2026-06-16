@@ -1,0 +1,303 @@
+import { useEffect, useState } from 'react'
+import { Plus, Trash2, Pencil, RefreshCw, Crosshair, Check, X, Power } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { toast } from '@/components/ui/toast'
+import {
+  fetchRoutes,
+  createRoute,
+  updateRoute,
+  deleteRoute,
+  toggleRoute,
+  type PixelRoute,
+  type RouteInput,
+} from './pixels'
+
+const GATEWAYS = ['kirvano', 'hotmart']
+
+const MATCH_LABEL: Record<string, string> = {
+  offer: 'Por oferta',
+  product: 'Por produto',
+  any: 'Padrão (todas)',
+}
+
+type FormState = {
+  id?: string
+  label: string
+  match_type: 'offer' | 'product' | 'any'
+  offer_id: string
+  pixel_id: string
+  capi_token: string
+  test_code: string
+  gateways: string[]
+  active: boolean
+  hasToken: boolean
+}
+
+const EMPTY: FormState = {
+  label: '',
+  match_type: 'offer',
+  offer_id: '',
+  pixel_id: '',
+  capi_token: '',
+  test_code: '',
+  gateways: [],
+  active: true,
+  hasToken: false,
+}
+
+export default function PixelsView() {
+  const [routes, setRoutes] = useState<PixelRoute[]>([])
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState<FormState | null>(null)
+  const [saving, setSaving] = useState(false)
+  const connected = !!supabase()
+
+  async function load() {
+    if (!connected) return
+    setLoading(true)
+    try {
+      setRoutes(await fetchRoutes())
+    } catch {}
+    setLoading(false)
+  }
+  useEffect(() => {
+    load()
+  }, [])
+
+  if (!connected) {
+    return (
+      <div className="rounded-xl2 border border-dashed border-border py-12 text-center text-[13px] text-muted2">
+        Conecte a Supabase (aba Conexões do Tracker) e rode <code>supabase/pixel_routes.sql</code> pra gerenciar os pixels por oferta.
+      </div>
+    )
+  }
+
+  function openNew() {
+    setForm({ ...EMPTY })
+  }
+  function openEdit(r: PixelRoute) {
+    setForm({
+      id: r.id,
+      label: r.label || '',
+      match_type: r.match_type,
+      offer_id: r.offer_id || '',
+      pixel_id: r.pixel_id,
+      capi_token: '', // não vem do servidor — em branco = mantém o atual
+      test_code: r.test_code || '',
+      gateways: r.gateways || [],
+      active: r.active,
+      hasToken: r.has_token,
+    })
+  }
+
+  async function save() {
+    if (!form) return
+    if (!form.pixel_id.trim()) return toast('Informe o Pixel ID', 'err')
+    if (form.match_type !== 'any' && !form.offer_id.trim())
+      return toast('Informe o offer_id/product_id da oferta', 'err')
+    if (!form.id && !form.capi_token.trim()) return toast('Informe o token CAPI', 'err')
+
+    setSaving(true)
+    const input: RouteInput = {
+      label: form.label,
+      match_type: form.match_type,
+      offer_id: form.offer_id,
+      pixel_id: form.pixel_id,
+      capi_token: form.capi_token, // vazio na edição = mantém
+      test_code: form.test_code,
+      gateways: form.gateways,
+      active: form.active,
+    }
+    const res = form.id ? await updateRoute(form.id, input) : await createRoute(input)
+    setSaving(false)
+    if (res.error) return toast(res.error, 'err')
+    toast(form.id ? 'Pixel atualizado' : 'Pixel adicionado', 'ok')
+    setForm(null)
+    load()
+  }
+
+  async function remove(r: PixelRoute) {
+    if (!confirm(`Excluir o pixel "${r.label || r.pixel_id}"?`)) return
+    const res = await deleteRoute(r.id)
+    if (res.error) return toast(res.error, 'err')
+    toast('Pixel removido', 'ok')
+    load()
+  }
+
+  async function toggle(r: PixelRoute) {
+    const res = await toggleRoute(r.id, !r.active)
+    if (res.error) return toast(res.error, 'err')
+    load()
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <p className="text-[12px] text-muted">
+          Cada oferta manda pro seu pixel. A mesma oferta em vários gateways/países cai no mesmo pixel.
+          Sem mapeamento → usa o pixel padrão da Vercel.
+        </p>
+        <button className="btn btn-ghost btn-sm ml-auto" onClick={load} disabled={loading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+        </button>
+        <button className="btn btn-primary btn-sm" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" /> Adicionar pixel
+        </button>
+      </div>
+
+      {routes.length === 0 ? (
+        <div className="rounded-xl2 border border-dashed border-border py-12 text-center text-[13px] text-muted2">
+          Nenhum pixel cadastrado. Clique em <b>Adicionar pixel</b> pra rotear uma oferta pro pixel certo.
+        </div>
+      ) : (
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {routes.map((r) => (
+            <div
+              key={r.id}
+              className={`card card-body flex flex-col gap-2 ${!r.active ? 'opacity-55' : ''}`}
+            >
+              <div className="flex items-start gap-2">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/12 text-brand-2">
+                  <Crosshair className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="truncate text-[13px] font-bold">{r.label || 'Pixel sem nome'}</h4>
+                    <span className="rounded-full border border-border2 bg-surface2 px-1.5 py-0.5 text-[9.5px] uppercase tracking-wide text-muted2">
+                      {MATCH_LABEL[r.match_type]}
+                    </span>
+                  </div>
+                  <div className="truncate font-mono text-[11px] text-muted2">ID {r.pixel_id}</div>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  <button className="btn btn-ghost btn-sm !px-1.5" title={r.active ? 'Desativar' : 'Ativar'} onClick={() => toggle(r)}>
+                    <Power className={`h-3.5 w-3.5 ${r.active ? 'text-ok' : 'text-muted2'}`} />
+                  </button>
+                  <button className="btn btn-ghost btn-sm !px-1.5" title="Editar" onClick={() => openEdit(r)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button className="btn btn-ghost btn-sm !px-1.5" title="Excluir" onClick={() => remove(r)}>
+                    <Trash2 className="h-3.5 w-3.5 text-danger" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted2">
+                {r.match_type !== 'any' && (
+                  <span>
+                    oferta: <span className="font-mono text-muted">{r.offer_id}</span>
+                  </span>
+                )}
+                <span>
+                  token: {r.has_token ? <span className="text-ok">•••• {r.token_last4}</span> : <span className="text-danger">faltando</span>}
+                </span>
+                {r.test_code && <span>teste: {r.test_code}</span>}
+                {r.gateways?.length ? <span>gateways: {r.gateways.join(', ')}</span> : <span>todos os gateways</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal/painel de edição */}
+      {form && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setForm(null)}>
+          <div className="card w-full max-w-[520px] card-body" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-[14px] font-bold">{form.id ? 'Editar pixel' : 'Novo pixel'}</h3>
+              <button className="btn btn-ghost btn-sm !px-1.5" onClick={() => setForm(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              <div className="field">
+                <label>Nome (pra você identificar)</label>
+                <input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Ex: Printing 3D — PT/BR" />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="field">
+                  <label>Roteamento</label>
+                  <select value={form.match_type} onChange={(e) => setForm({ ...form, match_type: e.target.value as FormState['match_type'] })}>
+                    <option value="offer">Por oferta (offer_id)</option>
+                    <option value="product">Por produto (product_id)</option>
+                    <option value="any">Padrão (todas as ofertas)</option>
+                  </select>
+                </div>
+                {form.match_type !== 'any' && (
+                  <div className="field">
+                    <label>{form.match_type === 'offer' ? 'offer_id' : 'product_id'} da oferta</label>
+                    <input
+                      value={form.offer_id}
+                      onChange={(e) => setForm({ ...form, offer_id: e.target.value })}
+                      placeholder={form.match_type === 'offer' ? 'a5f1ebb4-...' : '7930420'}
+                      className="font-mono text-[12px]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="field">
+                <label>Pixel ID (Meta)</label>
+                <input value={form.pixel_id} onChange={(e) => setForm({ ...form, pixel_id: e.target.value })} placeholder="000000000000" className="font-mono text-[12px]" />
+              </div>
+
+              <div className="field">
+                <label>
+                  CAPI Access Token {form.id && <span className="text-muted2">(deixe em branco pra manter {form.hasToken ? 'o atual' : ''})</span>}
+                </label>
+                <input
+                  type="password"
+                  value={form.capi_token}
+                  onChange={(e) => setForm({ ...form, capi_token: e.target.value })}
+                  placeholder={form.hasToken ? '•••••••••• (mantido)' : 'EAA...'}
+                />
+                <div className="text-[11px] text-muted2">Events Manager → Configurações → Conversions API → Gerar token. Fica protegido no servidor.</div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="field">
+                  <label>Test Event Code (opcional)</label>
+                  <input value={form.test_code} onChange={(e) => setForm({ ...form, test_code: e.target.value })} placeholder="TEST12345" />
+                </div>
+                <div className="field">
+                  <label>Gateways (vazio = todos)</label>
+                  <div className="flex gap-2 pt-1">
+                    {GATEWAYS.map((g) => (
+                      <label key={g} className="flex items-center gap-1.5 text-[12px] capitalize text-muted">
+                        <input
+                          type="checkbox"
+                          checked={form.gateways.includes(g)}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              gateways: e.target.checked ? [...form.gateways, g] : form.gateways.filter((x) => x !== g),
+                            })
+                          }
+                        />
+                        {g}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-[12px] text-muted">
+                <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+                Ativo (desmarque pra pausar sem excluir)
+              </label>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="btn btn-ghost" onClick={() => setForm(null)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                <Check className="h-4 w-4" /> {saving ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
