@@ -163,13 +163,17 @@ function parseOrder(gateway, body) {
       (offerId && process.env.CHECKOUT_BASE ? `${process.env.CHECKOUT_BASE}/${offerId}` : null) ||
       (offerId ? `https://pay.kirvano.com/${offerId}` : null)
 
-    // fbc: reconstrói do _fbc/fbclid achado em cookies, body ou URL
-    const fbclid = findFbclid(cookies.fbclid, body.fbclid, checkoutUrl, body.src_url, body.referer)
-    const fbc = buildFbc({
-      rawFbc: cookies.fbc || cookies._fbc || body.fbc || body.fb_click_id,
-      fbclid,
-      createdAt: body.created_at,
-    })
+    // fbc/fbp: o fbtrack.js injeta esses params na URL do checkout; a Kirvano
+    // pode repassá-los em cookies.*, body.*, body.tracking.* ou body.utm.*.
+    const trk = body.tracking || body.src || {}
+    const fbcRaw =
+      cookies.fbc || cookies._fbc || body.fbc || body.fb_click_id || trk.fbc || utm.fbc
+    const fbpRaw =
+      cookies.fbp || cookies._fbp || body.fbp || body.fb_browser_id || trk.fbp || utm.fbp
+    const fbclid = findFbclid(
+      cookies.fbclid, body.fbclid, trk.fbclid, utm.fbclid, fbcRaw, checkoutUrl, body.src_url, body.referer
+    )
+    const fbc = buildFbc({ rawFbc: fbcRaw, fbclid, createdAt: body.created_at })
 
     return {
       gateway,
@@ -202,9 +206,9 @@ function parseOrder(gateway, body) {
       checkoutUrl,
       // Facebook IDs
       fbc,
-      fbp: cookies.fbp || cookies._fbp || body.fbp || body.fb_browser_id || null,
+      fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
       // Google click id (rastreio próprio / futuro Google Ads)
-      gclid: cookies.gclid || body.gclid || null,
+      gclid: cookies.gclid || body.gclid || trk.gclid || utm.gclid || null,
       orderedAt: body.created_at || null,
     }
   }
