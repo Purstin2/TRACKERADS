@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Crosshair, Copy, Check, Webhook, Plug, ShoppingCart, ScrollText } from 'lucide-react'
+import { Crosshair, Copy, Check, Webhook, Plug, ShoppingCart, ScrollText, MessageCircle } from 'lucide-react'
 import { toast } from '@/components/ui/toast'
 import PedidosView from './PedidosView'
 import LogsView from './LogsView'
 import PixelsView from './PixelsView'
+import RecuperacaoView from './RecuperacaoView'
 
 interface PixelCfg {
   pixelId: string
@@ -23,6 +24,7 @@ function loadCfg(): PixelCfg {
 
 const TABS = [
   { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart },
+  { id: 'recuperacao', label: 'Recuperação', icon: MessageCircle },
   { id: 'pixels', label: 'Pixels', icon: Crosshair },
   { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'webhook', label: 'Webhook', icon: Webhook },
@@ -91,6 +93,7 @@ export default function PixelPage() {
       </div>
 
       {tab === 'pedidos' && <PedidosView />}
+      {tab === 'recuperacao' && <RecuperacaoView />}
       {tab === 'pixels' && <PixelsView />}
       {tab === 'logs' && <LogsView />}
 

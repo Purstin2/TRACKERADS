@@ -24,6 +24,8 @@ export interface KirvanoOrder {
   capi_ok: boolean | null
   recovered: boolean | null
   wa_sent_at: string | null
+  wa_status: string | null
+  wa_attempts: number | null
   ordered_at: string | null
   created_at: string | null
   updated_at: string | null
@@ -86,9 +88,42 @@ export async function fetchLogs(limit = 100): Promise<WebhookLog[]> {
   return (data || []) as WebhookLog[]
 }
 
-/** Marca um carrinho como "mensagem enviada" (uso futuro pelo WhatsApp). */
+/** Marca um carrinho como "mensagem enviada" (disparo manual pelo wa.me). */
 export async function markWaSent(id: string) {
   const sb = supabase()
   if (!sb) return
-  await sb.from('kirvano_orders').update({ wa_sent_at: new Date().toISOString() }).eq('id', id)
+  await sb.from('kirvano_orders').update({ wa_sent_at: new Date().toISOString(), wa_status: 'sent' }).eq('id', id)
+}
+
+/* ── Recuperação automática (config + disparo via API) ── */
+export interface WaConfig {
+  enabled: boolean
+  delay_minutes: number
+  max_attempts: number
+  window_hours: number
+  template: string
+  provider: string
+  only_with_phone: boolean
+}
+
+export async function fetchWaConfig(): Promise<WaConfig | null> {
+  const sb = supabase()
+  if (!sb) return null
+  const { data } = await sb.from('wa_config').select('*').eq('id', 1).single()
+  return (data as WaConfig) || null
+}
+
+export async function saveWaConfig(cfg: Partial<WaConfig>) {
+  const sb = supabase()
+  if (!sb) return
+  await sb.from('wa_config').update({ ...cfg, updated_at: new Date().toISOString() }).eq('id', 1)
+}
+
+/** Dispara a recuperação pelo endpoint serverless. ids = lote manual; vazio = roda a fila. */
+export async function triggerRecover(secret: string, ids?: string[]): Promise<any> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const qs = new URLSearchParams({ secret })
+  if (ids?.length) qs.set('ids', ids.join(','))
+  const r = await fetch(`${origin}/api/recover?${qs}`, { method: 'POST' })
+  return r.json()
 }

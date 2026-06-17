@@ -573,6 +573,8 @@ async function upsertOrder(o, capiOk) {
     checkout_url: o.checkoutUrl || null,
     capi_ok: capiOk,
     recovered: o.approved ? true : undefined,
+    // se aprovou, tira da fila de recuperação (não manda WhatsApp pra quem já comprou)
+    wa_status: o.approved ? 'converted' : undefined,
     raw: o.raw || null,
     ordered_at: o.orderedAt ? new Date(o.orderedAt).toISOString() : null,
     updated_at: new Date().toISOString(),
