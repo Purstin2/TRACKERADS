@@ -315,19 +315,19 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
             <div className="card overflow-x-auto">
-              <table className="w-full text-[11px]">
+              <table className="w-full border-collapse text-[11px] [&_td]:border-border/15 [&_th]:border-border/15 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l">
                 <thead>
-                  <tr className="border-b border-border uppercase tracking-wide text-muted2">
-                    <th className="w-8 py-2 text-center">
+                  <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
+                    <th className="w-8 py-2.5 text-center">
                       <input type="checkbox" checked={allSel} onChange={(e) => m.selectMany(rowKeys, e.target.checked)} className="cursor-pointer accent-[#6366f1]" title="Selecionar todas visíveis" />
                     </th>
-                    <th className="w-8 py-2 text-center">●</th>
+                    <th className="w-8 py-2.5 text-center">●</th>
                     <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" />
-                    <th className="px-2 py-2 text-left">Status</th>
+                    <th className="px-2 py-2.5 text-center">Status</th>
                     {LISTA_COLS.map((c) => (
                       <SortTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={onSort} />
                     ))}
-                    <th className="py-2 pl-3 text-left">Ação</th>
+                    <th className="py-2.5 pl-3 text-left">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -397,42 +397,42 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
 
   return (
     <>
-      <tr className={`border-b border-border ${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}>
-        <td className="py-1.5 text-center">
+      <tr className={`border-b border-border align-middle ${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}>
+        <td className="py-2 text-center">
           <input type="checkbox" checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} className="cursor-pointer accent-[#6366f1]" />
         </td>
-        <td className="py-1.5 text-center">{ICONS[r.cls]}</td>
-        <td className="py-1.5">
+        <td className="py-2 text-center">{ICONS[r.cls]}</td>
+        <td className="py-2 pl-3 pr-2">
           <div className="flex items-center gap-1">
-            <span className="inline-block max-w-[200px] truncate align-middle" title={r.name}>
+            <span className="inline-block max-w-[230px] truncate align-middle" title={r.name}>
               {r.name}
             </span>
-            <a href={campUrl(acc.id, r.id)} target="_blank" className="text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
+            <a href={campUrl(acc.id, r.id)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         </td>
-        <td className="px-2 py-1.5">{statusPill(r.status)}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{money(r.spend)}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{r.impr ? r.impr.toLocaleString('pt-BR') : '—'}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{money(r.cpm)}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{r.ctr ? r.ctr.toFixed(2) + '%' : '—'}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{r.cpc ? money(r.cpc) : '—'}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{money(r.cpaIC)}</td>
-        <td className={`px-2 py-1.5 text-right font-mono ${r.cpa === null ? 'text-muted2' : r.cpa <= m.settings.cpaMax ? 'text-ok' : 'text-danger'}`}>{money(r.cpa)}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{r.sales}</td>
-        <td className={`px-2 py-1.5 text-right font-mono ${VAL_CLS[roasCls(r.roas, m.settings)]}`}>{r.roas !== null ? r.roas.toFixed(2) : '—'}</td>
-        <td className={`px-2 py-1.5 text-right font-mono ${r.freq >= m.settings.freqWarn ? 'text-warn' : 'text-muted2'}`}>{r.freq ? r.freq.toFixed(1) : '—'}{r.freq >= m.settings.freqWarn ? '🔥' : ''}</td>
-        <td className="px-2 py-1.5 text-right font-mono">{r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'}</td>
-        <td className="whitespace-nowrap px-2 py-1.5 text-right font-mono text-muted2">{fmtEdit(r.updatedTime)}</td>
-        <td className="py-1.5 pl-3">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.spend)}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.impr ? r.impr.toLocaleString('pt-BR') : '—'}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.cpm)}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.ctr ? r.ctr.toFixed(2) + '%' : '—'}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.cpc ? money(r.cpc) : '—'}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.cpaIC)}</td>
+        <td className={`px-2 py-2 text-right font-mono tabular-nums ${r.cpa === null ? 'text-muted2' : r.cpa <= m.settings.cpaMax ? 'text-ok' : 'text-danger'}`}>{money(r.cpa)}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.sales}</td>
+        <td className={`px-2 py-2 text-right font-mono tabular-nums ${VAL_CLS[roasCls(r.roas, m.settings)]}`}>{r.roas !== null ? r.roas.toFixed(2) : '—'}</td>
+        <td className={`px-2 py-2 text-right font-mono tabular-nums ${r.freq >= m.settings.freqWarn ? 'text-warn' : 'text-muted2'}`}>{r.freq ? r.freq.toFixed(1) : '—'}{r.freq >= m.settings.freqWarn ? '🔥' : ''}</td>
+        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right font-mono tabular-nums text-muted2">{fmtEdit(r.updatedTime)}</td>
+        <td className="py-2 pl-3 pr-3">
+          <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
             <ScaleBadge campId={r.id} />
             <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
             <button
               onClick={toggle}
-              className="rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
+              className="whitespace-nowrap rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
             >
               criativos {open ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
             </button>
