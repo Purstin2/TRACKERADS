@@ -46,6 +46,23 @@ function fillTemplate(tpl, o) {
     .trim()
 }
 
+// Sanitiza um valor pra parâmetro de template (Meta rejeita vazio, quebras de
+// linha, tabs e >4 espaços seguidos). Garante fallback não-vazio.
+function cleanParam(v, fallback) {
+  let s = String(v ?? '').replace(/[\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim()
+  return s || fallback
+}
+
+// Os 3 parâmetros do template, na ordem {{1}}=nome {{2}}=produto {{3}}=link.
+function templateParams(o) {
+  const first = (o.customer_name || '').split(' ')[0]
+  return [
+    { type: 'text', text: cleanParam(first, 'tudo bem') },
+    { type: 'text', text: cleanParam(o.product, 'sua compra') },
+    { type: 'text', text: cleanParam(o.checkout_url, 'pay.kirvano.com') },
+  ]
+}
+
 // ── adaptador genérico: monta {url, headers, body} por provedor ──────────────
 function buildRequest(provider, phone, text, o, cfg) {
   switch (provider) {
@@ -68,16 +85,7 @@ function buildRequest(provider, phone, text, o, cfg) {
             template: {
               name: tplName,
               language: { code: lang },
-              components: [
-                {
-                  type: 'body',
-                  parameters: [
-                    { type: 'text', text: (o.customer_name || '').split(' ')[0] || 'tudo bem' },
-                    { type: 'text', text: o.product || 'nosso produto' },
-                    { type: 'text', text: o.checkout_url || '' },
-                  ],
-                },
-              ],
+              components: [{ type: 'body', parameters: templateParams(o) }],
             },
           }
         : { messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: text } }
@@ -99,16 +107,7 @@ function buildRequest(provider, phone, text, o, cfg) {
             template: {
               name: tplName,
               language: { code: lang },
-              components: [
-                {
-                  type: 'body',
-                  parameters: [
-                    { type: 'text', text: (o.customer_name || '').split(' ')[0] || 'tudo bem' },
-                    { type: 'text', text: o.product || 'nosso produto' },
-                    { type: 'text', text: o.checkout_url || '' },
-                  ],
-                },
-              ],
+              components: [{ type: 'body', parameters: templateParams(o) }],
             },
           }
         : { messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: text } }
