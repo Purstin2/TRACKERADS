@@ -7,8 +7,9 @@
 -- ── controle de envio por pedido ──
 -- (kirvano_orders já tem wa_sent_at; adicionamos status + tentativas)
 alter table kirvano_orders add column if not exists wa_status   text default 'pending';
-  -- pending | queued | sent | failed | skipped | replied | converted
+  -- pending | sent | failed | skipped | done | converted
 alter table kirvano_orders add column if not exists wa_attempts int  default 0;
+alter table kirvano_orders add column if not exists wa_step     int  default 0;  -- cadência: 0→1→2→3 (qual dia já mandou)
 alter table kirvano_orders add column if not exists wa_error    text;
 alter table kirvano_orders add column if not exists wa_last_try timestamptz;
 

@@ -1,20 +1,20 @@
 // ════════════════════════════════════════════════════════════════════
-// PURSTINLAB · Disparador de recuperação de carrinho abandonado (WhatsApp)
+// PURSTINLAB · Recuperação de carrinho abandonado via WhatsApp (cadência 3 dias)
 //
-// Roda por CRON (Vercel Cron) a cada X minutos. Pega carrinhos abandonados
-// elegíveis e dispara a mensagem pelo provedor configurado.
+// Roda por CRON (Vercel Cron). Pra cada carrinho abandonado elegível, dispara
+// o template do DIA certo conforme o tempo:
+//   Dia 1 (rapport)  → ~1h após abandono     → template WA_TEMPLATE_DAY1
+//   Dia 2 (prova)    → +24h                  → template WA_TEMPLATE_DAY2 (vídeo)
+//   Dia 3 (urgência) → +24h                  → template WA_TEMPLATE_DAY3
+// Para sozinho se a pessoa comprar (status APPROVED / recovered).
 //
 // CHAMADA:
-//   GET/POST /api/recover?secret=WEBHOOK_SECRET           → roda a fila (cron)
-//   POST     /api/recover?secret=...&ids=uuid1,uuid2      → dispara em lote (manual)
+//   GET/POST /api/recover                    → roda a cadência (cron)
+//   POST     /api/recover?secret=...&ids=..  → força o próximo passo desses ids
 //
-// PROVEDOR (genérico, escolhido por env WA_PROVIDER):
-//   - cloud      → Meta WhatsApp Cloud API (oficial / via parceiro 360dialog hub)
-//   - 360dialog  → 360dialog (Cloud API gerenciada)
-//   - gupshup    → Gupshup
-//   - custom     → qualquer endpoint (você define WA_CUSTOM_URL e o corpo)
-//
-// As CREDENCIAIS ficam só na Vercel (env), nunca no banco.
+// PROVEDOR (env WA_PROVIDER): cloud (Meta oficial) | 360dialog | gupshup | custom
+// Cadência com template/vídeo é suportada em cloud e 360dialog.
+// Credenciais SÓ na Vercel (env), nunca no banco.
 // ════════════════════════════════════════════════════════════════════
 
 function sbHeaders(key, extra = {}) {
@@ -28,135 +28,114 @@ function waPhone(raw) {
   if (!d) return null
   if (d.startsWith('00')) d = d.slice(2)
   if (d.startsWith('351') || d.startsWith('55')) return d
-  if (d.length <= 11) return '55' + d // sem DDI → assume BR
+  if (d.length <= 11) return '55' + d
   return d
 }
 
-// Preenche {nome} {produto} {link} {valor} no template.
-function fillTemplate(tpl, o) {
-  const nome = (o.customer_name || '').split(' ')[0] || 'tudo bem'
-  const valor = o.value
-    ? (o.currency === 'EUR' ? '€' : 'R$') + ' ' + Number(o.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-    : ''
-  return String(tpl || '')
-    .replaceAll('{nome}', nome)
-    .replaceAll('{produto}', o.product || 'nosso produto')
-    .replaceAll('{link}', o.checkout_url || '')
-    .replaceAll('{valor}', valor)
-    .trim()
-}
+const firstName = (o) => (o.customer_name || '').split(' ')[0] || ''
 
-// Sanitiza um valor pra parâmetro de template (Meta rejeita vazio, quebras de
-// linha, tabs e >4 espaços seguidos). Garante fallback não-vazio.
+// Sanitiza um parâmetro de template (Meta rejeita vazio/quebra de linha/tab).
 function cleanParam(v, fallback) {
-  let s = String(v ?? '').replace(/[\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim()
+  const s = String(v ?? '').replace(/[\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim()
   return s || fallback
 }
 
-// Os 3 parâmetros do template, na ordem {{1}}=nome {{2}}=produto {{3}}=link.
-function templateParams(o) {
-  const first = (o.customer_name || '').split(' ')[0]
+// ── definição dos 3 passos da cadência (lidos de env) ────────────────────────
+function getSteps() {
+  const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
+  const company = process.env.WA_COMPANY || 'nossa loja'
+  const videoUrl = process.env.WA_DAY2_VIDEO_URL || null // link público .mp4 do dia 2
+  const videoId = process.env.WA_DAY2_VIDEO_ID || null // ou um media id já enviado
   return [
-    { type: 'text', text: cleanParam(first, 'tudo bem') },
-    { type: 'text', text: cleanParam(o.product, 'sua compra') },
-    { type: 'text', text: cleanParam(o.checkout_url, 'pay.kirvano.com') },
+    {
+      day: 1,
+      template: process.env.WA_TEMPLATE_DAY1 || 'carrinho_dia1',
+      lang,
+      // dia 1: {{1}}=nome, {{2}}=empresa
+      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem'), cleanParam(company, 'nossa loja')],
+      header: null,
+    },
+    {
+      day: 2,
+      template: process.env.WA_TEMPLATE_DAY2 || 'carrinho_dia2',
+      lang,
+      // dia 2: {{1}}=nome + header de vídeo (precisa link público ou media id)
+      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem')],
+      header: videoUrl ? { type: 'video', link: videoUrl } : videoId ? { type: 'video', id: videoId } : null,
+    },
+    {
+      day: 3,
+      template: process.env.WA_TEMPLATE_DAY3 || 'carrinhos_dia3',
+      lang,
+      // dia 3: {{1}}=nome
+      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem')],
+      header: null,
+    },
   ]
 }
 
-// ── adaptador genérico: monta {url, headers, body} por provedor ──────────────
-function buildRequest(provider, phone, text, o, cfg) {
-  switch (provider) {
-    case 'cloud': {
-      // Meta WhatsApp Cloud API (oficial). Exige template aprovado p/ marketing.
-      // WA_PHONE_ID = phone number id; WA_TOKEN = token permanente.
-      const phoneId = process.env.WA_PHONE_ID
-      const token = process.env.WA_TOKEN
-      const tplName = process.env.WA_TEMPLATE_NAME // se usar template aprovado
-      const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
-      const url = `https://graph.facebook.com/v22.0/${phoneId}/messages`
-      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-      // se houver template aprovado, usa template (recomendado p/ não cair na policy);
-      // senão manda texto livre (só funciona dentro da janela de 24h de sessão).
-      const body = tplName
-        ? {
-            messaging_product: 'whatsapp',
-            to: phone,
-            type: 'template',
-            template: {
-              name: tplName,
-              language: { code: lang },
-              components: [{ type: 'body', parameters: templateParams(o) }],
-            },
-          }
-        : { messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: text } }
-      return { url, headers, body }
-    }
+// Decide qual passo (índice 0..2) está na hora de enviar, ou:
+//   -1 = ainda não é hora   |   -2 = expirou (velho demais p/ iniciar)
+function dueStep(o, cfg, now) {
+  const step = o.wa_step || 0
+  if (step >= 3) return -1
+  const delayMs = (cfg.delay_minutes ?? 60) * 60000
+  const gapMs = (cfg.step_gap_hours ?? 24) * 3600000
+  const windowMs = (cfg.window_hours ?? 24) * 3600000
+  if (step === 0) {
+    const base = new Date(o.created_at || o.ordered_at || now).getTime()
+    const age = now - base
+    if (age < delayMs) return -1 // ainda cedo
+    if (age > windowMs) return -2 // velho demais pra começar a cadência
+    return 0
+  }
+  // passos 1 e 2: espera o gap desde o último envio
+  const last = o.wa_last_try ? new Date(o.wa_last_try).getTime() : 0
+  return now - last >= gapMs ? step : -1
+}
 
-    case '360dialog': {
-      // 360dialog (Cloud API gerenciada). Mesmo corpo da Cloud API, header D360-API-KEY.
-      const key = process.env.WA_360_API_KEY
-      const tplName = process.env.WA_TEMPLATE_NAME
-      const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
-      const url = 'https://waba-v2.360dialog.io/messages'
-      const headers = { 'D360-API-KEY': key, 'Content-Type': 'application/json' }
-      const body = tplName
-        ? {
-            messaging_product: 'whatsapp',
-            to: phone,
-            type: 'template',
-            template: {
-              name: tplName,
-              language: { code: lang },
-              components: [{ type: 'body', parameters: templateParams(o) }],
-            },
-          }
-        : { messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: text } }
-      return { url, headers, body }
-    }
+// ── monta a requisição HTTP do provedor pra um passo da cadência ─────────────
+function buildRequest(provider, phone, stepDef) {
+  const components = []
+  if (stepDef.header) {
+    const h = stepDef.header
+    components.push({
+      type: 'header',
+      parameters: [{ type: h.type, [h.type]: h.link ? { link: h.link } : { id: h.id } }],
+    })
+  }
+  const params = stepDef.bodyParams_resolved.map((t) => ({ type: 'text', text: t }))
+  if (params.length) components.push({ type: 'body', parameters: params })
 
-    case 'gupshup': {
-      // Gupshup (form-urlencoded).
-      const apikey = process.env.WA_GUPSHUP_KEY
-      const source = process.env.WA_GUPSHUP_SOURCE // número de origem
-      const appName = process.env.WA_GUPSHUP_APP
-      const url = 'https://api.gupshup.io/wa/api/v1/msg'
-      const headers = { apikey, 'Content-Type': 'application/x-www-form-urlencoded' }
-      const params = new URLSearchParams({
-        channel: 'whatsapp',
-        source,
-        destination: phone,
-        'src.name': appName,
-        message: JSON.stringify({ type: 'text', text }),
-      })
-      return { url, headers, body: params.toString(), raw: true }
-    }
+  const template = { name: stepDef.template, language: { code: stepDef.lang }, components }
 
-    default: {
-      // custom: você define a URL e o corpo via env. {{phone}} {{text}} são substituídos.
-      const url = process.env.WA_CUSTOM_URL
-      const auth = process.env.WA_CUSTOM_AUTH // ex: "Bearer xxx" ou "apikey: xxx"
-      const headers = { 'Content-Type': 'application/json' }
-      if (auth) {
-        const [h, ...rest] = auth.split(':')
-        if (rest.length) headers[h.trim()] = rest.join(':').trim()
-        else headers['Authorization'] = auth
-      }
-      const tpl = process.env.WA_CUSTOM_BODY || '{"phone":"{{phone}}","message":"{{text}}"}'
-      const body = tpl.replaceAll('{{phone}}', phone).replaceAll('{{text}}', text.replace(/"/g, '\\"').replace(/\n/g, '\\n'))
-      return { url, headers, body, raw: true }
+  if (provider === '360dialog') {
+    return {
+      url: 'https://waba-v2.360dialog.io/messages',
+      headers: { 'D360-API-KEY': process.env.WA_360_API_KEY, 'Content-Type': 'application/json' },
+      body: { messaging_product: 'whatsapp', to: phone, type: 'template', template },
     }
+  }
+  // cloud (Meta oficial) — default
+  return {
+    url: `https://graph.facebook.com/v22.0/${process.env.WA_PHONE_ID}/messages`,
+    headers: { Authorization: `Bearer ${process.env.WA_TOKEN}`, 'Content-Type': 'application/json' },
+    body: { messaging_product: 'whatsapp', to: phone, type: 'template', template },
   }
 }
 
-async function sendWa(provider, phone, text, o, cfg) {
-  const req = buildRequest(provider, phone, text, o, cfg)
-  if (!req.url) return { ok: false, http: 0, response: { error: 'provider não configurado (faltam env vars)' } }
+async function sendStep(provider, phone, stepDef, o) {
+  // resolve os params do body pra este pedido
+  stepDef.bodyParams_resolved = stepDef.bodyParams(o)
+  const req = buildRequest(provider, phone, stepDef)
+  if (!req.url || (provider === 'cloud' && (!process.env.WA_PHONE_ID || !process.env.WA_TOKEN))) {
+    return { ok: false, http: 0, response: { error: 'provider não configurado (faltam env vars)' } }
+  }
+  if (stepDef.day === 2 && !stepDef.header) {
+    return { ok: false, http: 0, response: { error: 'dia 2 precisa de WA_DAY2_VIDEO_URL (link do vídeo)' } }
+  }
   try {
-    const r = await fetch(req.url, {
-      method: 'POST',
-      headers: req.headers,
-      body: req.raw ? req.body : JSON.stringify(req.body),
-    })
+    const r = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) })
     let j = {}
     try {
       j = await r.json()
@@ -174,50 +153,42 @@ export default async function handler(req, res) {
   const key = process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return res.status(500).json({ error: 'supabase não configurado' })
 
-  // auth: chamada do Vercel Cron (header x-vercel-cron) OU ?secret= correto
   const isCron = !!req.headers['x-vercel-cron']
   const secret = req.query.secret
   if (!isCron && process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
-  // config
+  // config (template/delay/janela editáveis na tela; credenciais só na env)
   let cfg = {}
   try {
     const r = await fetch(`${url}/rest/v1/wa_config?id=eq.1&select=*`, { headers: sbHeaders(key) })
     cfg = (await r.json())[0] || {}
   } catch {}
 
-  const provider = process.env.WA_PROVIDER || cfg.provider || 'custom'
-  const delayMin = cfg.delay_minutes ?? 20
-  const maxAttempts = cfg.max_attempts ?? 1
-  const windowH = cfg.window_hours ?? 24
-  const template = cfg.template || 'Oi {nome}! Vi que você começou a compra do {produto} mas não finalizou. Quer ajuda pra concluir? {link}'
+  const provider = process.env.WA_PROVIDER || cfg.provider || 'cloud'
+  const steps = getSteps()
 
-  // modo manual em lote: ?ids=uuid1,uuid2
   const idsParam = (req.query.ids || '').toString().trim()
   const manualIds = idsParam ? idsParam.split(',').map((s) => s.trim()).filter(Boolean) : null
 
-  // modo automático precisa estar habilitado; manual sempre roda
   if (!manualIds && !cfg.enabled) {
     return res.status(200).json({ ok: true, skipped: 'automático desabilitado (wa_config.enabled=false)' })
   }
 
-  // busca candidatos
   const now = Date.now()
-  const cutoffOld = new Date(now - windowH * 3600 * 1000).toISOString()
-  const cutoffReady = new Date(now - delayMin * 60 * 1000).toISOString()
-
+  // candidatos: abandonados, não convertidos, ainda na cadência (wa_step<3), com telefone,
+  // criados nos últimos 5 dias (cobre os 3 toques + folga)
+  const cutoff = new Date(now - 5 * 86400000).toISOString()
   let query
   if (manualIds) {
     const inList = manualIds.map((i) => `"${i}"`).join(',')
     query = `${url}/rest/v1/kirvano_orders?id=in.(${inList})&select=*`
   } else {
-    // abandonados, ainda pendentes, dentro da janela, já passou o delay, sob o limite de tentativas
     query =
-      `${url}/rest/v1/kirvano_orders?status=eq.ABANDONED&wa_status=eq.pending` +
-      `&created_at=gte.${cutoffOld}&created_at=lte.${cutoffReady}` +
-      `&wa_attempts=lt.${maxAttempts}&customer_phone=not.is.null&select=*&order=created_at.asc&limit=50`
+      `${url}/rest/v1/kirvano_orders?status=eq.ABANDONED` +
+      `&or=(wa_step.is.null,wa_step.lt.3)&customer_phone=not.is.null` +
+      `&created_at=gte.${cutoff}&select=*&order=created_at.asc&limit=80`
   }
 
   let orders = []
@@ -231,42 +202,62 @@ export default async function handler(req, res) {
 
   const results = []
   for (const o of orders) {
-    // segurança extra: nunca manda se já virou venda aprovada
     if (o.status === 'APPROVED' || o.recovered) {
-      await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'já comprou' })
+      await patchOrder(url, key, o.id, { wa_status: 'converted', wa_step: 3 })
       results.push({ id: o.id, skipped: 'já comprou' })
       continue
     }
     const phone = waPhone(o.customer_phone)
     if (!phone) {
-      await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'sem telefone' })
+      await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'sem telefone', wa_step: 3 })
       results.push({ id: o.id, skipped: 'sem telefone' })
       continue
     }
 
-    const text = fillTemplate(template, o)
-    const out = await sendWa(provider, phone, text, o, cfg)
+    // no modo manual, força o próximo passo; no cron, respeita o tempo
+    const idx = manualIds ? (o.wa_step || 0) : dueStep(o, cfg, now)
+    if (idx === -2) {
+      await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'janela expirada', wa_step: 3 })
+      results.push({ id: o.id, skipped: 'expirado' })
+      continue
+    }
+    if (idx < 0 || idx > 2) {
+      results.push({ id: o.id, waiting: true, step: o.wa_step || 0 })
+      continue
+    }
 
-    // log da mensagem
+    const stepDef = steps[idx]
+    const out = await sendStep(provider, phone, stepDef, o)
+
     await fetch(`${url}/rest/v1/wa_messages`, {
       method: 'POST',
       headers: sbHeaders(key, { Prefer: 'return=minimal' }),
       body: JSON.stringify([
-        { order_id: o.id, phone, body: text, provider, ok: out.ok, http_status: out.http, response: out.response },
+        {
+          order_id: o.id,
+          phone,
+          body: `[dia ${stepDef.day}] ${stepDef.template}`,
+          provider,
+          ok: out.ok,
+          http_status: out.http,
+          response: out.response,
+        },
       ]),
     })
 
     await patchOrder(url, key, o.id, {
-      wa_status: out.ok ? 'sent' : 'failed',
+      wa_step: out.ok ? idx + 1 : o.wa_step || 0, // só avança se enviou
+      wa_status: out.ok ? (idx + 1 >= 3 ? 'done' : 'sent') : 'failed',
       wa_attempts: (o.wa_attempts || 0) + 1,
       wa_sent_at: out.ok ? new Date().toISOString() : o.wa_sent_at,
       wa_last_try: new Date().toISOString(),
       wa_error: out.ok ? null : JSON.stringify(out.response).slice(0, 400),
     })
-    results.push({ id: o.id, phone, ok: out.ok, http: out.http })
+    results.push({ id: o.id, phone, day: stepDef.day, ok: out.ok, http: out.http })
   }
 
-  return res.status(200).json({ ok: true, provider, processed: results.length, results })
+  const sent = results.filter((r) => r.ok).length
+  return res.status(200).json({ ok: true, provider, processed: results.length, sent, results })
 }
 
 async function patchOrder(url, key, id, patch) {
