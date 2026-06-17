@@ -10,7 +10,7 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts'
-import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
+import { ExternalLink, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
 import {
   fetchAds,
   getRoas,
@@ -476,8 +476,24 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
 export function HistoricoView({ items }: { items: CacheItem[] }) {
   const m = useMonitor()
   const s = m.settings
+  const [q, setQ] = useState('')
+  const ql = q.trim().toLowerCase()
   return (
     <div className="flex flex-col gap-4">
+      <div className="relative w-full max-w-[420px]">
+        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar campanha por nome/nomenclatura..."
+          className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-8 text-[12px] text-ink"
+        />
+        {q && (
+          <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted2 hover:text-ink">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       {items.map((item, idx) => {
         if (item.kind === 'err')
           return (
@@ -491,7 +507,8 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
           .filter(
             (x) =>
               (!m.actionFilter || x.action.code === m.actionFilter) &&
-              (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${x.cid}`)),
+              (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${x.cid}`)) &&
+              (!ql || (x.camp.name || '').toLowerCase().includes(ql)),
           )
         if (!camps.length) return null
         return (
@@ -516,12 +533,12 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                 <tbody>
                   {camps.map(({ cid, camp, action }) => (
                     <tr key={cid} className="border-b border-border/50">
-                      <td className="py-1.5 pl-3">
-                        <div className="flex items-center gap-1">
-                          <span className="max-w-[220px] truncate" title={camp.name}>
-                            {trunc(camp.name, 32)}
+                      <td className="py-1.5 pl-3 pr-2">
+                        <div className="flex items-start gap-1">
+                          <span className="min-w-[200px] max-w-[340px] whitespace-normal break-words leading-tight" title={camp.name}>
+                            {camp.name}
                           </span>
-                          <a href={campUrl(item.acc.id, cid)} target="_blank" className="text-muted2 hover:text-brand-2">
+                          <a href={campUrl(item.acc.id, cid)} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2">
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </div>
