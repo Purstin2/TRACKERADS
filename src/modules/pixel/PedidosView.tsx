@@ -112,8 +112,20 @@ export default function PedidosView() {
     const num = waNumber(o.customer_phone)
     if (!num) return ''
     const first = (o.customer_name || '').split(' ')[0]
-    const msg = `Oi${first ? ' ' + first : ''}! Vi que você começou a compra do *${o.product || 'nosso produto'}* mas não finalizou. Posso te ajudar a concluir? ${o.checkout_url || ''}`.trim()
-    return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`
+    const oi = `Oi${first ? ' ' + first : ''}`
+    const prod = o.product || 'nosso produto'
+    const link = o.checkout_url ? ' ' + o.checkout_url : ''
+    const st = (o.status || '').toUpperCase()
+    let msg: string
+    if (st === 'APPROVED') {
+      msg = `${oi}! Vi aqui que sua compra do *${prod}* foi aprovada 🎉 Qualquer dúvida na entrega/acesso é só me chamar!`
+    } else if (st === 'REFUSED' || st === 'CANCELED' || st === 'EXPIRED') {
+      msg = `${oi}! Notei que o pagamento do *${prod}* não foi concluído. Quer que eu te ajude a finalizar?${link}`
+    } else {
+      // ABANDONED / PENDING / demais
+      msg = `${oi}! Vi que você começou a compra do *${prod}* mas não finalizou. Posso te ajudar a concluir?${link}`
+    }
+    return `https://wa.me/${num}?text=${encodeURIComponent(msg.trim())}`
   }
 
   async function openWa(o: KirvanoOrder) {
@@ -273,24 +285,30 @@ export default function PedidosView() {
                     <td className="py-2 text-right font-mono font-semibold">{brl(o.value)}</td>
                     <td className="py-2 text-[11px] text-muted2">{o.payment_method || '—'}</td>
                     <td className="max-w-[160px] truncate py-2 text-[11px] text-muted2" title={o.utm_campaign || ''}>{o.utm_campaign || '—'}</td>
-                    <td className="py-2 pr-4 text-right">
-                      {isAbandoned && o.customer_phone ? (
-                        <button
-                          onClick={() => openWa(o)}
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10.5px] font-bold ${
-                            o.wa_sent_at ? 'border-border2 bg-surface2 text-muted2' : 'border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20'
-                          }`}
-                          title={o.wa_sent_at ? `Mensagem já enviada em ${new Date(o.wa_sent_at).toLocaleString('pt-BR')}` : 'Abrir WhatsApp com mensagem de recuperação'}
-                        >
-                          <MessageCircle className="h-3 w-3" /> {o.wa_sent_at ? 'enviado' : 'recuperar'}
-                        </button>
-                      ) : o.checkout_url ? (
-                        <a href={o.checkout_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10.5px] text-brand-2 hover:underline">
-                          <ExternalLink className="h-3 w-3" /> checkout
-                        </a>
-                      ) : (
-                        <span className="text-muted2">—</span>
-                      )}
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {o.customer_phone && (
+                          <button
+                            onClick={() => openWa(o)}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10.5px] font-bold ${
+                              o.wa_sent_at ? 'border-border2 bg-surface2 text-muted2' : 'border-[#25D366]/40 bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20'
+                            }`}
+                            title={
+                              o.wa_sent_at
+                                ? `Mensagem já enviada em ${new Date(o.wa_sent_at).toLocaleString('pt-BR')}`
+                                : 'Abrir WhatsApp com mensagem pronta'
+                            }
+                          >
+                            <MessageCircle className="h-3 w-3" /> {o.wa_sent_at ? 'enviado' : isAbandoned ? 'recuperar' : 'WhatsApp'}
+                          </button>
+                        )}
+                        {o.checkout_url && (
+                          <a href={o.checkout_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10.5px] text-brand-2 hover:underline" title="Abrir checkout">
+                            <ExternalLink className="h-3 w-3" /> checkout
+                          </a>
+                        )}
+                        {!o.customer_phone && !o.checkout_url && <span className="text-muted2">—</span>}
+                      </div>
                     </td>
                   </tr>
                 )
