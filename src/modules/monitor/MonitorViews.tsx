@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -10,7 +10,7 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts'
-import { ExternalLink, ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { ExternalLink, ChevronDown, ChevronUp, Search, X, TrendingUp } from 'lucide-react'
 import {
   fetchAds,
   getRoas,
@@ -22,12 +22,15 @@ import {
   getCtr,
   getCpc,
   getCpaIC,
+  getBudget,
+  setBudget,
   campUrl,
   type InsightRow,
 } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
-import { openLog, lastScale, useLog } from './actionLog'
+import { openLog, lastScale, useLog, addAction } from './actionLog'
+import { toast } from '@/components/ui/toast'
 import {
   ICONS,
   ORDER,
@@ -92,6 +95,167 @@ export function LogBtn({ accId, name, campId, roas, cur }: { accId: string; name
     >
       ✎ log
     </button>
+  )
+}
+
+/** Botão de aumentar orçamento direto na linha (abre modal). Respeita Execução ON/OFF. */
+export function BudgetBtn({ accId, name, campId, roas, cur }: { accId: string; name: string; campId: string; roas: number | null; cur: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Aumentar orçamento"
+        className="inline-flex items-center gap-0.5 rounded border border-ok/40 bg-ok/5 px-1.5 py-0.5 text-[10px] font-bold text-ok hover:bg-ok/15"
+      >
+        <TrendingUp className="h-3 w-3" /> $
+      </button>
+      {open && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+const QUICK = [10, 20, 30, 50]
+
+function BudgetModal({ accId, name, campId, roas, cur, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; onClose: () => void }) {
+  const m = useMonitor()
+  const sym = curSym(cur)
+  const [loading, setLoading] = useState(true)
+  const [applying, setApplying] = useState(false)
+  const [info, setInfo] = useState<{ level: 'campaign' | 'adset'; items: { id: string; daily: number; name: string }[]; total: number } | null>(null)
+  const [err, setErr] = useState('')
+  const [pct, setPct] = useState(20)
+  const [absVal, setAbsVal] = useState('') // valor absoluto opcional (em moeda, não centavos)
+  const [mode, setMode] = useState<'pct' | 'abs'>('pct')
+
+  useEffect(() => {
+    // carrega o orçamento atual ao montar
+    let alive = true
+    getBudget(campId, m.token.trim())
+      .then((b) => alive && (setInfo(b), setLoading(false)))
+      .catch((e) => alive && (setErr(e.message), setLoading(false)))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campId])
+
+  const curTotal = info ? info.total / 100 : 0
+  const newTotal = mode === 'abs' ? parseFloat(absVal || '0') : curTotal * (1 + pct / 100)
+  const delta = newTotal - curTotal
+
+  async function apply() {
+    if (!info || !info.items.length) return
+    if (newTotal <= 0) return toast('Valor inválido', 'err')
+    setApplying(true)
+    const factor = mode === 'abs' ? (curTotal > 0 ? newTotal / curTotal : 1) : 1 + pct / 100
+    try {
+      if (m.exec) {
+        // aplica de verdade: em CBO é 1 item (campanha); em ABO, rateia o fator em cada adset
+        for (const it of info.items) {
+          const target =
+            mode === 'abs' && info.items.length === 1
+              ? Math.round(newTotal * 100)
+              : Math.round(it.daily * factor)
+          await setBudget(it.id, target, m.token.trim())
+        }
+      }
+      addAction({
+        accId,
+        name,
+        campId,
+        kind: 'orcamento',
+        sim: !m.exec,
+        cur,
+        roasAtTime: roas,
+        budgetBefore: Math.round(curTotal * 100) / 100,
+        budgetAfter: Math.round(newTotal * 100) / 100,
+        detail: `${mode === 'pct' ? `+${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})${m.exec ? '' : ' [simulado]'}`,
+      })
+      toast(m.exec ? `Orçamento ajustado p/ ${sym}${newTotal.toFixed(2)}/dia` : `Simulado (Execução OFF): ${sym}${curTotal.toFixed(2)} → ${sym}${newTotal.toFixed(2)}`, 'ok')
+      onClose()
+    } catch (e: any) {
+      toast('Erro: ' + e.message, 'err')
+      setApplying(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="card w-full max-w-[440px]" onClick={(e) => e.stopPropagation()}>
+        <div className="card-header">
+          <h3 className="truncate text-[13px] font-bold" title={name}>💰 Aumentar orçamento</h3>
+          <button onClick={onClose} className="text-muted2 hover:text-ink">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="card-body flex flex-col gap-3">
+          <div className="truncate text-[12px] text-muted" title={name}>{name}</div>
+
+          {loading ? (
+            <div className="py-6 text-center text-[12px] text-muted2">Carregando orçamento atual…</div>
+          ) : err ? (
+            <div className="rounded-lg border border-danger/30 bg-danger/[0.07] px-3 py-2 text-[12px] text-danger">❌ {err}</div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between rounded-[8px] border border-border bg-surface2 px-3 py-2 text-[12px]">
+                <span className="text-muted2">Orçamento atual ({info!.level === 'campaign' ? 'CBO' : `${info!.items.length} adsets`})</span>
+                <span className="font-mono font-bold">{sym}{curTotal.toFixed(2)}/dia</span>
+              </div>
+
+              {info!.items.length === 0 && (
+                <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">
+                  ⚠ Nenhum adset ativo com orçamento diário encontrado. Ajuste direto no Ads Manager.
+                </div>
+              )}
+
+              <div className="flex gap-1.5">
+                {QUICK.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => { setMode('pct'); setPct(q) }}
+                    className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${mode === 'pct' && pct === q ? 'border-ok bg-ok/15 text-ok' : 'border-border text-muted hover:border-ok/50'}`}
+                  >
+                    +{q}%
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="field">
+                  <label>% personalizado</label>
+                  <input type="number" value={pct} onChange={(e) => { setMode('pct'); setPct(+e.target.value) }} className={mode === 'pct' ? 'border-ok/50' : ''} />
+                </div>
+                <div className="field">
+                  <label>ou valor fixo ({sym}/dia)</label>
+                  <input type="number" value={absVal} onChange={(e) => { setMode('abs'); setAbsVal(e.target.value) }} placeholder={curTotal.toFixed(2)} className={mode === 'abs' ? 'border-ok/50' : ''} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-[8px] border border-ok/30 bg-ok/[0.06] px-3 py-2 text-[13px]">
+                <span className="text-muted">Novo orçamento</span>
+                <span className="font-mono font-extrabold text-ok">
+                  {sym}{newTotal.toFixed(2)}/dia <span className="text-[11px] text-muted2">({delta >= 0 ? '+' : ''}{sym}{delta.toFixed(2)})</span>
+                </span>
+              </div>
+
+              {!m.exec && (
+                <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">
+                  ⚠ <b>Execução OFF</b> — vai apenas registrar no log (simulado), sem alterar na Meta. Ligue o switch <b>Execução</b> no topo pra aplicar de verdade.
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={apply} disabled={loading || applying || !!err || !info?.items.length}>
+              <TrendingUp className="h-3.5 w-3.5" /> {applying ? 'Aplicando…' : m.exec ? 'Aplicar na Meta' : 'Registrar (simulado)'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -429,6 +593,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
             <ScaleBadge campId={r.id} />
+            <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
             <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
             <button
               onClick={toggle}
@@ -568,6 +733,7 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                         <div className="flex flex-wrap items-center gap-1">
                           <Badge a={action} />
                           <ScaleBadge campId={cid} />
+                          <BudgetBtn accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
                           <LogBtn accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
                         </div>
                       </td>
