@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, RefreshCw, Crosshair, Check, X, Power, Code2, Copy } from 'lucide-react'
+import { Plus, Trash2, Pencil, RefreshCw, Crosshair, Check, X, Power, Code2, Copy, FlaskConical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/components/ui/toast'
 import {
@@ -8,6 +8,7 @@ import {
   updateRoute,
   deleteRoute,
   toggleRoute,
+  testRoute,
   type PixelRoute,
   type RouteInput,
 } from './pixels'
@@ -87,12 +88,27 @@ export default function PixelsView() {
   const [showHelp, setShowHelp] = useState(false)
   const [snippet, setSnippet] = useState<SnippetData | null>(null)
   const [copied, setCopied] = useState(false)
+  const [testing, setTesting] = useState<string | null>(null)
   const connected = !!supabase()
 
   function copySnippet(d: SnippetData) {
     navigator.clipboard.writeText(buildSnippet(d))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function runTest(r: PixelRoute) {
+    if (!r.test_code) {
+      return toast('Defina o Test Event Code neste pixel (pegue na aba Test Events do Meta) e salve antes de testar.', 'err')
+    }
+    setTesting(r.id)
+    const res = await testRoute(r.id, 'Purchase')
+    setTesting(null)
+    if (res.ok) {
+      toast(`✓ Evento enviado ao pixel ${res.pixel}. Veja na aba Test Events (código ${res.testCode}).`, 'ok')
+    } else {
+      toast(`✗ ${res.error || 'falhou'}${res.details ? ' — ' + res.details : ''}`, 'err')
+    }
   }
 
   async function load() {
@@ -234,6 +250,13 @@ export default function PixelsView() {
             <li><b>Adicionar pixel</b> → preencha Nome, Roteamento, a chave, Pixel ID e Token → Salvar. <b>Vale na próxima venda, sem deploy.</b></li>
             <li>No site da oferta, aponte o <span className="font-mono">window.FB_PIXEL_ID</span> do <span className="font-mono">fbtrack.js</span> pro <b>mesmo</b> pixel (pro PageView/ViewContent baterem no lugar certo).</li>
           </ol>
+          <div className="mb-1.5 mt-3 text-[13px] font-bold text-ink">🧪 Como validar (e por que o Test Events pode parecer vazio)</div>
+          <ul className="ml-4 list-disc space-y-1">
+            <li>São <b>dois caminhos</b>: o <b>browser</b> (<span className="font-mono">fbtrack.js</span> → PageView/ViewContent) e o <b>servidor</b> (webhook → Purchase/InitiateCheckout via CAPI).</li>
+            <li><b>Browser:</b> cole o script (botão <span className="font-mono">&lt;/&gt;</span>), abra a página e veja no <b>Pixel Helper</b> ou em <b>Events Manager → Visão geral</b>. O browser <u>não</u> usa Test Event Code.</li>
+            <li><b>Servidor (CAPI):</b> só aparece na aba <b>Test Events</b> se o pixel tiver um <b>Test Event Code</b>. Salve o código no pixel e clique no <b>🧪 frasco</b> do card → manda 1 evento na hora.</li>
+            <li>Em produção, as vendas reais caem na <b>Visão geral</b> (não no Test Events) — isso é o esperado.</li>
+          </ul>
           <div className="mb-1.5 mt-3 text-[13px] font-bold text-ink">🔌 Adicionar um gateway novo</div>
           <ul className="ml-4 list-disc space-y-1">
             <li><b>Kirvano</b> e <b>Hotmart</b> já são suportados — só colar a URL da aba <b>Webhook</b> na plataforma e usar o mesmo segredo.</li>
@@ -270,6 +293,9 @@ export default function PixelsView() {
                 <div className="flex items-center gap-0.5">
                   <button className="btn btn-ghost btn-sm !px-1.5" title={r.active ? 'Desativar' : 'Ativar'} onClick={() => toggle(r)}>
                     <Power className={`h-3.5 w-3.5 ${r.active ? 'text-ok' : 'text-muted2'}`} />
+                  </button>
+                  <button className="btn btn-ghost btn-sm !px-1.5" title="Testar evento (manda 1 evento ao Test Events)" onClick={() => runTest(r)} disabled={testing === r.id}>
+                    <FlaskConical className={`h-3.5 w-3.5 ${testing === r.id ? 'animate-pulse text-warn' : 'text-warn'}`} />
                   </button>
                   <button className="btn btn-ghost btn-sm !px-1.5" title="Ver script da página" onClick={() => setSnippet({ label: r.label || r.pixel_id, pixel_id: r.pixel_id, checkout_selector: r.checkout_selector, checkout_keywords: r.checkout_keywords })}>
                     <Code2 className="h-3.5 w-3.5 text-brand-2" />

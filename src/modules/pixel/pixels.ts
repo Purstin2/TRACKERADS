@@ -45,24 +45,30 @@ export interface RouteInput {
   fire_on_pix?: boolean
 }
 
+// Remove espaços, quebras de linha e tabs das pontas E do meio. O Meta rejeita
+// (ou não casa) IDs/códigos com espaço — foi o que quebrava o Test Event Code.
+const clean = (v?: string | null) => (v == null ? null : String(v).replace(/\s+/g, '') || null)
+// Igual, mas preserva espaços internos (pra label/nome legível).
+const cleanLabel = (v?: string | null) => (v == null ? null : String(v).trim() || null)
+
 /** Cria uma rota nova (token obrigatório na criação). */
 export async function createRoute(input: RouteInput): Promise<{ error?: string }> {
   const sb = supabase()
   if (!sb) return { error: 'Supabase não conectado' }
-  if (!input.pixel_id?.trim()) return { error: 'Pixel ID é obrigatório' }
-  if (!input.capi_token?.trim()) return { error: 'Token CAPI é obrigatório' }
+  if (!clean(input.pixel_id)) return { error: 'Pixel ID é obrigatório' }
+  if (!clean(input.capi_token)) return { error: 'Token CAPI é obrigatório' }
   const { error } = await sb.from('pixel_routes').insert([
     {
-      label: input.label || null,
-      offer_id: input.match_type === 'any' ? null : (input.offer_id || null),
+      label: cleanLabel(input.label),
+      offer_id: input.match_type === 'any' ? null : clean(input.offer_id),
       match_type: input.match_type,
-      pixel_id: input.pixel_id.trim(),
-      capi_token: input.capi_token.trim(),
-      test_code: input.test_code || null,
+      pixel_id: clean(input.pixel_id),
+      capi_token: clean(input.capi_token),
+      test_code: clean(input.test_code),
       active: input.active ?? true,
       gateways: input.gateways?.length ? input.gateways : null,
       checkout_selector: input.checkout_selector?.trim() || null,
-      checkout_keywords: input.checkout_keywords?.length ? input.checkout_keywords : null,
+      checkout_keywords: input.checkout_keywords?.length ? input.checkout_keywords.map((k) => k.trim()).filter(Boolean) : null,
       fire_on_pix: input.fire_on_pix ?? false,
     },
   ])
@@ -74,18 +80,18 @@ export async function updateRoute(id: string, input: Partial<RouteInput>): Promi
   const sb = supabase()
   if (!sb) return { error: 'Supabase não conectado' }
   const patch: Record<string, unknown> = {}
-  if (input.label !== undefined) patch.label = input.label || null
-  if (input.offer_id !== undefined) patch.offer_id = input.match_type === 'any' ? null : (input.offer_id || null)
+  if (input.label !== undefined) patch.label = cleanLabel(input.label)
+  if (input.offer_id !== undefined) patch.offer_id = input.match_type === 'any' ? null : clean(input.offer_id)
   if (input.match_type !== undefined) patch.match_type = input.match_type
-  if (input.pixel_id !== undefined) patch.pixel_id = input.pixel_id.trim()
-  if (input.test_code !== undefined) patch.test_code = input.test_code || null
+  if (input.pixel_id !== undefined) patch.pixel_id = clean(input.pixel_id)
+  if (input.test_code !== undefined) patch.test_code = clean(input.test_code)
   if (input.active !== undefined) patch.active = input.active
   if (input.gateways !== undefined) patch.gateways = input.gateways?.length ? input.gateways : null
   if (input.checkout_selector !== undefined) patch.checkout_selector = input.checkout_selector?.trim() || null
-  if (input.checkout_keywords !== undefined) patch.checkout_keywords = input.checkout_keywords?.length ? input.checkout_keywords : null
+  if (input.checkout_keywords !== undefined) patch.checkout_keywords = input.checkout_keywords?.length ? input.checkout_keywords.map((k) => k.trim()).filter(Boolean) : null
   if (input.fire_on_pix !== undefined) patch.fire_on_pix = input.fire_on_pix
   // token: só sobrescreve se o usuário digitou um novo (não apaga o existente)
-  if (input.capi_token && input.capi_token.trim()) patch.capi_token = input.capi_token.trim()
+  if (clean(input.capi_token)) patch.capi_token = clean(input.capi_token)
   const { error } = await sb.from('pixel_routes').update(patch).eq('id', id)
   return error ? { error: error.message } : {}
 }
@@ -99,4 +105,31 @@ export async function deleteRoute(id: string): Promise<{ error?: string }> {
 
 export async function toggleRoute(id: string, active: boolean) {
   return updateRoute(id, { active } as Partial<RouteInput>)
+}
+
+export interface TestResult {
+  ok: boolean
+  error?: string
+  details?: string | null
+  pixel?: string
+  testCode?: string
+  event?: string
+  events_received?: number
+  messages?: unknown[]
+}
+
+/** Dispara um evento de teste pra esta rota (via /api/test-event no servidor). */
+export async function testRoute(routeId: string, eventName = 'Purchase', testCode?: string): Promise<TestResult> {
+  try {
+    const r = await fetch('/api/test-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routeId, eventName, testCode }),
+    })
+    const j = (await r.json()) as TestResult
+    if (!r.ok && !j.error) return { ok: false, error: `HTTP ${r.status}` }
+    return j
+  } catch (e) {
+    return { ok: false, error: 'falha de rede ao chamar /api/test-event' }
+  }
 }

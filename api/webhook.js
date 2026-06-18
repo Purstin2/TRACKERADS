@@ -373,11 +373,15 @@ function parseOrder(gateway, body) {
 
 // Resolve qual pixel/token usar pra esta venda: consulta pixel_routes pela
 // offer_id/product_id; se não achar, cai no pixel default da env var.
+// remove espaços/quebras de linha que vazam de env vars ou copy-paste — o Meta
+// rejeita IDs/tokens/test codes com \n ou espaço.
+const sanitize = (v) => (v == null ? null : String(v).replace(/\s+/g, '') || null)
+
 async function resolvePixel(o) {
   const def = {
-    pixelId: process.env.META_PIXEL_ID || null,
-    token: process.env.META_CAPI_TOKEN || null,
-    testCode: process.env.META_TEST_EVENT_CODE || null,
+    pixelId: sanitize(process.env.META_PIXEL_ID),
+    token: sanitize(process.env.META_CAPI_TOKEN),
+    testCode: sanitize(process.env.META_TEST_EVENT_CODE),
     source: 'default',
   }
   const url = process.env.SUPABASE_URL
@@ -408,7 +412,7 @@ async function resolvePixel(o) {
     )
     const hit = exact || any
     if (!hit || !hit.pixel_id || !hit.capi_token) return def
-    return { pixelId: hit.pixel_id, token: hit.capi_token, testCode: hit.test_code || null, source: exact ? 'offer' : 'any', fireOnPix: !!hit.fire_on_pix }
+    return { pixelId: sanitize(hit.pixel_id), token: sanitize(hit.capi_token), testCode: sanitize(hit.test_code), source: exact ? 'offer' : 'any', fireOnPix: !!hit.fire_on_pix }
   } catch {
     return def
   }
@@ -522,7 +526,7 @@ async function sendCAPI(o, req, route) {
     custom_data: customData,
   }
 
-  const testCode = route?.testCode || process.env.META_TEST_EVENT_CODE
+  const testCode = route?.testCode || sanitize(process.env.META_TEST_EVENT_CODE)
   const payload = {
     data: [eventPayload],
     ...(testCode ? { test_event_code: testCode } : {}),
