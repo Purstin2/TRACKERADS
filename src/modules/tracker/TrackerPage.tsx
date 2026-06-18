@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts'
 import { Database, ExternalLink, Plus, RefreshCw, Search, X, Archive, LogIn, LogOut, Upload } from 'lucide-react'
@@ -13,6 +13,7 @@ import {
   deleteOffer,
   updateOffer,
   addAdCount,
+  scrapeOneUrl,
   getComments,
   addComment,
   runScrape,
@@ -144,9 +145,10 @@ function OfferCard({ offer, history, onClick }: { offer: Offer; history: AdCount
       </div>
       <span className={`w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls.bg} ${cls.color}`}>{cls.label}</span>
       {spark.length > 1 && (
-        <div className="h-9">
+        <div className="h-11">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={spark}>
+            <LineChart data={spark} margin={{ top: 3, bottom: 3, left: 0, right: 0 }}>
+              <YAxis hide domain={['dataMin', 'dataMax']} />
               <Line type="monotone" dataKey="c" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
             </LineChart>
           </ResponsiveContainer>
@@ -167,6 +169,12 @@ function OfferCard({ offer, history, onClick }: { offer: Offer; history: AdCount
 /* ── detalhe ── */
 function OfferDetail({ offer, history, onClose, onDelete, onChanged }: { offer: Offer; history: AdCount[]; onClose: () => void; onDelete: () => void; onChanged: () => void }) {
   const data = history.map((h) => ({ d: new Date(h.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), c: h.count }))
+  // zoom no eixo Y pra variação aparecer (sem isso, começa no 0 e a linha fica achatada)
+  const yVals = data.map((p) => p.c)
+  const yMin = yVals.length ? Math.min(...yVals) : 0
+  const yMax = yVals.length ? Math.max(...yVals) : 0
+  const yPad = Math.max(1, Math.round((yMax - yMin || yMax || 1) * 0.15))
+  const yDomain: [number, number] = [Math.max(0, yMin - yPad), yMax + yPad]
   const cls = classifyOffer(history)
   const [count, setCount] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -225,15 +233,25 @@ function OfferDetail({ offer, history, onClose, onDelete, onChanged }: { offer: 
             </a>
           </div>
 
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
-                <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#8b93a6' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#8b93a6' }} />
-                <Tooltip contentStyle={{ background: '#0d0f1e', border: '1px solid #1d2139', borderRadius: 8, fontSize: 11 }} />
-                <Line type="monotone" dataKey="c" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 2 }} name="anúncios" />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ height: 280 }}>
+            {data.length < 2 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1 rounded-xl2 border border-dashed border-border text-center">
+                <span className="text-[13px] font-semibold text-muted">Sem histórico pra desenhar o gráfico</span>
+                <span className="max-w-[360px] text-[11px] text-muted2">
+                  Só há {data.length === 1 ? '1 leitura' : 'nenhuma leitura'}. O gráfico aparece quando o scraper (ou as contagens
+                  manuais abaixo) acumular 2+ dias.
+                </span>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data} margin={{ top: 10, right: 14, left: -14, bottom: 0 }}>
+                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#8b93a6' }} minTickGap={16} />
+                  <YAxis domain={yDomain} allowDecimals={false} width={34} tick={{ fontSize: 10, fill: '#8b93a6' }} />
+                  <Tooltip contentStyle={{ background: '#0d0f1e', border: '1px solid #1d2139', borderRadius: 8, fontSize: 11 }} />
+                  <Line type="monotone" dataKey="c" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} name="anúncios" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* contagem manual */}
@@ -348,9 +366,12 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
   const [minDays, setMinDays] = useState('') // dias rodando mínimos
   const [trendDir, setTrendDir] = useState<'' | 'up' | 'down'>('') // só subindo / só caindo
   const [scraper, setScraper] = useState(() => {
-    const def = { localUrl: 'http://localhost:3001', railwayUrl: (import.meta.env.VITE_SCRAPER_URL as string) || '', path: '/api/scrape' }
+    // /api/scrape/run é a rota real do scraper-service (server.js). /api/scrape antigo dava 404.
+    const def = { localUrl: 'http://localhost:3001', railwayUrl: (import.meta.env.VITE_SCRAPER_URL as string) || '', path: '/api/scrape/run' }
     try {
-      return { ...def, ...JSON.parse(localStorage.getItem('purstin_scraper') || '{}') }
+      const saved = JSON.parse(localStorage.getItem('purstin_scraper') || '{}')
+      if (!saved.path || saved.path === '/api/scrape') saved.path = '/api/scrape/run' // migra path errado salvo antes
+      return { ...def, ...saved }
     } catch {
       return def
     }
@@ -368,13 +389,20 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
       return
     }
     setScraping(true)
-    toast('Scrape disparado — pode levar alguns minutos', 'ok')
+    const target = base.replace(/\/$/, '') + scraper.path
     try {
-      const res = await runScrape(base.replace(/\/$/, '') + scraper.path)
-      toast('Scraper: ' + res, 'ok')
+      const res = await runScrape(target)
+      toast('Scraper rodando: ' + res, 'ok')
       setTimeout(load, 4000)
     } catch (e: any) {
-      toast('Falhou: ' + e.message, 'err')
+      const msg = String(e?.message || e)
+      // "Failed to fetch" = servidor não respondeu (offline / porta errada / sem CORS)
+      if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+        toast(`Não alcancei o scraper em ${target}. Ele não está no ar nessa porta/rota, ou não libera CORS pro ${location.origin}.`, 'err')
+        setShowScraperCfg(true)
+      } else {
+        toast('Scraper falhou: ' + msg, 'err')
+      }
     }
     setScraping(false)
   }
@@ -475,14 +503,19 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
         )}
         <select value={filterCode} onChange={(e) => setFilterCode(e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
           <option value="">Todos status</option>
-          <option value="dominante">Dominante</option>
-          <option value="escala_conf">Escala confirmada</option>
-          <option value="escalando">Escalando</option>
-          <option value="validando">Validando</option>
-          <option value="testando">Testando criativos</option>
-          <option value="esgotando">Esgotando</option>
-          <option value="morrendo">Morrendo</option>
-          <option value="morta">Morta</option>
+          <option value="dominante">👑 Dominante</option>
+          <option value="escala_conf">🚀 Escala confirmada</option>
+          <option value="escalando">📈 Escalando</option>
+          <option value="acelerando">⚡ Acelerando</option>
+          <option value="validando">🔵 Validando</option>
+          <option value="testando">🧪 Testando criativos</option>
+          <option value="esgotando">🟠 Esgotando</option>
+          <option value="morrendo">🔻 Morrendo</option>
+          <option value="morta">💀 Morta</option>
+          <option value="lancamento">🌱 Lançamento</option>
+          <option value="observar">👁 Observar</option>
+          <option value="pausado">⏸ Pausado (sem scrape há 5d+)</option>
+          <option value="sem_dados">— Sem dados (sem histórico)</option>
         </select>
         {/* tendência como filtro (não só sort) */}
         <select value={trendDir} onChange={(e) => setTrendDir(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Filtrar por tendência">
@@ -553,7 +586,22 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-border border-t-brand" />
         </div>
       )}
-      {!loading && !err && filtered.length === 0 && (
+      {!loading && !err && filtered.length === 0 && offers.length > 0 && (
+        <div className="rounded-xl2 border border-dashed border-border py-10 text-center">
+          <p className="text-[13px] font-semibold text-ink">Nenhuma das {offers.length} ofertas passou nos filtros.</p>
+          <p className="mx-auto mt-1 max-w-[460px] text-[12px] text-muted">
+            Filtros de <b>status</b> e <b>tendência</b> precisam de histórico (várias leituras de ads). Se o scraper ainda
+            não rodou aqui, a maioria fica como <b>Sem dados</b> / <b>Pausado</b> — escolha esses no filtro de status, ou limpe.
+          </p>
+          <button
+            className="btn btn-primary btn-sm mx-auto mt-4"
+            onClick={() => { setMinAds(''); setMaxAds(''); setMinDays(''); setTag(''); setTrendDir(''); setFilterCode(''); setSearch(''); setStatusMode('todas') }}
+          >
+            <X className="h-3.5 w-3.5" /> Limpar filtros e mostrar todas
+          </button>
+        </div>
+      )}
+      {!loading && !err && offers.length === 0 && (
         <div className="rounded-xl2 border border-dashed border-border py-10 text-center">
           {!loggedIn ? (
             <>
@@ -595,7 +643,7 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
         />
       )}
 
-      {importing && <ImportModal onClose={() => setImporting(false)} onDone={load} />}
+      {importing && <ImportModal scraper={scraper} onClose={() => setImporting(false)} onDone={load} />}
 
       {adding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setAdding(false)}>
@@ -666,8 +714,10 @@ function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClic
               </div>
               <div className="field">
                 <label>Rota de disparo</label>
-                <input value={scraper.path} onChange={(e) => saveScraper({ ...scraper, path: e.target.value })} placeholder="/api/scrape" />
-                <div className="text-[11px] text-muted2">Ajuste se o seu scraper usar outra rota (ex: /scrape, /run).</div>
+                <input value={scraper.path} onChange={(e) => saveScraper({ ...scraper, path: e.target.value })} placeholder="/api/scrape/run" />
+                <div className="text-[11px] text-muted2">
+                  O scraper-service do TrackerAds usa <code>/api/scrape/run</code> (roda todas as ofertas em background).
+                </div>
               </div>
               <div className="flex justify-end">
                 <button className="btn btn-primary btn-sm" onClick={() => setShowScraperCfg(false)}>
@@ -766,11 +816,13 @@ function DiscoveryView() {
 }
 
 /* ── importação em massa: colar links OU subir favoritos do Chrome ── */
-function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function ImportModal({ scraper, onClose, onDone }: { scraper: { localUrl: string; railwayUrl?: string; path?: string }; onClose: () => void; onDone: () => void }) {
   const [text, setText] = useState('')
   const [parsed, setParsed] = useState<ParsedOffer[]>([])
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')
+  const [seed, setSeed] = useState<{ done: number; total: number; ok: number } | null>(null)
+  const cancelSeed = useRef(false)
 
   function reparse(t: string) {
     setText(t)
@@ -791,13 +843,53 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     toast(`${fromHtml.length} links da Ads Library encontrados no arquivo`, fromHtml.length ? 'ok' : 'warn')
   }
 
+  // Puxa o nº de ads de cada oferta nova na hora (best-effort, 2 em paralelo).
+  // Se o scraper não estiver no ar, segue a vida — a próxima rodada preenche.
+  async function seedCounts(offers: Offer[]) {
+    const base = (scraper.localUrl || scraper.railwayUrl || '').replace(/\/$/, '')
+    if (!base) return
+    const endpoint = base + '/api/scrape/test'
+    cancelSeed.current = false
+    const total = offers.length
+    let done = 0
+    let ok = 0
+    setSeed({ done, total, ok })
+    const queue = [...offers]
+    const now = () => new Date().toISOString()
+    const worker = async () => {
+      while (queue.length && !cancelSeed.current) {
+        const o = queue.shift()!
+        const n = await scrapeOneUrl(endpoint, o.link)
+        if (n != null) {
+          ok++
+          try {
+            await addAdCount(o.id, n, now())
+          } catch {}
+        }
+        done++
+        setSeed({ done, total, ok })
+      }
+    }
+    await Promise.all([worker(), worker()])
+    if (!cancelSeed.current && total > 0 && ok === 0) {
+      toast('Importadas, mas o scraper não respondeu — os nºs entram no próximo scrape (▶ Local).', 'warn')
+    } else if (ok > 0) {
+      toast(`Contagem puxada de ${ok}/${total} na hora`, 'ok')
+    }
+    setSeed(null)
+  }
+
   async function doImport() {
     if (!parsed.length) return toast('Nada pra importar', 'warn')
     setBusy(true)
     try {
       const res = await addOffersBulk(parsed)
-      toast(`${res.inserted} importadas${res.skipped ? `, ${res.skipped} já existiam` : ''}`, 'ok')
-      onDone()
+      toast(`${res.inserted.length} importadas${res.skipped ? `, ${res.skipped} já existiam` : ''}`, res.inserted.length ? 'ok' : 'warn')
+      if (res.inserted.length) {
+        onDone() // já mostra as ofertas na lista
+        await seedCounts(res.inserted) // depois preenche o nº de ads
+        onDone()
+      }
       onClose()
     } catch (e: any) {
       toast(e.message, 'err')
@@ -853,10 +945,23 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
             </div>
           )}
 
+          {seed && (
+            <div className="rounded-[7px] border border-border bg-surface2 px-3 py-2">
+              <div className="mb-1 flex items-center justify-between text-[11px]">
+                <span className="text-muted">Puxando nº de ads… {seed.done}/{seed.total}</span>
+                <button className="text-muted2 hover:text-danger" onClick={() => { cancelSeed.current = true }}>
+                  pular (preenche no próximo scrape)
+                </button>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0a0c19]">
+                <div className="h-full bg-brand transition-all" style={{ width: `${seed.total ? (seed.done / seed.total) * 100 : 0}%` }} />
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={doImport} disabled={busy || !parsed.length}>
-              <Upload className="h-3.5 w-3.5" /> {busy ? 'Importando...' : `Importar ${parsed.length || ''}`}
+              <Upload className="h-3.5 w-3.5" /> {seed ? `Contando ${seed.done}/${seed.total}…` : busy ? 'Importando...' : `Importar ${parsed.length || ''}`}
             </button>
           </div>
         </div>

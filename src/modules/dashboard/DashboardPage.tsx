@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Responsive, WidthProvider, type Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -14,9 +14,12 @@ import {
   Pencil,
   Eye,
   Settings,
+  Package,
+  ListFilter,
+  Search,
 } from 'lucide-react'
 import { SAMPLE, type DashboardData } from './data'
-import { buildDashboardData } from './build'
+import { buildRealDashboard, distinctProducts } from './realbuild'
 import {
   WIDGET_MAP,
   WIDGETS,
@@ -25,20 +28,28 @@ import {
   DEFAULT_ENABLED,
   type GridItem,
 } from './widgets'
-import { fetchFin, fetchFinHourly } from '@/lib/meta'
-import { ACCOUNTS, DATE_OPTIONS, STATUS_FILTERS, DEFAULT_SETTINGS } from '@/modules/monitor/config'
+import { fetchFin, getRevenue, getSales, dateRange } from '@/lib/meta'
+import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
+import { ACCOUNTS, DATE_OPTIONS, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
 import {
-  finAggregate,
-  finModel,
   loadFinParams,
   saveFinParams,
   FIN_DEFAULTS,
   type FinParams,
-  type FinRow,
 } from '@/modules/monitor/finance'
 
 const ResponsiveGrid = WidthProvider(Responsive)
 const LS_KEY = 'purstin_dashboard_layout_v1'
+
+interface CampMetric {
+  key: string // accId::campId
+  accId: string
+  accName: string
+  name: string
+  spend: number // BRL
+  rev: number
+  sales: number
+}
 
 interface Persisted {
   enabled: string[]
@@ -61,7 +72,7 @@ function getFx(): number {
   }
 }
 
-/* ── Parâmetros financeiros ── */
+/* ── Parâmetros financeiros (só taxas/custo que o webhook não traz) ── */
 function ParamsModal({
   fin,
   onSave,
@@ -81,7 +92,7 @@ function ParamsModal({
   )
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card max-h-[90vh] w-full max-w-[520px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="card max-h-[90vh] w-full max-w-[480px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="card-header">
           <h3 className="text-[13px] font-bold">⚙️ Parâmetros financeiros</h3>
           <button onClick={onClose} className="text-muted2 hover:text-ink">
@@ -90,24 +101,14 @@ function ParamsModal({
         </div>
         <div className="card-body">
           <p className="mb-3 text-[12px] text-muted">
-            Taxas modeladas até o módulo Pixel/Kirvano entrar com os dados reais do gateway.
+            Faturamento, vendas e aprovação vêm <b>reais</b> do gateway. Aqui só o que o webhook não manda:
+            taxa de gateway, imposto e custos.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <Field k="aprov" label="Aprovação (%)" step="1" />
             <Field k="gateway" label="Gateway (%)" step="0.1" />
             <Field k="imposto" label="Imposto (%)" step="0.1" />
-            <Field k="reembolso" label="Reembolso (%)" step="0.1" />
-            <Field k="chargeback" label="Chargeback (%)" step="0.1" />
             <Field k="custoUn" label="Custo por venda (R$)" step="0.01" />
             <Field k="despesas" label="Despesas (período, R$)" step="0.01" />
-          </div>
-          <div className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-muted2">
-            Split de pagamento (%)
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field k="pix" label="Pix" step="1" />
-            <Field k="cartao" label="Cartão" step="1" />
-            <Field k="boleto" label="Boleto" step="1" />
           </div>
           <div className="mt-4 flex items-center gap-2">
             <button className="btn btn-ghost btn-sm mr-auto" onClick={() => setF({ ...FIN_DEFAULTS })}>
@@ -159,6 +160,198 @@ function Frame({
   )
 }
 
+/* ── Drawer lateral: seleção de campanhas (gasto Meta) ── */
+function CampDrawer({
+  camps,
+  sel,
+  onSel,
+  status,
+  onStatus,
+  onClose,
+  onReload,
+  loading,
+}: {
+  camps: CampMetric[]
+  sel: Set<string>
+  onSel: (s: Set<string>) => void
+  status: string
+  onStatus: (s: string) => void
+  onClose: () => void
+  onReload: () => void
+  loading: boolean
+}) {
+  const [q, setQ] = useState('')
+  const ql = q.trim().toLowerCase()
+  const byAcc: Record<string, CampMetric[]> = {}
+  camps.forEach((c) => (byAcc[c.accName] = byAcc[c.accName] || []).push(c))
+  const toggle = (k: string) => {
+    const n = new Set(sel)
+    n.has(k) ? n.delete(k) : n.add(k)
+    onSel(n)
+  }
+  const visible = camps.filter((c) => !ql || c.name.toLowerCase().includes(ql))
+  const allVisibleOn = visible.length > 0 && visible.every((c) => sel.has(c.key))
+  const toggleAllVisible = () => {
+    const n = new Set(sel)
+    if (allVisibleOn) visible.forEach((c) => n.delete(c.key))
+    else visible.forEach((c) => n.add(c.key))
+    onSel(n)
+  }
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <aside className="fixed left-0 top-0 z-50 flex h-full w-[360px] flex-col border-r border-border bg-surface shadow-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-[14px] font-bold">
+            <ListFilter className="h-4 w-4 text-brand-2" /> Campanhas (gasto Meta)
+          </h3>
+          <button className="rounded p-1 text-muted2 hover:text-ink" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">Status</span>
+            <select
+              value={status}
+              onChange={(e) => onStatus(e.target.value)}
+              className="flex-1 rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1.5 text-[12px] text-ink"
+            >
+              {Object.entries(STATUS_FILTERS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-ghost btn-sm" onClick={onReload} disabled={loading} title="Recarregar campanhas com esse status">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar campanha..."
+              className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-3 text-[12px] text-ink"
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-muted2">
+            <button className="font-semibold text-brand-2 hover:underline" onClick={toggleAllVisible}>
+              {allVisibleOn ? 'Desmarcar visíveis' : 'Marcar visíveis'}
+            </button>
+            <span>{sel.size}/{camps.length} selecionadas</span>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          {camps.length === 0 && (
+            <div className="p-4 text-center text-[12px] text-muted2">
+              {loading ? 'Carregando...' : 'Clique Atualizar pra carregar as campanhas.'}
+            </div>
+          )}
+          {Object.entries(byAcc).map(([acc, list]) => {
+            const vis = list.filter((c) => !ql || c.name.toLowerCase().includes(ql))
+            if (!vis.length) return null
+            return (
+              <div key={acc} className="mb-2">
+                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted2">{acc}</div>
+                {vis
+                  .sort((a, b) => b.spend - a.spend)
+                  .map((c) => {
+                    const on = sel.has(c.key)
+                    return (
+                      <button
+                        key={c.key}
+                        onClick={() => toggle(c.key)}
+                        className={`flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] ${on ? 'bg-brand/10' : 'hover:bg-surface2'}`}
+                      >
+                        <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[9px] ${on ? 'border-brand bg-brand text-white' : 'border-border'}`}>
+                          {on ? '✓' : ''}
+                        </span>
+                        <span className="flex-1 truncate" title={c.name}>
+                          {trunc(c.name, 40)}
+                        </span>
+                        <span className="whitespace-nowrap text-[10px] text-muted2">R${c.spend.toFixed(0)}</span>
+                      </button>
+                    )
+                  })}
+              </div>
+            )
+          })}
+        </div>
+      </aside>
+    </>
+  )
+}
+
+/* ── Popover: seleção de produtos do gateway (faturamento) ── */
+function ProductPicker({
+  products,
+  sel,
+  onSel,
+  onClose,
+}: {
+  products: string[]
+  sel: Set<string> | null
+  onSel: (s: Set<string> | null) => void
+  onClose: () => void
+}) {
+  const [q, setQ] = useState('')
+  const ql = q.trim().toLowerCase()
+  const isOn = (p: string) => sel === null || sel.has(p)
+  const toggle = (p: string) => {
+    const base = sel === null ? new Set(products) : new Set(sel)
+    base.has(p) ? base.delete(p) : base.add(p)
+    onSel(base.size === products.length ? null : base)
+  }
+  const vis = products.filter((p) => !ql || p.toLowerCase().includes(ql))
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute z-50 mt-1 w-[320px] rounded-xl2 border border-border bg-surface p-2 shadow-card">
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar produto..."
+            className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-3 text-[12px] text-ink"
+            autoFocus
+          />
+        </div>
+        <div className="mb-1 flex items-center justify-between px-1 text-[11px]">
+          <button className="font-semibold text-brand-2 hover:underline" onClick={() => onSel(null)}>
+            Todos
+          </button>
+          <button className="text-muted2 hover:underline" onClick={() => onSel(new Set())}>
+            Nenhum
+          </button>
+        </div>
+        <div className="max-h-[260px] overflow-y-auto">
+          {products.length === 0 && <div className="p-3 text-center text-[12px] text-muted2">Sem produtos no período.</div>}
+          {vis.map((p) => {
+            const on = isOn(p)
+            return (
+              <button
+                key={p}
+                onClick={() => toggle(p)}
+                className={`flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] ${on ? 'bg-brand/10' : 'hover:bg-surface2'}`}
+              >
+                <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[9px] ${on ? 'border-brand bg-brand text-white' : 'border-border'}`}>
+                  {on ? '✓' : ''}
+                </span>
+                <span className="flex-1 truncate" title={p}>
+                  {p}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function DashboardPage() {
   // layout
   const init = useRef(loadPersisted()).current
@@ -168,18 +361,28 @@ export default function DashboardPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const savedSnap = useRef<Persisted>(init)
 
-  // finance
+  // dados / filtros
   const [token, setToken] = useState(() => localStorage.getItem('meta_tok') || '')
   const [showTok, setShowTok] = useState(false)
   const [sel, setSel] = useState<Set<string>>(new Set(ACCOUNTS.map((a) => a.id)))
   const [period, setPeriod] = useState('last_7d')
+  const [campStatus, setCampStatus] = useState('active_paused')
   const [fin, setFin] = useState<FinParams>(loadFinParams)
-  const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(false)
   const [showParams, setShowParams] = useState(false)
-  const [updatedAt, setUpdatedAt] = useState<string>('')
+  const [updatedAt, setUpdatedAt] = useState('')
 
-  const d = data || SAMPLE
+  // resultados crus
+  const [camps, setCamps] = useState<CampMetric[]>([])
+  const [selCamps, setSelCamps] = useState<Set<string>>(new Set())
+  const [orders, setOrders] = useState<KirvanoOrder[]>([])
+  const [products, setProducts] = useState<string[]>([])
+  const [selProducts, setSelProducts] = useState<Set<string> | null>(null) // null = todos
+  const [loaded, setLoaded] = useState(false)
+
+  // UI filtros
+  const [campDrawer, setCampDrawer] = useState(false)
+  const [prodOpen, setProdOpen] = useState(false)
 
   const toggleAcc = (id: string) =>
     setSel((s) => {
@@ -190,40 +393,80 @@ export default function DashboardPage() {
 
   async function load() {
     if (!token.trim()) {
-      alert('Cole o access token primeiro.')
+      alert('Cole o access token do Meta primeiro.')
       return
     }
     localStorage.setItem('meta_tok', token.trim())
     const accs = ACCOUNTS.filter((a) => sel.has(a.id))
-    if (!accs.length) return
+    if (!accs.length) return alert('Selecione ao menos uma conta.')
     setLoading(true)
     const fx = getFx()
-    const statuses = STATUS_FILTERS.active_paused.values
-    const rows: FinRow[] = []
-    const hourly: FinRow[] = []
+    const statuses = STATUS_FILTERS[campStatus]?.values || ['ACTIVE']
+
+    // 1) campanhas Meta (gasto) — nível campanha, por conta
+    const cs: CampMetric[] = []
     for (const acc of accs) {
       const toBRL = acc.cur === 'BRL' ? 1 : fx
       try {
-        const r = (await fetchFin(acc.id, period, token.trim(), statuses)) as FinRow[]
-        r.forEach((x) => (x._fx = toBRL))
-        rows.push(...r)
-        try {
-          const h = (await fetchFinHourly(acc.id, period, token.trim(), statuses)) as FinRow[]
-          h.forEach((x) => (x._fx = toBRL))
-          hourly.push(...h)
-        } catch {}
+        const rows = (await fetchFin(acc.id, period, token.trim(), statuses)) as any[]
+        rows.forEach((r) => {
+          if (!r.campaign_id) return
+          cs.push({
+            key: `${acc.id}::${r.campaign_id}`,
+            accId: acc.id,
+            accName: acc.name,
+            name: r.campaign_name || '(sem nome)',
+            spend: parseFloat(r.spend || '0') * toBRL,
+            rev: getRevenue(r) * toBRL,
+            sales: getSales(r),
+          })
+        })
       } catch {
-        /* conta sem acesso/erro — ignora no consolidado */
+        /* conta sem acesso/erro — ignora */
       }
     }
-    const model = finModel(finAggregate(rows), fin)
-    setData(buildDashboardData(model, fin, hourly))
+    setCamps(cs)
+    setSelCamps(new Set(cs.map((c) => c.key))) // começa com todas marcadas
+
+    // 2) pedidos do gateway (faturamento) — janela do período
+    try {
+      const { since, until } = dateRange(period)
+      const sinceISO = new Date(since + 'T00:00:00').toISOString()
+      const untilISO = new Date(until + 'T23:59:59').toISOString()
+      const all = await fetchOrders(sinceISO)
+      const within = all.filter((o) => {
+        const t = o.ordered_at || o.created_at || ''
+        return t >= sinceISO && t <= untilISO
+      })
+      setOrders(within)
+      setProducts(distinctProducts(within))
+      setSelProducts(null) // todos por padrão
+    } catch {
+      setOrders([])
+      setProducts([])
+    }
+
+    setLoaded(true)
     setUpdatedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
     setLoading(false)
   }
 
-  // recomputa quando params mudam (se já tem dados carregados, refaz com novos params seria refetch;
-  // aqui só re-modela seria ideal, mas mantemos simples: params novos exigem Atualizar)
+  // gasto das campanhas selecionadas
+  const spend = useMemo(
+    () => camps.filter((c) => selCamps.has(c.key)).reduce((s, c) => s + c.spend, 0),
+    [camps, selCamps],
+  )
+
+  // dados do dashboard (recalcula ao mexer nos filtros — sem refetch)
+  const data: DashboardData = useMemo(() => {
+    if (!loaded) return SAMPLE
+    return buildRealDashboard({ orders, products: selProducts, spend, fin })
+  }, [loaded, orders, selProducts, spend, fin])
+
+  const d = data
+
+  const prodLabel = selProducts === null ? 'Todos' : `${selProducts.size}/${products.length}`
+  const campLabel = `${selCamps.size}/${camps.length}`
 
   const visibleLayout = useMemo(
     () => layout.filter((l) => enabled.includes(l.i) && WIDGET_MAP[l.i]),
@@ -286,7 +529,7 @@ export default function DashboardPage() {
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">Dashboard — Principal</h2>
           <p className="mt-0.5 text-[13px] text-muted">
-            P&amp;L consolidado · Meta (gasto/vendas) + modelo de taxas
+            P&amp;L real · gateway (faturamento) + Meta (gasto)
             {updatedAt && ` · atualizado ${updatedAt}`}
           </p>
         </div>
@@ -304,7 +547,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* controles financeiros */}
+      {/* controles */}
       <div className="flex flex-col gap-3 rounded-xl2 border border-border bg-surface p-4 shadow-card-sm">
         <div className="flex items-center gap-2">
           <input
@@ -351,12 +594,39 @@ export default function DashboardPage() {
           </button>
           <button className="btn btn-primary btn-sm ml-auto" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Calculando...' : 'Atualizar'}
+            {loading ? 'Carregando...' : 'Atualizar'}
           </button>
         </div>
+
+        {/* DOIS FILTROS: produtos do gateway + campanhas do Meta */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <div className="relative">
+            <button
+              className="flex items-center gap-1.5 rounded-[7px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink hover:border-brand"
+              onClick={() => setProdOpen((o) => !o)}
+            >
+              <Package className="h-3.5 w-3.5 text-brand-2" />
+              Produtos (Kirvano): <b>{prodLabel}</b>
+            </button>
+            {prodOpen && (
+              <ProductPicker products={products} sel={selProducts} onSel={setSelProducts} onClose={() => setProdOpen(false)} />
+            )}
+          </div>
+          <button
+            className="flex items-center gap-1.5 rounded-[7px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink hover:border-brand"
+            onClick={() => setCampDrawer(true)}
+          >
+            <ListFilter className="h-3.5 w-3.5 text-brand-2" />
+            Campanhas (Meta): <b>{campLabel}</b>
+            <span className="text-muted2">· {STATUS_FILTERS[campStatus]?.label}</span>
+          </button>
+          <span className="ml-auto text-[11px] text-muted2">
+            Gasto Meta das campanhas marcadas + faturamento real dos produtos marcados.
+          </span>
+        </div>
         <p className="text-[11px] text-muted2">
-          Valores em <b className="text-muted">R$</b> — gasto em USD convertido pelo câmbio dos
-          parâmetros de análise. Aprovação/taxas modeladas até o Kirvano entrar.
+          Valores em <b className="text-muted">R$</b> · gasto em USD convertido pelo câmbio (R$ {getFx().toFixed(2)}).
+          Faturamento, vendas e aprovação são reais do gateway; gateway-fee e imposto são % nos Parâmetros.
         </p>
       </div>
 
@@ -388,7 +658,7 @@ export default function DashboardPage() {
         })}
       </ResponsiveGrid>
 
-      {/* drawer */}
+      {/* drawer de métricas (edição) */}
       {drawerOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setDrawerOpen(false)} />
@@ -440,6 +710,19 @@ export default function DashboardPage() {
             </div>
           </aside>
         </>
+      )}
+
+      {campDrawer && (
+        <CampDrawer
+          camps={camps}
+          sel={selCamps}
+          onSel={setSelCamps}
+          status={campStatus}
+          onStatus={setCampStatus}
+          onClose={() => setCampDrawer(false)}
+          onReload={load}
+          loading={loading}
+        />
       )}
 
       {showParams && (

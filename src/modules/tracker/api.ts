@@ -96,11 +96,11 @@ export async function addOffer(o: { name: string; link: string; tags?: string[];
 }
 
 /** Importa várias ofertas de uma vez, pulando links já cadastrados.
- *  Retorna quantas foram inseridas e quantas foram puladas (duplicadas). */
+ *  Retorna as ofertas inseridas (com id, pra semear contagem) e quantas foram puladas. */
 export async function addOffersBulk(
   items: { name: string; link: string; tags?: string[] }[]
-): Promise<{ inserted: number; skipped: number }> {
-  if (!items.length) return { inserted: 0, skipped: 0 }
+): Promise<{ inserted: Offer[]; skipped: number }> {
+  if (!items.length) return { inserted: [], skipped: 0 }
   // dedup contra o que já existe (por link) + dedup interno
   const existing = await getOffers()
   const have = new Set(existing.map((o) => normLink(o.link)))
@@ -116,11 +116,30 @@ export async function addOffersBulk(
     seen.add(key)
     rows.push({ name: it.name || it.link, link: it.link, tags: it.tags || [], category: null })
   }
+  let inserted: Offer[] = []
   if (rows.length) {
-    const { error } = await db().from('offers').insert(rows)
+    const { data, error } = await db().from('offers').insert(rows).select('*')
     if (error) throw new Error(error.message)
+    inserted = (data || []) as Offer[]
   }
-  return { inserted: rows.length, skipped }
+  return { inserted, skipped }
+}
+
+/** Scrape síncrono de UMA url via scraper-service (POST /api/scrape/test).
+ *  Retorna o nº de anúncios ativos, ou null se o scraper não respondeu / falhou. */
+export async function scrapeOneUrl(testEndpoint: string, url: string): Promise<number | null> {
+  try {
+    const r = await fetch(testEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+    if (!r.ok) return null
+    const j = await r.json()
+    return j && j.success && typeof j.adCount === 'number' ? j.adCount : null
+  } catch {
+    return null
+  }
 }
 
 /** Normaliza um link da Ads Library pra comparar duplicatas (pelo page_id quando há). */
