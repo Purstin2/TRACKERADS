@@ -100,46 +100,19 @@ export default function PixelPage() {
       {tab === 'conexoes' && (
         <div className="mx-auto flex max-w-[640px] flex-col gap-4">
           <div className="card card-body">
-            <h3 className="mb-3 text-[13px] font-bold">Meta Conversions API</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="field">
-                <label>Pixel ID</label>
-                <input value={cfg.pixelId} onChange={(e) => set('pixelId', e.target.value)} placeholder="000000000000" />
-              </div>
-              <div className="field">
-                <label>Test Event Code (opcional)</label>
-                <input value={cfg.testEventCode} onChange={(e) => set('testEventCode', e.target.value)} placeholder="TEST12345" />
-              </div>
-              <div className="field sm:col-span-2">
-                <label>CAPI Access Token</label>
-                <input type="password" value={cfg.capiToken} onChange={(e) => set('capiToken', e.target.value)} placeholder="EAA..." />
-                <div className="text-[11px] text-muted2">Events Manager → Configurações → Conversions API → Gerar token de acesso.</div>
-              </div>
-            </div>
-          </div>
-          <div className="card card-body">
-            <h3 className="mb-3 text-[13px] font-bold">Gateway</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="field">
-                <label>Plataforma</label>
-                <select value={cfg.gateway} onChange={(e) => set('gateway', e.target.value)}>
-                  <option value="kirvano">Kirvano</option>
-                  <option value="hotmart">Hotmart</option>
-                  <option value="generico">Genérico (JSON)</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>Segredo do webhook</label>
-                <input value={cfg.webhookSecret} onChange={(e) => set('webhookSecret', e.target.value)} placeholder="uma senha forte" />
-              </div>
+            <h3 className="mb-1 text-[13px] font-bold">Segredo do Webhook</h3>
+            <p className="mb-3 text-[12px] text-muted">Usado pra montar a URL da aba Webhook. O valor real que o servidor valida é o env var <code>WEBHOOK_SECRET</code> na Vercel.</p>
+            <div className="field">
+              <label>Segredo (WEBHOOK_SECRET)</label>
+              <input value={cfg.webhookSecret} onChange={(e) => set('webhookSecret', e.target.value)} placeholder="uma senha forte" />
             </div>
           </div>
           <button className="btn btn-primary w-fit" onClick={save}>
-            <Check className="h-4 w-4" /> Salvar configuração
+            <Check className="h-4 w-4" /> Salvar
           </button>
-          <div className="rounded-[9px] border border-brand/16 border-l-[3px] border-l-brand bg-brand/[0.06] px-3.5 py-2.5 text-[11.5px] text-muted">
-            ⓘ Estas chaves ficam no navegador só pra montar a URL. Para o servidor processar de verdade, as mesmas vão como
-            variáveis de ambiente na Vercel (<code>META_PIXEL_ID</code>, <code>META_CAPI_TOKEN</code>, <code>WEBHOOK_SECRET</code>, <code>SUPABASE_SERVICE_KEY</code>).
+          <div className="rounded-[9px] border border-border bg-surface2 px-3.5 py-2.5 text-[11.5px] text-muted">
+            <b className="text-ink">Pixel ID e token CAPI</b> vão como env vars na Vercel (<code>META_PIXEL_ID</code>, <code>META_CAPI_TOKEN</code>) — são o fallback padrão.
+            Para rotear cada oferta pro pixel certo, use a aba <b>Pixels</b>.
           </div>
         </div>
       )}

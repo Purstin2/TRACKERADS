@@ -63,3 +63,21 @@ $$ language plpgsql;
 drop trigger if exists trg_touch_pixel_routes on pixel_routes;
 create trigger trg_touch_pixel_routes before update on pixel_routes
   for each row execute function touch_pixel_routes();
+
+-- ─── Migration: novos campos (safe to re-run) ────────────────────────────────
+alter table pixel_routes add column if not exists checkout_selector text;
+alter table pixel_routes add column if not exists checkout_keywords  text[];
+alter table pixel_routes add column if not exists fire_on_pix        boolean default false;
+
+-- Recria a view pública incluindo os novos campos (sem o token)
+create or replace view pixel_routes_public as
+select
+  id, label, offer_id, match_type, pixel_id, test_code, active, gateways,
+  checkout_selector, checkout_keywords, fire_on_pix,
+  created_at, updated_at,
+  case when capi_token is null or capi_token = '' then false else true end as has_token,
+  right(capi_token, 4) as token_last4
+from pixel_routes;
+
+alter view pixel_routes_public set (security_invoker = false);
+grant select on pixel_routes_public to anon;

@@ -165,14 +165,27 @@
 
   // ── Evento de funil no clique (opcional, estilo "Contém CSS" da UTMIFY) ───────
   // DESLIGADO por padrão. Pra ligar, ANTES do script:
-  //   window.FB_CLICK_EVENT = 'AddToCart'              // ou 'InitiateCheckout'
-  //   window.FB_CLICK_SELECTOR = '.btn-primary--full'  // (opcional) além dos links de checkout
+  //   window.FB_CLICK_EVENT = 'InitiateCheckout'       // evento a disparar
+  //   window.FB_CLICK_SELECTOR = '.btn-checkout'       // (opcional) CSS selector do botão
+  //   window.FB_CHECKOUT_KEYWORDS = ['kirvano','pay']  // (opcional) keywords no href do botão
   //   window.FB_CLICK_DATA = { value: 59.9, currency: 'BRL' }   // (opcional)
-  // Dispara quando clicam num link de checkout (Kirvano/Hotmart) OU num elemento que
-  // casa o seletor. Recomendado 'AddToCart': o InitiateCheckout "de verdade" (com
-  // email/telefone/CPF) já vem do servidor — usar IC aqui duplicaria.
+  // Dispara quando clicam num link de checkout (Kirvano/Hotmart), num elemento que
+  // casa o seletor, OU num link cujo href contém qualquer uma das keywords.
+  // O servidor já manda InitiateCheckout com dados do comprador (email/CPF/tel) —
+  // este evento browser complementa com o clique, antes do preenchimento.
   var CLICK_EVENT = window.FB_CLICK_EVENT || null
   var CLICK_SELECTOR = window.FB_CLICK_SELECTOR || null
+  var _kwSrc = window.FB_CHECKOUT_KEYWORDS
+  var CHECKOUT_KEYWORDS = Array.isArray(_kwSrc)
+    ? _kwSrc
+    : (_kwSrc ? String(_kwSrc).split(',').map(function (k) { return k.trim() }).filter(Boolean) : [])
+
+  function hrefHasKeyword(href) {
+    if (!href || !CHECKOUT_KEYWORDS.length) return false
+    var lhref = href.toLowerCase()
+    return CHECKOUT_KEYWORDS.some(function (k) { return k && lhref.indexOf(k.toLowerCase()) >= 0 })
+  }
+
   function fireFunnelClick() {
     if (!CLICK_EVENT) return
     try { fbq('track', CLICK_EVENT, window.FB_CLICK_DATA || {}) } catch (e) {}
@@ -185,13 +198,14 @@
       var t = e.target
       var a = t && t.closest ? t.closest('a[href]') : null
       var isCo = a && isCheckout(a.href)
-      if (isCo && !a.getAttribute('data-fbtrack')) {
+      var matchKw = a && hrefHasKeyword(a.href)
+      if ((isCo || matchKw) && !a.getAttribute('data-fbtrack')) {
         a.href = decorate(a.href)
         a.setAttribute('data-fbtrack', '1')
       }
-      // funil opcional: clicou num link de checkout ou num elemento do seletor
+      // funil opcional: clicou num link de checkout, num elemento do seletor ou link com keyword
       var matchSel = CLICK_SELECTOR && t && t.closest ? t.closest(CLICK_SELECTOR) : null
-      if (CLICK_EVENT && (isCo || matchSel)) fireFunnelClick()
+      if (CLICK_EVENT && (isCo || matchSel || matchKw)) fireFunnelClick()
     },
     true
   )

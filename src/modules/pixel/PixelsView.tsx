@@ -29,6 +29,9 @@ type FormState = {
   capi_token: string
   test_code: string
   gateways: string[]
+  checkout_selector: string
+  checkout_keywords: string // csv na UI, array no Supabase
+  fire_on_pix: boolean
   active: boolean
   hasToken: boolean
 }
@@ -41,8 +44,25 @@ const EMPTY: FormState = {
   capi_token: '',
   test_code: '',
   gateways: [],
+  checkout_selector: '',
+  checkout_keywords: '',
+  fire_on_pix: false,
   active: true,
   hasToken: false,
+}
+
+const origin = typeof window !== 'undefined' ? window.location.origin : ''
+
+function generateSnippet(r: PixelRoute): string {
+  const lines: string[] = [`window.FB_PIXEL_ID = '${r.pixel_id}'`]
+  lines.push(`window.FB_CLICK_EVENT = 'InitiateCheckout'`)
+  if (r.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${r.checkout_selector}'`)
+  if (r.checkout_keywords?.length) {
+    const kws = r.checkout_keywords.map((k) => `'${k.trim()}'`).join(', ')
+    lines.push(`window.FB_CHECKOUT_KEYWORDS = [${kws}]`)
+  }
+  const vars = lines.map((l) => `  ${l}`).join('\n')
+  return `<script>\n${vars}\n</script>\n<script src="${origin}/fbtrack.js" defer></script>`
 }
 
 export default function PixelsView() {
@@ -86,6 +106,9 @@ export default function PixelsView() {
       capi_token: '', // não vem do servidor — em branco = mantém o atual
       test_code: r.test_code || '',
       gateways: r.gateways || [],
+      checkout_selector: r.checkout_selector || '',
+      checkout_keywords: r.checkout_keywords?.join(', ') || '',
+      fire_on_pix: r.fire_on_pix ?? false,
       active: r.active,
       hasToken: r.has_token,
     })
@@ -99,6 +122,10 @@ export default function PixelsView() {
     if (!form.id && !form.capi_token.trim()) return toast('Informe o token CAPI', 'err')
 
     setSaving(true)
+    const kws = form.checkout_keywords
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean)
     const input: RouteInput = {
       label: form.label,
       match_type: form.match_type,
@@ -107,6 +134,9 @@ export default function PixelsView() {
       capi_token: form.capi_token, // vazio na edição = mantém
       test_code: form.test_code,
       gateways: form.gateways,
+      checkout_selector: form.checkout_selector || null,
+      checkout_keywords: kws.length ? kws : null,
+      fire_on_pix: form.fire_on_pix,
       active: form.active,
     }
     const res = form.id ? await updateRoute(form.id, input) : await createRoute(input)
@@ -126,9 +156,13 @@ export default function PixelsView() {
   }
 
   async function toggle(r: PixelRoute) {
+    // atualiza visual de imediato sem esperar o Supabase
+    setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, active: !r.active } : x)))
     const res = await toggleRoute(r.id, !r.active)
-    if (res.error) return toast(res.error, 'err')
-    load()
+    if (res.error) {
+      setRoutes((prev) => prev.map((x) => (x.id === r.id ? { ...x, active: r.active } : x)))
+      return toast(res.error, 'err')
+    }
   }
 
   return (
@@ -228,7 +262,20 @@ export default function PixelsView() {
                 </span>
                 {r.test_code && <span>teste: {r.test_code}</span>}
                 {r.gateways?.length ? <span>gateways: {r.gateways.join(', ')}</span> : <span>todos os gateways</span>}
+                {r.fire_on_pix && <span className="rounded-full bg-warn/15 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-warn">Pix → Purchase</span>}
               </div>
+              {(r.checkout_selector || r.checkout_keywords?.length) && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted2">
+                  {r.checkout_selector && <span>selector: <span className="font-mono text-muted">{r.checkout_selector}</span></span>}
+                  {r.checkout_keywords?.length && <span>keywords: <span className="font-mono text-muted">{r.checkout_keywords.join(', ')}</span></span>}
+                  <button
+                    className="ml-auto text-[11px] text-brand-2 hover:underline"
+                    onClick={() => { navigator.clipboard.writeText(generateSnippet(r)); toast('Script copiado', 'ok') }}
+                  >
+                    copiar script IC
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -316,6 +363,36 @@ export default function PixelsView() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className="border-t border-border pt-3">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted2">Rastreio browser — InitiateCheckout (opcional)</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="field">
+                    <label>CSS Selector do botão</label>
+                    <input
+                      value={form.checkout_selector}
+                      onChange={(e) => setForm({ ...form, checkout_selector: e.target.value })}
+                      placeholder=".btn-checkout, #comprar"
+                      className="font-mono text-[12px]"
+                    />
+                    <div className="text-[11px] text-muted2">Dispara IC no clique de qualquer elemento que case o seletor.</div>
+                  </div>
+                  <div className="field">
+                    <label>Keywords no link (vírgula)</label>
+                    <input
+                      value={form.checkout_keywords}
+                      onChange={(e) => setForm({ ...form, checkout_keywords: e.target.value })}
+                      placeholder="kirvano, lobinhos, pay."
+                      className="font-mono text-[12px]"
+                    />
+                    <div className="text-[11px] text-muted2">Dispara IC quando o href do botão contém qualquer uma das palavras.</div>
+                  </div>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
+                  <input type="checkbox" checked={form.fire_on_pix} onChange={(e) => setForm({ ...form, fire_on_pix: e.target.checked })} />
+                  Disparar <b>Purchase</b> para Pix gerado (além de aprovado) — Meta dedup por checkout_id
+                </label>
               </div>
 
               <label className="flex items-center gap-2 text-[12px] text-muted">

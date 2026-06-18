@@ -10,6 +10,9 @@ export interface PixelRoute {
   test_code: string | null
   active: boolean
   gateways: string[] | null
+  checkout_selector: string | null
+  checkout_keywords: string[] | null
+  fire_on_pix: boolean
   has_token: boolean
   token_last4: string | null
   created_at: string | null
@@ -37,6 +40,9 @@ export interface RouteInput {
   test_code?: string | null
   active?: boolean
   gateways?: string[] | null
+  checkout_selector?: string | null
+  checkout_keywords?: string[] | null
+  fire_on_pix?: boolean
 }
 
 /** Cria uma rota nova (token obrigatório na criação). */
@@ -55,6 +61,9 @@ export async function createRoute(input: RouteInput): Promise<{ error?: string }
       test_code: input.test_code || null,
       active: input.active ?? true,
       gateways: input.gateways?.length ? input.gateways : null,
+      checkout_selector: input.checkout_selector?.trim() || null,
+      checkout_keywords: input.checkout_keywords?.length ? input.checkout_keywords : null,
+      fire_on_pix: input.fire_on_pix ?? false,
     },
   ])
   return error ? { error: error.message } : {}
@@ -72,6 +81,9 @@ export async function updateRoute(id: string, input: Partial<RouteInput>): Promi
   if (input.test_code !== undefined) patch.test_code = input.test_code || null
   if (input.active !== undefined) patch.active = input.active
   if (input.gateways !== undefined) patch.gateways = input.gateways?.length ? input.gateways : null
+  if (input.checkout_selector !== undefined) patch.checkout_selector = input.checkout_selector?.trim() || null
+  if (input.checkout_keywords !== undefined) patch.checkout_keywords = input.checkout_keywords?.length ? input.checkout_keywords : null
+  if (input.fire_on_pix !== undefined) patch.fire_on_pix = input.fire_on_pix
   // token: só sobrescreve se o usuário digitou um novo (não apaga o existente)
   if (input.capi_token && input.capi_token.trim()) patch.capi_token = input.capi_token.trim()
   const { error } = await sb.from('pixel_routes').update(patch).eq('id', id)

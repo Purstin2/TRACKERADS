@@ -391,7 +391,7 @@ async function resolvePixel(o) {
   try {
     // busca rotas ativas que batam com offer_id OU product_id (ou match_type='any')
     const inList = keys.map((k) => `"${k}"`).join(',')
-    const q = `${url}/rest/v1/pixel_routes?active=eq.true&or=(offer_id.in.(${inList}),match_type.eq.any)&select=offer_id,match_type,pixel_id,capi_token,test_code,gateways&order=match_type.asc`
+    const q = `${url}/rest/v1/pixel_routes?active=eq.true&or=(offer_id.in.(${inList}),match_type.eq.any)&select=offer_id,match_type,pixel_id,capi_token,test_code,gateways,fire_on_pix&order=match_type.asc`
     const r = await fetch(q, { headers: sbHeaders(key) })
     const rows = await r.json()
     if (!Array.isArray(rows) || !rows.length) return def
@@ -408,7 +408,7 @@ async function resolvePixel(o) {
     )
     const hit = exact || any
     if (!hit || !hit.pixel_id || !hit.capi_token) return def
-    return { pixelId: hit.pixel_id, token: hit.capi_token, testCode: hit.test_code || null, source: exact ? 'offer' : 'any' }
+    return { pixelId: hit.pixel_id, token: hit.capi_token, testCode: hit.test_code || null, source: exact ? 'offer' : 'any', fireOnPix: !!hit.fire_on_pix }
   } catch {
     return def
   }
@@ -442,7 +442,9 @@ async function sendCAPI(o, req, route) {
   const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
   const clientUa = req.headers['user-agent'] || null
 
-  const isPurchase = o.approved
+  // fire_on_pix: dispara Purchase também quando Pix é gerado (PENDING).
+  // Meta dedup por event_id=checkout_id — o mesmo Pix gerado + aprovado conta como 1.
+  const isPurchase = o.approved || (route?.fireOnPix && o.status === 'PENDING')
   const eventName = isPurchase ? 'Purchase' : 'InitiateCheckout'
 
   // external_id: identificadores fortes e estáveis do mesmo usuário.
