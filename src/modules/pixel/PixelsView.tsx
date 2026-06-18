@@ -67,12 +67,15 @@ type SnippetData = {
 }
 
 function buildSnippet(d: SnippetData): string {
+  const safe = (s: string) => s.replace(/'/g, "\\'")
   const lines: string[] = [`window.FB_PIXEL_ID = '${d.pixel_id}'`]
+  // ViewContent automático na página (além do PageView) — usa o nome do pixel
+  lines.push(`window.FB_VIEW_CONTENT = { content_name: '${safe(d.label || 'Pagina de vendas')}', currency: 'BRL' }`)
   if (d.checkout_selector || d.checkout_keywords?.length) {
     lines.push(`window.FB_CLICK_EVENT = 'InitiateCheckout'`)
-    if (d.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${d.checkout_selector}'`)
+    if (d.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${safe(d.checkout_selector)}'`)
     if (d.checkout_keywords?.length) {
-      const kws = d.checkout_keywords.map((k) => `'${k.trim()}'`).join(', ')
+      const kws = d.checkout_keywords.map((k) => `'${safe(k.trim())}'`).join(', ')
       lines.push(`window.FB_CHECKOUT_KEYWORDS = [${kws}]`)
     }
   }

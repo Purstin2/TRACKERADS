@@ -213,9 +213,12 @@
   // ── ViewContent (página de produto) ──────────────────────────────────────────
   // Chame em páginas de produto: fbTrack.viewContent({ content_ids:['SKU'],
   // content_name:'Pack Festas', value:29.9, currency:'BRL' }).
-  // Ou, sem código, defina window.FB_VIEW_CONTENT = {...} antes do script → auto-dispara.
+  // Ou, sem código, defina window.FB_VIEW_CONTENT = {...} (ou = true) antes do
+  // script → auto-dispara junto com o PageView.
   function viewContent(data) {
-    try { fbq('track', 'ViewContent', data || {}) } catch (e) {}
+    // aceita objeto com dados; se vier `true`/vazio, manda ViewContent simples
+    var payload = data && typeof data === 'object' ? data : {}
+    try { fbq('track', 'ViewContent', payload) } catch (e) {}
   }
   // helpers manuais p/ disparar qualquer evento de funil onde você quiser
   function track(event, data) { try { fbq('track', event, data || {}) } catch (e) {} }
