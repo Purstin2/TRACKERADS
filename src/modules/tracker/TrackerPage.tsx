@@ -1,969 +1,71 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts'
-import { Database, ExternalLink, Plus, RefreshCw, Search, X, Archive, LogIn, LogOut, Upload } from 'lucide-react'
-import { isConfigured, saveCreds, clearCreds, signIn, signOut, useSession } from '@/lib/supabase'
-import { classifyOffer, type AdCount } from './classification'
-import { parseLinksText, parseBookmarksHtml, type ParsedOffer } from './import'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Módulo Tracker Ads = port do TrackerAds "Ad Intelligence" (standalone) pra dentro
+// do purstinlab. Usa o Supabase compartilhado (@/lib/supabase) e vive dentro do shell
+// do purstinlab — por isso a sidebar original virou barra de sub-abas no topo.
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  getOffers,
-  getAllAdCounts,
-  addOffer,
-  addOffersBulk,
-  deleteOffer,
-  updateOffer,
-  addAdCount,
-  scrapeOneUrl,
-  getComments,
-  addComment,
-  runScrape,
-  getDiscoveryKeywords,
-  getDiscoveredOffers,
-  addKeyword,
-  deleteKeyword,
-  approveDiscovered,
-  dismissDiscovered,
-  type Offer,
-  type DiscoveredOffer,
-  type Keyword,
-} from './api'
-import { toast } from '@/components/ui/toast'
+  Database, LayoutGrid, ChevronsLeftRight, BarChart3, Bell, Search, History, LogOut,
+} from 'lucide-react'
+import { isConfigured, saveCreds, clearCreds } from '@/lib/supabase'
+import { supabaseClient } from './adintel/utils/supabaseClient'
+import { Toast as ToastRaw } from './adintel/components/ui/Toast'
+import { ConfirmationModal as ConfirmationModalRaw } from './adintel/components/ui/Modal'
+import OfferGridScreenRaw from './adintel/components/screens/OfferGridScreen'
+import OfferDetailScreenRaw from './adintel/components/screens/OfferDetailScreen'
+import ComparativeAnalysisScreenRaw from './adintel/components/screens/ComparativeAnalysisScreen'
+import DashboardScreenRaw from './adintel/components/screens/DashboardScreen'
+import AlertsScreenRaw from './adintel/components/screens/AlertsScreen'
+import DiscoveryScreenRaw from './adintel/components/screens/DiscoveryScreen'
+import TrajectoryScreenRaw from './adintel/components/screens/TrajectoryScreen'
+import AddOfferModalRaw from './adintel/components/modals/AddOfferModal'
+import EditOfferModalRaw from './adintel/components/modals/EditOfferModal'
+import AuthForm from './adintel/components/auth/AuthForm'
+import './adintel/adintel.css'
 
-/* ── tela de conexão ── */
+// os componentes portados são .jsx (sem tipos) — trata como any pro JSX não reclamar de props
+const Toast = ToastRaw as any
+const ConfirmationModal = ConfirmationModalRaw as any
+const OfferGridScreen = OfferGridScreenRaw as any
+const OfferDetailScreen = OfferDetailScreenRaw as any
+const ComparativeAnalysisScreen = ComparativeAnalysisScreenRaw as any
+const DashboardScreen = DashboardScreenRaw as any
+const AlertsScreen = AlertsScreenRaw as any
+const DiscoveryScreen = DiscoveryScreenRaw as any
+const TrajectoryScreen = TrajectoryScreenRaw as any
+const AddOfferModal = AddOfferModalRaw as any
+const EditOfferModal = EditOfferModalRaw as any
+
+type ToastState = { message: string; type: string }
+
+/* ── tela de conexão Supabase (quando não há env nem creds salvas) ── */
 function ConnectScreen() {
   const [url, setUrl] = useState('')
   const [key, setKey] = useState('')
   return (
-    <div className="mx-auto max-w-[560px]">
-      <div className="card">
-        <div className="card-body flex flex-col items-center gap-4 py-10 text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/12 text-brand-2">
-            <Database className="h-7 w-7" />
-          </span>
-          <div>
-            <h2 className="text-xl font-extrabold">Conectar sua Supabase</h2>
-            <p className="mt-1 text-[13px] text-muted">
-              Cole as credenciais do seu projeto TrackerAds — seus tracks (ofertas, histórico, discovery) aparecem
-              automaticamente. Salvo só neste navegador.
-            </p>
-          </div>
-          <div className="w-full text-left">
-            <div className="field mb-3">
-              <label>Project URL</label>
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" />
-            </div>
-            <div className="field">
-              <label>Anon (public) key</label>
-              <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJhbGciOi..." />
-            </div>
-          </div>
+    <div className="adintel mx-auto max-w-[520px] py-10">
+      <div className="rounded-2xl border border-white/[0.06] bg-[#0d1220] p-8 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600/15 border border-blue-500/20">
+          <Database className="h-7 w-7 text-blue-400" />
+        </div>
+        <h2 className="text-xl font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>Conectar Supabase</h2>
+        <p className="mx-auto mt-1 max-w-[380px] text-[13px] text-slate-400">
+          Cole as credenciais do projeto (a mesma Supabase do TrackerAds). Salvo só neste navegador.
+        </p>
+        <div className="mt-5 space-y-3 text-left">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co"
+            className="w-full rounded-xl border border-white/[0.08] bg-[#131929] px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:border-blue-500/50 focus:outline-none" />
+          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="anon public key (eyJhbGci...)"
+            className="w-full rounded-xl border border-white/[0.08] bg-[#131929] px-3 py-2.5 text-sm text-white placeholder-slate-600 focus:border-blue-500/50 focus:outline-none" />
           <button
-            className="btn btn-primary"
             onClick={() => {
-              if (!url.trim() || !key.trim()) return toast('Preencha URL e key', 'err')
+              if (!url.trim() || !key.trim()) return
               saveCreds({ url: url.trim(), key: key.trim() })
               window.location.reload()
             }}
+            className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
           >
-            <Database className="h-4 w-4" /> Conectar
+            Conectar
           </button>
-          <p className="text-[11px] text-muted2">
-            Em Supabase → Project Settings → API. Use a <b>anon public</b> key.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── login (conta TrackerAds, por causa do RLS) ── */
-function LoginModal({ onClose }: { onClose: () => void }) {
-  const [email, setEmail] = useState('')
-  const [pwd, setPwd] = useState('')
-  const [busy, setBusy] = useState(false)
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card w-full max-w-[420px]" onClick={(e) => e.stopPropagation()}>
-        <div className="card-header">
-          <h3 className="text-[13px] font-bold">Entrar — conta TrackerAds</h3>
-          <button onClick={onClose} className="text-muted2 hover:text-ink">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="card-body flex flex-col gap-3">
-          <p className="text-[12px] text-muted">
-            Suas tabelas têm RLS por usuário — entre com o mesmo e-mail/senha que você usa no TrackerAds para ver seus dados.
-          </p>
-          <div className="field">
-            <label>E-mail</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@email.com" />
-          </div>
-          <div className="field">
-            <label>Senha</label>
-            <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} />
-          </div>
-          <button className="btn btn-primary" disabled={busy} onClick={go}>
-            <LogIn className="h-4 w-4" /> {busy ? 'Entrando...' : 'Entrar'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-  async function go() {
-    if (!email.trim() || !pwd) return toast('Preencha e-mail e senha', 'err')
-    setBusy(true)
-    try {
-      await signIn(email, pwd)
-      toast('Conectado ✓', 'ok')
-      onClose()
-    } catch (e: any) {
-      toast(e.message, 'err')
-      setBusy(false)
-    }
-  }
-}
-
-/* ── card de oferta ── */
-function OfferCard({ offer, history, onClick }: { offer: Offer; history: AdCount[]; onClick: () => void }) {
-  const cls = classifyOffer(history)
-  const tags = Array.isArray(offer.tags) ? offer.tags : typeof offer.tags === 'string' ? offer.tags.split(',').filter(Boolean) : []
-  const spark = history.slice(-20).map((h, i) => ({ i, c: h.count }))
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col gap-2 rounded-xl2 border bg-surface p-4 text-left shadow-card-sm transition-all hover:-translate-y-0.5 ${cls.bg}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="line-clamp-2 text-[13px] font-bold">{offer.name}</span>
-        <a href={offer.link} target="_blank" onClick={(e) => e.stopPropagation()} className="flex-shrink-0 text-muted2 hover:text-brand-2">
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </div>
-      <div className="flex items-end gap-2">
-        <span className="text-[26px] font-extrabold leading-none">{offer.last_ad_count ?? '—'}</span>
-        <span className="pb-1 text-[11px] text-muted2">anúncios ativos</span>
-      </div>
-      <span className={`w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls.bg} ${cls.color}`}>{cls.label}</span>
-      {spark.length > 1 && (
-        <div className="h-11">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={spark} margin={{ top: 3, bottom: 3, left: 0, right: 0 }}>
-              <YAxis hide domain={['dataMin', 'dataMax']} />
-              <Line type="monotone" dataKey="c" stroke="#8b5cf6" strokeWidth={1.5} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted2">
-        {offer.days_running != null && <span>⏱ {offer.days_running}d rodando</span>}
-        {tags.map((t) => (
-          <span key={t} className="rounded-full bg-surface2 px-1.5 py-0.5">
-            {t}
-          </span>
-        ))}
-      </div>
-    </button>
-  )
-}
-
-/* ── detalhe ── */
-function OfferDetail({ offer, history, onClose, onDelete, onChanged }: { offer: Offer; history: AdCount[]; onClose: () => void; onDelete: () => void; onChanged: () => void }) {
-  const data = history.map((h) => ({ d: new Date(h.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), c: h.count }))
-  // zoom no eixo Y pra variação aparecer (sem isso, começa no 0 e a linha fica achatada)
-  const yVals = data.map((p) => p.c)
-  const yMin = yVals.length ? Math.min(...yVals) : 0
-  const yMax = yVals.length ? Math.max(...yVals) : 0
-  const yPad = Math.max(1, Math.round((yMax - yMin || yMax || 1) * 0.15))
-  const yDomain: [number, number] = [Math.max(0, yMin - yPad), yMax + yPad]
-  const cls = classifyOffer(history)
-  const [count, setCount] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [comments, setComments] = useState<any[]>([])
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    getComments(offer.id).then(setComments).catch(() => {})
-  }, [offer.id])
-
-  async function saveCount() {
-    const n = parseInt(count)
-    if (isNaN(n) || n < 0) return toast('Quantidade inválida', 'err')
-    setBusy(true)
-    try {
-      await addAdCount(offer.id, n, new Date(date + 'T12:00:00').toISOString())
-      toast('Contagem registrada', 'ok')
-      setCount('')
-      onChanged()
-    } catch (e: any) {
-      toast(e.message, 'err')
-    }
-    setBusy(false)
-  }
-  async function saveNote() {
-    if (!note.trim()) return
-    try {
-      await addComment(offer.id, note.trim())
-      setNote('')
-      setComments(await getComments(offer.id))
-      toast('Nota salva', 'ok')
-    } catch (e: any) {
-      toast('Erro ao salvar nota: ' + e.message, 'err')
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card max-h-[92vh] w-full max-w-[680px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="card-header">
-          <h3 className="text-[13px] font-bold">{offer.name}</h3>
-          <button onClick={onClose} className="text-muted2 hover:text-ink">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="card-body flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${cls.bg} ${cls.color}`}>{cls.label}</span>
-            <span className="text-[13px]">
-              <b className="text-[18px]">{offer.last_ad_count ?? '—'}</b> ativos
-            </span>
-            {offer.days_running != null && <span className="text-[12px] text-muted">⏱ {offer.days_running} dias</span>}
-            <a href={offer.link} target="_blank" className="btn btn-ghost btn-sm ml-auto">
-              <ExternalLink className="h-3 w-3" /> Ads Library
-            </a>
-          </div>
-
-          <div style={{ height: 280 }}>
-            {data.length < 2 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-1 rounded-xl2 border border-dashed border-border text-center">
-                <span className="text-[13px] font-semibold text-muted">Sem histórico pra desenhar o gráfico</span>
-                <span className="max-w-[360px] text-[11px] text-muted2">
-                  Só há {data.length === 1 ? '1 leitura' : 'nenhuma leitura'}. O gráfico aparece quando o scraper (ou as contagens
-                  manuais abaixo) acumular 2+ dias.
-                </span>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data} margin={{ top: 10, right: 14, left: -14, bottom: 0 }}>
-                  <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#8b93a6' }} minTickGap={16} />
-                  <YAxis domain={yDomain} allowDecimals={false} width={34} tick={{ fontSize: 10, fill: '#8b93a6' }} />
-                  <Tooltip contentStyle={{ background: '#0d0f1e', border: '1px solid #1d2139', borderRadius: 8, fontSize: 11 }} />
-                  <Line type="monotone" dataKey="c" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} name="anúncios" />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* contagem manual */}
-          <div className="rounded-xl2 border border-border bg-surface2 p-3">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted2">Adicionar contagem do dia (manual)</div>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="field" style={{ width: 110 }}>
-                <label>Nº de ads</label>
-                <input type="number" min={0} value={count} onChange={(e) => setCount(e.target.value)} placeholder="ex: 47" />
-              </div>
-              <div className="field">
-                <label>Data</label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ colorScheme: 'dark' }} />
-              </div>
-              <button className="btn btn-primary btn-sm" disabled={busy} onClick={saveCount}>
-                <Plus className="h-3 w-3" /> Registrar
-              </button>
-            </div>
-          </div>
-
-          {/* notas */}
-          <div className="rounded-xl2 border border-border bg-surface2 p-3">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted2">Notas táticas</div>
-            <div className="flex gap-2">
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                placeholder="ex: mudou o criativo principal, subiu o preço, escalou..."
-                className="flex-1 resize-y rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink"
-              />
-              <button className="btn btn-primary btn-sm self-end" onClick={saveNote}>
-                Salvar
-              </button>
-            </div>
-            <div className="mt-2 flex flex-col gap-1.5">
-              {comments.map((c, i) => (
-                <div key={i} className="rounded-[7px] bg-surface px-3 py-2 text-[12px]">
-                  <div>{c.text || c.comment || c.content || c.body || c.note || '(nota)'}</div>
-                  {(c.created_at || c.timestamp) && (
-                    <div className="mt-0.5 text-[10px] text-muted2">{new Date(c.created_at || c.timestamp).toLocaleString('pt-BR')}</div>
-                  )}
-                </div>
-              ))}
-              {!comments.length && <div className="text-[11px] text-muted2">Sem notas ainda.</div>}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="btn btn-ghost btn-sm w-fit"
-              onClick={async () => {
-                try {
-                  await updateOffer(offer.id, { is_archived: !offer.is_archived })
-                  toast(offer.is_archived ? 'Oferta reativada' : 'Arquivada — para de scrapear, mas mantém os dados', 'ok')
-                  onChanged()
-                  onClose()
-                } catch (e: any) {
-                  toast(e.message, 'err')
-                }
-              }}
-            >
-              <Archive className="h-3 w-3" /> {offer.is_archived ? 'Reativar acompanhamento' : 'Arquivar (manter dados)'}
-            </button>
-            <button
-              className="btn btn-ghost btn-sm w-fit text-danger"
-              onClick={() => {
-                if (confirm('Remover de vez? Apaga também o histórico salvo.')) {
-                  onDelete()
-                  onClose()
-                }
-              }}
-            >
-              ✕ Remover de vez
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** variação % da contagem de ads num período (7/14/30/90 dias) */
-function trendChange(h: AdCount[], days: number): number {
-  if (h.length < 2) return 0
-  const last = h[h.length - 1].count
-  const target = Date.now() - days * 86400000
-  let base = h[0].count
-  for (const x of h) if (new Date(x.timestamp).getTime() <= target) base = x.count
-  return base > 0 ? ((last - base) / base) * 100 : 0
-}
-
-/* ── aba ofertas ── */
-function OffersView({ loggedIn, onLoginClick }: { loggedIn: boolean; onLoginClick: () => void }) {
-  const [offers, setOffers] = useState<Offer[]>([])
-  const [counts, setCounts] = useState<Record<string, AdCount[]>>({})
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState('')
-  const [search, setSearch] = useState('')
-  const [filterCode, setFilterCode] = useState('')
-  const [detail, setDetail] = useState<Offer | null>(null)
-  const [adding, setAdding] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [newOffer, setNewOffer] = useState({ name: '', link: '' })
-  const [statusMode, setStatusMode] = useState<'ativas' | 'inativas' | 'arquivadas' | 'todas'>('ativas')
-  const [sortKey, setSortKey] = useState<'count' | 'trend' | 'days'>('count')
-  const [trendWin, setTrendWin] = useState(7)
-  // filtros novos
-  const [minAds, setMinAds] = useState('') // faixa de nº de ads
-  const [maxAds, setMaxAds] = useState('')
-  const [tag, setTag] = useState('') // tag/nicho
-  const [minDays, setMinDays] = useState('') // dias rodando mínimos
-  const [trendDir, setTrendDir] = useState<'' | 'up' | 'down'>('') // só subindo / só caindo
-  const [scraper, setScraper] = useState(() => {
-    // /api/scrape/run é a rota real do scraper-service (server.js). /api/scrape antigo dava 404.
-    const def = { localUrl: 'http://localhost:3001', railwayUrl: (import.meta.env.VITE_SCRAPER_URL as string) || '', path: '/api/scrape/run' }
-    try {
-      const saved = JSON.parse(localStorage.getItem('purstin_scraper') || '{}')
-      if (!saved.path || saved.path === '/api/scrape') saved.path = '/api/scrape/run' // migra path errado salvo antes
-      return { ...def, ...saved }
-    } catch {
-      return def
-    }
-  })
-  const [showScraperCfg, setShowScraperCfg] = useState(false)
-  const [scraping, setScraping] = useState(false)
-  const saveScraper = (s: typeof scraper) => {
-    setScraper(s)
-    localStorage.setItem('purstin_scraper', JSON.stringify(s))
-  }
-  async function runScrapeNow(base: string) {
-    if (!base) {
-      toast('Configure a URL do scraper primeiro', 'warn')
-      setShowScraperCfg(true)
-      return
-    }
-    setScraping(true)
-    const target = base.replace(/\/$/, '') + scraper.path
-    try {
-      const res = await runScrape(target)
-      toast('Scraper rodando: ' + res, 'ok')
-      setTimeout(load, 4000)
-    } catch (e: any) {
-      const msg = String(e?.message || e)
-      // "Failed to fetch" = servidor não respondeu (offline / porta errada / sem CORS)
-      if (/failed to fetch|networkerror|load failed/i.test(msg)) {
-        toast(`Não alcancei o scraper em ${target}. Ele não está no ar nessa porta/rota, ou não libera CORS pro ${location.origin}.`, 'err')
-        setShowScraperCfg(true)
-      } else {
-        toast('Scraper falhou: ' + msg, 'err')
-      }
-    }
-    setScraping(false)
-  }
-
-  async function load() {
-    setLoading(true)
-    setErr('')
-    try {
-      const o = await getOffers()
-      setOffers(o)
-      const c = await getAllAdCounts(o.map((x) => x.id))
-      setCounts(c)
-    } catch (e: any) {
-      setErr(e.message)
-    }
-    setLoading(false)
-  }
-  useEffect(() => {
-    load()
-  }, [])
-
-  // todas as tags presentes nas ofertas (pro select de nicho)
-  const allTags = useMemo(() => {
-    const set = new Set<string>()
-    offers.forEach((o) => {
-      const t = Array.isArray(o.tags) ? o.tags : typeof o.tags === 'string' ? (o.tags as string).split(',') : []
-      t.forEach((x) => x && x.trim() && set.add(x.trim()))
-    })
-    return [...set].sort()
-  }, [offers])
-
-  const filtered = useMemo(() => {
-    const lo = minAds ? parseInt(minAds) : -Infinity
-    const hi = maxAds ? parseInt(maxAds) : Infinity
-    const md = minDays ? parseInt(minDays) : 0
-    return offers
-      .filter((o) => {
-        if (statusMode === 'todas') return true
-        if (statusMode === 'arquivadas') return !!o.is_archived
-        const archived = !!o.is_archived
-        const hasAds = (o.last_ad_count ?? 0) > 0
-        if (statusMode === 'inativas') return !archived && !hasAds
-        return !archived && hasAds // ativas
-      })
-      .filter((o) => !search || o.name.toLowerCase().includes(search.toLowerCase()))
-      .filter((o) => !filterCode || classifyOffer(counts[o.id] || []).code === filterCode)
-      // faixa de nº de ads
-      .filter((o) => {
-        const n = o.last_ad_count ?? 0
-        return n >= lo && n <= hi
-      })
-      // dias rodando mínimos
-      .filter((o) => !md || (o.days_running ?? 0) >= md)
-      // tag / nicho
-      .filter((o) => {
-        if (!tag) return true
-        const t = Array.isArray(o.tags) ? o.tags : typeof o.tags === 'string' ? (o.tags as string).split(',') : []
-        return t.some((x) => x && x.trim() === tag)
-      })
-      // tendência real (subindo/caindo no período)
-      .filter((o) => {
-        if (!trendDir) return true
-        const ch = trendChange(counts[o.id] || [], trendWin)
-        return trendDir === 'up' ? ch > 5 : ch < -5
-      })
-      .sort((a, b) => {
-        if (sortKey === 'trend') return trendChange(counts[b.id] || [], trendWin) - trendChange(counts[a.id] || [], trendWin)
-        if (sortKey === 'days') return (b.days_running ?? 0) - (a.days_running ?? 0)
-        return (b.last_ad_count ?? 0) - (a.last_ad_count ?? 0)
-      })
-  }, [offers, counts, search, filterCode, statusMode, sortKey, trendWin, minAds, maxAds, tag, minDays, trendDir])
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar oferta..." className="rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-3 text-[12px] text-ink" />
-        </div>
-        <select value={statusMode} onChange={(e) => setStatusMode(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
-          <option value="ativas">Ativas</option>
-          <option value="inativas">Inativas</option>
-          <option value="arquivadas">Arquivadas</option>
-          <option value="todas">Todas</option>
-        </select>
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Ordenar">
-          <option value="count">↓ Mais ads</option>
-          <option value="trend">↓ Crescimento</option>
-          <option value="days">↓ Dias rodando</option>
-        </select>
-        {(sortKey === 'trend' || trendDir) && (
-          <select value={trendWin} onChange={(e) => setTrendWin(+e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Janela da tendência">
-            <option value={7}>7d</option>
-            <option value={14}>14d</option>
-            <option value={30}>30d</option>
-            <option value={90}>90d</option>
-          </select>
-        )}
-        <select value={filterCode} onChange={(e) => setFilterCode(e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
-          <option value="">Todos status</option>
-          <option value="dominante">👑 Dominante</option>
-          <option value="escala_conf">🚀 Escala confirmada</option>
-          <option value="escalando">📈 Escalando</option>
-          <option value="acelerando">⚡ Acelerando</option>
-          <option value="validando">🔵 Validando</option>
-          <option value="testando">🧪 Testando criativos</option>
-          <option value="esgotando">🟠 Esgotando</option>
-          <option value="morrendo">🔻 Morrendo</option>
-          <option value="morta">💀 Morta</option>
-          <option value="lancamento">🌱 Lançamento</option>
-          <option value="observar">👁 Observar</option>
-          <option value="pausado">⏸ Pausado (sem scrape há 5d+)</option>
-          <option value="sem_dados">— Sem dados (sem histórico)</option>
-        </select>
-        {/* tendência como filtro (não só sort) */}
-        <select value={trendDir} onChange={(e) => setTrendDir(e.target.value as any)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink" title="Filtrar por tendência">
-          <option value="">Tendência: tudo</option>
-          <option value="up">📈 Subindo</option>
-          <option value="down">📉 Caindo</option>
-        </select>
-        {/* faixa de nº de ads */}
-        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1 text-[12px]">
-          <span className="text-muted2">ads</span>
-          <input value={minAds} onChange={(e) => setMinAds(e.target.value.replace(/\D/g, ''))} placeholder="min" className="w-12 bg-transparent text-ink outline-none" inputMode="numeric" />
-          <span className="text-muted2">–</span>
-          <input value={maxAds} onChange={(e) => setMaxAds(e.target.value.replace(/\D/g, ''))} placeholder="max" className="w-12 bg-transparent text-ink outline-none" inputMode="numeric" />
-        </div>
-        {/* dias rodando mínimos */}
-        <div className="flex items-center gap-1 rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1 text-[12px]">
-          <input value={minDays} onChange={(e) => setMinDays(e.target.value.replace(/\D/g, ''))} placeholder="0" className="w-9 bg-transparent text-ink outline-none" inputMode="numeric" />
-          <span className="text-muted2">+ dias</span>
-        </div>
-        {/* tag / nicho */}
-        {allTags.length > 0 && (
-          <select value={tag} onChange={(e) => setTag(e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
-            <option value="">Todos os nichos</option>
-            {allTags.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        )}
-        {(minAds || maxAds || minDays || tag || trendDir || filterCode || search) && (
-          <button
-            className="btn btn-ghost btn-sm"
-            title="Limpar filtros"
-            onClick={() => { setMinAds(''); setMaxAds(''); setMinDays(''); setTag(''); setTrendDir(''); setFilterCode(''); setSearch('') }}
-          >
-            <X className="h-3.5 w-3.5" /> limpar
-          </button>
-        )}
-        <span className="text-[12px] text-muted2">{filtered.length} ofertas</span>
-        <button className="btn btn-ghost btn-sm" onClick={load}>
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-        <div className="ml-auto flex items-center gap-1.5">
-          <button className="btn btn-ghost btn-sm" onClick={() => runScrapeNow(scraper.localUrl)} disabled={scraping} title="Rodar scraper na rede local">
-            ▶ Local
-          </button>
-          {scraper.railwayUrl && (
-            <button className="btn btn-ghost btn-sm" onClick={() => runScrapeNow(scraper.railwayUrl)} disabled={scraping} title="Rodar scraper no Railway">
-              ▶ Railway
-            </button>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowScraperCfg(true)} title="Configurar scraper">
-            ⚙
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setImporting(true)} title="Importar vários links / favoritos">
-            <Upload className="h-3.5 w-3.5" /> Importar
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5" /> Adicionar
-          </button>
-        </div>
-      </div>
-
-      {err && <div className="rounded-lg border border-danger/30 bg-danger/[0.07] px-4 py-2 text-[12px]">❌ {err}</div>}
-      {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-7 w-7 animate-spin rounded-full border-2 border-border border-t-brand" />
-        </div>
-      )}
-      {!loading && !err && filtered.length === 0 && offers.length > 0 && (
-        <div className="rounded-xl2 border border-dashed border-border py-10 text-center">
-          <p className="text-[13px] font-semibold text-ink">Nenhuma das {offers.length} ofertas passou nos filtros.</p>
-          <p className="mx-auto mt-1 max-w-[460px] text-[12px] text-muted">
-            Filtros de <b>status</b> e <b>tendência</b> precisam de histórico (várias leituras de ads). Se o scraper ainda
-            não rodou aqui, a maioria fica como <b>Sem dados</b> / <b>Pausado</b> — escolha esses no filtro de status, ou limpe.
-          </p>
-          <button
-            className="btn btn-primary btn-sm mx-auto mt-4"
-            onClick={() => { setMinAds(''); setMaxAds(''); setMinDays(''); setTag(''); setTrendDir(''); setFilterCode(''); setSearch(''); setStatusMode('todas') }}
-          >
-            <X className="h-3.5 w-3.5" /> Limpar filtros e mostrar todas
-          </button>
-        </div>
-      )}
-      {!loading && !err && offers.length === 0 && (
-        <div className="rounded-xl2 border border-dashed border-border py-10 text-center">
-          {!loggedIn ? (
-            <>
-              <p className="text-[13px] font-semibold text-ink">Nenhuma oferta retornou.</p>
-              <p className="mx-auto mt-1 max-w-[420px] text-[12px] text-muted">
-                Suas tabelas têm RLS por usuário (padrão do TrackerAds). Entre com sua conta para ver seus dados.
-              </p>
-              <button className="btn btn-primary btn-sm mx-auto mt-4" onClick={onLoginClick}>
-                <LogIn className="h-3.5 w-3.5" /> Entrar na minha conta
-              </button>
-            </>
-          ) : (
-            <p className="text-[13px] text-muted2">Nenhuma oferta. Adicione um link da Ads Library para monitorar.</p>
-          )}
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((o) => (
-          <OfferCard key={o.id} offer={o} history={counts[o.id] || []} onClick={() => setDetail(o)} />
-        ))}
-      </div>
-
-      {detail && (
-        <OfferDetail
-          offer={detail}
-          history={counts[detail.id] || []}
-          onClose={() => setDetail(null)}
-          onChanged={load}
-          onDelete={async () => {
-            try {
-              await deleteOffer(detail.id)
-              toast('Oferta removida', 'ok')
-              load()
-            } catch (e: any) {
-              toast(e.message, 'err')
-            }
-          }}
-        />
-      )}
-
-      {importing && <ImportModal scraper={scraper} onClose={() => setImporting(false)} onDone={load} />}
-
-      {adding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setAdding(false)}>
-          <div className="card w-full max-w-[480px]" onClick={(e) => e.stopPropagation()}>
-            <div className="card-header">
-              <h3 className="text-[13px] font-bold">Adicionar oferta</h3>
-              <button onClick={() => setAdding(false)} className="text-muted2 hover:text-ink">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="card-body flex flex-col gap-3">
-              <div className="field">
-                <label>Nome</label>
-                <input value={newOffer.name} onChange={(e) => setNewOffer({ ...newOffer, name: e.target.value })} placeholder="ex: Concorrente XYZ" />
-              </div>
-              <div className="field">
-                <label>Link da Ads Library</label>
-                <input value={newOffer.link} onChange={(e) => setNewOffer({ ...newOffer, link: e.target.value })} placeholder="https://facebook.com/ads/library/?view_all_page_id=..." />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>
-                  Cancelar
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={async () => {
-                    if (!newOffer.name.trim() || !newOffer.link.trim()) return toast('Preencha nome e link', 'err')
-                    try {
-                      await addOffer({ name: newOffer.name.trim(), link: newOffer.link.trim() })
-                      toast('Oferta adicionada', 'ok')
-                      setAdding(false)
-                      setNewOffer({ name: '', link: '' })
-                      load()
-                    } catch (e: any) {
-                      toast(e.message, 'err')
-                    }
-                  }}
-                >
-                  Adicionar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showScraperCfg && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowScraperCfg(false)}>
-          <div className="card w-full max-w-[480px]" onClick={(e) => e.stopPropagation()}>
-            <div className="card-header">
-              <h3 className="text-[13px] font-bold">Configurar scraper</h3>
-              <button onClick={() => setShowScraperCfg(false)} className="text-muted2 hover:text-ink">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="card-body flex flex-col gap-3">
-              <p className="text-[12px] text-muted">
-                O scraper (Playwright) conta os anúncios e grava na Supabase. Rode <b>local</b> (o <code>.bat</code> do
-                TrackerAds na porta 3001) ou no <b>Railway</b>.
-              </p>
-              <div className="field">
-                <label>URL local (rede)</label>
-                <input value={scraper.localUrl} onChange={(e) => saveScraper({ ...scraper, localUrl: e.target.value })} placeholder="http://localhost:3001" />
-              </div>
-              <div className="field">
-                <label>URL Railway (opcional)</label>
-                <input value={scraper.railwayUrl} onChange={(e) => saveScraper({ ...scraper, railwayUrl: e.target.value })} placeholder="https://...up.railway.app" />
-              </div>
-              <div className="field">
-                <label>Rota de disparo</label>
-                <input value={scraper.path} onChange={(e) => saveScraper({ ...scraper, path: e.target.value })} placeholder="/api/scrape/run" />
-                <div className="text-[11px] text-muted2">
-                  O scraper-service do TrackerAds usa <code>/api/scrape/run</code> (roda todas as ofertas em background).
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <button className="btn btn-primary btn-sm" onClick={() => setShowScraperCfg(false)}>
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── aba discovery ── */
-function DiscoveryView() {
-  const [keywords, setKeywords] = useState<Keyword[]>([])
-  const [discovered, setDiscovered] = useState<DiscoveredOffer[]>([])
-  const [newKw, setNewKw] = useState('')
-  const [loading, setLoading] = useState(true)
-
-  async function load() {
-    setLoading(true)
-    try {
-      setKeywords(await getDiscoveryKeywords())
-      setDiscovered(await getDiscoveredOffers())
-    } catch {}
-    setLoading(false)
-  }
-  useEffect(() => {
-    load()
-  }, [])
-
-  return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h3 className="mb-2 text-[13px] font-bold">Keywords de descoberta</h3>
-        <div className="mb-3 flex gap-2">
-          <input value={newKw} onChange={(e) => setNewKw(e.target.value)} placeholder="ex: impressão 3D, moldes festa" className="flex-1 rounded-[9px] border border-border bg-[#0a0c19] px-3 py-2 text-[13px] text-ink" />
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={async () => {
-              if (!newKw.trim()) return
-              try {
-                await addKeyword(newKw.trim())
-                setNewKw('')
-                load()
-              } catch (e: any) {
-                toast(e.message, 'err')
-              }
-            }}
-          >
-            <Plus className="h-3.5 w-3.5" /> Adicionar
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {keywords.map((k) => (
-            <span key={k.id} className="flex items-center gap-1.5 rounded-full border border-border bg-surface2 px-3 py-1 text-[12px]">
-              {k.keyword}
-              <button onClick={async () => { await deleteKeyword(k.id); load() }} className="text-muted2 hover:text-danger">
-                ✕
-              </button>
-            </span>
-          ))}
-          {!keywords.length && !loading && <span className="text-[12px] text-muted2">Nenhuma keyword. O scraper busca anunciantes novos por essas palavras.</span>}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-[13px] font-bold">Ofertas descobertas ({discovered.length})</h3>
-        {discovered.length === 0 ? (
-          <div className="rounded-xl2 border border-dashed border-border py-8 text-center text-[12px] text-muted2">Nenhuma oferta pendente. O scraper preenche aqui quando acha anunciantes novos.</div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {discovered.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 rounded-xl2 border border-border bg-surface px-4 py-3">
-                <div className="flex-1">
-                  <div className="text-[13px] font-semibold">{d.name || d.page_name}</div>
-                  <div className="text-[11px] text-muted2">
-                    {d.ad_count != null && `${d.ad_count} anúncios`} {d.days_running != null && `· ${d.days_running}d`} {d.keyword && `· "${d.keyword}"`}
-                  </div>
-                </div>
-                <button className="btn btn-primary btn-sm" onClick={async () => { await approveDiscovered(d); load() }}>
-                  ＋ Monitorar
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={async () => { await dismissDiscovered(d.id); load() }}>
-                  Ignorar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ── importação em massa: colar links OU subir favoritos do Chrome ── */
-function ImportModal({ scraper, onClose, onDone }: { scraper: { localUrl: string; railwayUrl?: string; path?: string }; onClose: () => void; onDone: () => void }) {
-  const [text, setText] = useState('')
-  const [parsed, setParsed] = useState<ParsedOffer[]>([])
-  const [busy, setBusy] = useState(false)
-  const [fileName, setFileName] = useState('')
-  const [seed, setSeed] = useState<{ done: number; total: number; ok: number } | null>(null)
-  const cancelSeed = useRef(false)
-
-  function reparse(t: string) {
-    setText(t)
-    setParsed(parseLinksText(t))
-  }
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setFileName(f.name)
-    const html = await f.text()
-    const fromHtml = parseBookmarksHtml(html)
-    // junta com o que já estava colado (sem duplicar)
-    const merged = [...parsed]
-    const have = new Set(parsed.map((p) => p.link))
-    fromHtml.forEach((p) => !have.has(p.link) && merged.push(p))
-    setParsed(merged)
-    toast(`${fromHtml.length} links da Ads Library encontrados no arquivo`, fromHtml.length ? 'ok' : 'warn')
-  }
-
-  // Puxa o nº de ads de cada oferta nova na hora (best-effort, 2 em paralelo).
-  // Se o scraper não estiver no ar, segue a vida — a próxima rodada preenche.
-  async function seedCounts(offers: Offer[]) {
-    const base = (scraper.localUrl || scraper.railwayUrl || '').replace(/\/$/, '')
-    if (!base) return
-    const endpoint = base + '/api/scrape/test'
-    cancelSeed.current = false
-    const total = offers.length
-    let done = 0
-    let ok = 0
-    setSeed({ done, total, ok })
-    const queue = [...offers]
-    const now = () => new Date().toISOString()
-    const worker = async () => {
-      while (queue.length && !cancelSeed.current) {
-        const o = queue.shift()!
-        const n = await scrapeOneUrl(endpoint, o.link)
-        if (n != null) {
-          ok++
-          try {
-            await addAdCount(o.id, n, now())
-          } catch {}
-        }
-        done++
-        setSeed({ done, total, ok })
-      }
-    }
-    await Promise.all([worker(), worker()])
-    if (!cancelSeed.current && total > 0 && ok === 0) {
-      toast('Importadas, mas o scraper não respondeu — os nºs entram no próximo scrape (▶ Local).', 'warn')
-    } else if (ok > 0) {
-      toast(`Contagem puxada de ${ok}/${total} na hora`, 'ok')
-    }
-    setSeed(null)
-  }
-
-  async function doImport() {
-    if (!parsed.length) return toast('Nada pra importar', 'warn')
-    setBusy(true)
-    try {
-      const res = await addOffersBulk(parsed)
-      toast(`${res.inserted.length} importadas${res.skipped ? `, ${res.skipped} já existiam` : ''}`, res.inserted.length ? 'ok' : 'warn')
-      if (res.inserted.length) {
-        onDone() // já mostra as ofertas na lista
-        await seedCounts(res.inserted) // depois preenche o nº de ads
-        onDone()
-      }
-      onClose()
-    } catch (e: any) {
-      toast(e.message, 'err')
-    }
-    setBusy(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card flex max-h-[90vh] w-full max-w-[560px] flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="card-header">
-          <h3 className="text-[13px] font-bold">Importar ofertas em massa</h3>
-          <button onClick={onClose} className="text-muted2 hover:text-ink">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          <p className="text-[12px] text-muted">
-            Cole vários links da Ads Library (um por linha — aceita <code>Nome | link</code>) ou suba a pasta de
-            favoritos exportada do Chrome. Eu pego só os links da Ads Library e ignoro o resto. Duplicados são pulados.
-          </p>
-
-          <textarea
-            value={text}
-            onChange={(e) => reparse(e.target.value)}
-            rows={5}
-            placeholder={'Pokémon BR | https://facebook.com/ads/library/?view_all_page_id=...\nhttps://facebook.com/ads/library/?q=impressao 3d'}
-            className="resize-y rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-2 text-[12px] text-ink"
-          />
-
-          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-[7px] border border-border bg-surface2 px-3 py-1.5 text-[12px] hover:bg-surface">
-            <Upload className="h-3.5 w-3.5" />
-            {fileName || 'Subir favoritos (.html)'}
-            <input type="file" accept=".html,.htm,text/html" className="hidden" onChange={onFile} />
-          </label>
-          <p className="-mt-1 text-[10.5px] text-muted2">
-            Chrome → ⋮ → Favoritos → Gerenciar favoritos → ⋮ → Exportar favoritos. Sobe o arquivo aqui.
-          </p>
-
-          {parsed.length > 0 && (
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-[7px] border border-border">
-              <div className="sticky top-0 flex items-center justify-between border-b border-border bg-surface2 px-3 py-1.5 text-[11px] font-bold">
-                <span>{parsed.length} ofertas prontas pra importar</span>
-                <button className="text-muted2 hover:text-danger" onClick={() => { setParsed([]); setText(''); setFileName('') }}>limpar</button>
-              </div>
-              {parsed.map((p, i) => (
-                <div key={i} className="flex items-center gap-2 border-b border-border/40 px-3 py-1.5 text-[12px] last:border-0">
-                  <span className="flex-1 truncate" title={p.name}>{p.name}</span>
-                  <a href={p.link} target="_blank" className="text-muted2 hover:text-brand-2"><ExternalLink className="h-3 w-3" /></a>
-                  <button className="text-muted2 hover:text-danger" onClick={() => setParsed(parsed.filter((_, j) => j !== i))}>✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {seed && (
-            <div className="rounded-[7px] border border-border bg-surface2 px-3 py-2">
-              <div className="mb-1 flex items-center justify-between text-[11px]">
-                <span className="text-muted">Puxando nº de ads… {seed.done}/{seed.total}</span>
-                <button className="text-muted2 hover:text-danger" onClick={() => { cancelSeed.current = true }}>
-                  pular (preenche no próximo scrape)
-                </button>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0a0c19]">
-                <div className="h-full bg-brand transition-all" style={{ width: `${seed.total ? (seed.done / seed.total) * 100 : 0}%` }} />
-              </div>
-            </div>
-          )}
-          <div className="flex justify-end gap-2">
-            <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={busy}>Cancelar</button>
-            <button className="btn btn-primary btn-sm" onClick={doImport} disabled={busy || !parsed.length}>
-              <Upload className="h-3.5 w-3.5" /> {seed ? `Contando ${seed.done}/${seed.total}…` : busy ? 'Importando...' : `Importar ${parsed.length || ''}`}
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -971,49 +73,235 @@ function ImportModal({ scraper, onClose, onDone }: { scraper: { localUrl: string
 }
 
 export default function TrackerPage() {
-  const loc = useLocation()
-  const tab = loc.pathname.includes('discovery') ? 'discovery' : 'ofertas'
-  const { email } = useSession()
-  const [showLogin, setShowLogin] = useState(false)
+  const [currentScreen, setCurrentScreen] = useState<string>('grid')
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
+  const [offerToEdit, setOfferToEdit] = useState<any>(null)
+  const [offers, setOffers] = useState<any[]>([])
+  const [userId, setUserId] = useState<string | null>(null)
+  const [isAuthReady, setIsAuthReady] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [viewMode, setViewMode] = useState('grid')
+  const [isAddOfferModalOpen, setIsAddOfferModalOpen] = useState(false)
+  const [isEditOfferModalOpen, setIsEditOfferModalOpen] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const [toast, setToast] = useState<ToastState>({ message: '', type: '' })
+  const [confirmationModal, setConfirmationModal] = useState<any>({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+  const [pinnedOfferIds, setPinnedOfferIds] = useState<string[]>([])
+  const [activeOfferIds, setActiveOfferIds] = useState<string[]>([])
 
+  const sb: any = supabaseClient
+
+  const showToast = useCallback((message: string, type = 'info') => setToast({ message, type }), [])
+  const closeToast = useCallback(() => setToast({ message: '', type: '' }), [])
+  const openConfirmationModal = (title: string, message: string, onConfirmAction: () => void) =>
+    setConfirmationModal({ isOpen: true, title, message, onConfirm: onConfirmAction })
+  const closeConfirmationModal = () => setConfirmationModal({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+
+  const handleLogin = async (email: string, password: string) => {
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password })
+      if (error) showToast(`Erro no login: ${error.message}`, 'error')
+      else if (data?.user) { setUserId(data.user.id); showToast('Login realizado!', 'success') }
+    } catch { showToast('Erro ao tentar fazer login', 'error') }
+  }
+  const handleRegister = async (email: string, password: string) => {
+    try {
+      const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } })
+      if (error) showToast(`Erro no registro: ${error.message}`, 'error')
+      else if (data?.user) { showToast('Conta criada! Faça login.', 'success'); setUserId(null) }
+    } catch { showToast('Erro ao tentar criar conta', 'error') }
+  }
+
+  // sessão
+  useEffect(() => {
+    if (!sb) { setIsAuthReady(true); return }
+    sb.auth.getUser()
+      .then(({ data }: any) => setUserId(data?.user?.id ?? null))
+      .catch(() => setUserId(null))
+      .finally(() => setIsAuthReady(true))
+  }, [sb])
+
+  const fetchOffers = useCallback(async () => {
+    if (!userId || !sb?.from) { setIsLoading(false); setOffers([]); return }
+    setIsLoading(true)
+    const { data, error } = await sb.from('offers').select('*').order('created_at', { ascending: false })
+    if (error) { showToast(`Erro ao carregar ofertas: ${error.message}`, 'error'); setOffers([]) }
+    else setOffers(data || [])
+    setIsLoading(false)
+  }, [userId, showToast, sb])
+
+  useEffect(() => {
+    if (isAuthReady && userId && sb) fetchOffers()
+    else if (isAuthReady && (!userId || !sb)) { setIsLoading(false); setOffers([]) }
+  }, [isAuthReady, userId, fetchOffers, sb])
+
+  const handleAddOffer = async (offerData: any) => {
+    if (!userId || !sb?.from) return showToast('Não autenticado.', 'error')
+    try {
+      const initialAdCount = offerData.initial_ad_count ?? 0
+      const payload = {
+        name: offerData.name, link: offerData.link || '', tags: offerData.tags || null,
+        user_id: userId, last_ad_count: initialAdCount,
+        last_ad_count_timestamp: initialAdCount > 0 ? new Date().toISOString() : null, is_archived: false,
+      }
+      const { data, error } = await sb.from('offers').insert([payload]).select()
+      if (error) throw error
+      if (initialAdCount > 0 && data?.[0]) {
+        await sb.from('ad_counts').insert([{ offer_id: data[0].id, user_id: userId, count: initialAdCount, timestamp: new Date().toISOString() }])
+      }
+      showToast('TARGET ADICIONADO!', 'success'); setIsAddOfferModalOpen(false); fetchOffers()
+    } catch (e: any) { showToast(`ERRO AO ADICIONAR: ${e.message}`, 'error') }
+  }
+
+  const handleEditOffer = (offer: any) => { setOfferToEdit(offer); setIsEditOfferModalOpen(true) }
+  const handleUpdateOffer = async (offerId: string, updatedData: any) => {
+    if (!userId || !sb?.from) return showToast('Não autenticado.', 'error')
+    try {
+      const { error } = await sb.from('offers').update({ ...updatedData, updated_at: new Date().toISOString() }).eq('id', offerId).select()
+      if (error) throw error
+      showToast('TARGET ATUALIZADO!', 'success'); setIsEditOfferModalOpen(false); setOfferToEdit(null); fetchOffers()
+    } catch (e: any) { showToast(`ERRO AO ATUALIZAR: ${e.message}`, 'error') }
+  }
+  const handleDeleteOffer = async (offerId: string) => {
+    if (!userId || !sb?.from) return showToast('Não autenticado.', 'error')
+    openConfirmationModal('EXCLUIR TARGET', 'CONFIRMA EXCLUSÃO DESTE TARGET E TODOS OS SEUS DADOS?', async () => {
+      try {
+        const { error } = await sb.from('offers').delete().eq('id', offerId)
+        if (error) throw error
+        setOffers((prev) => prev.filter((o) => o.id !== offerId))
+        setPinnedOfferIds((prev) => prev.filter((id) => id !== offerId))
+        setActiveOfferIds((prev) => prev.filter((id) => id !== offerId))
+        showToast('TARGET EXCLUÍDO!', 'success')
+        if (selectedOfferId === offerId) { setCurrentScreen('grid'); setSelectedOfferId(null) }
+      } catch (e: any) { showToast(`ERRO AO EXCLUIR: ${e.message}`, 'error') }
+    })
+  }
+  const handleToggleArchiveOffer = async (offerId: string, currentArchivedStatus: boolean) => {
+    if (!userId || !sb?.from) return showToast('Não autenticado.', 'error')
+    try {
+      const { error } = await sb.from('offers').update({ is_archived: !currentArchivedStatus, updated_at: new Date().toISOString() }).eq('id', offerId).select()
+      if (error) throw error
+      showToast(`TARGET ${!currentArchivedStatus ? 'ARQUIVADO' : 'RESTAURADO'}!`, 'success'); fetchOffers()
+    } catch { showToast('ERRO AO ARQUIVAR/RESTAURAR.', 'error') }
+  }
+
+  const navigateToDetail = (offerId: string) => { setSelectedOfferId(offerId); setCurrentScreen('detail') }
+
+  const filteredOffers = useMemo(() => {
+    return offers
+      .filter((offer) => (showArchived ? offer.is_archived : !offer.is_archived))
+      .filter((offer) =>
+        offer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (Array.isArray(offer.tags) && offer.tags.some((tag: string) => tag?.toLowerCase().includes(searchTerm.toLowerCase()))),
+      )
+  }, [offers, searchTerm, showArchived])
+
+  // pinned no localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('pinnedOfferIds')
+    if (saved) { try { setPinnedOfferIds(JSON.parse(saved)) } catch {} }
+  }, [])
+  useEffect(() => { localStorage.setItem('pinnedOfferIds', JSON.stringify(pinnedOfferIds)) }, [pinnedOfferIds])
+
+  // ── gates ──
   if (!isConfigured()) return <ConnectScreen />
 
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-2xl font-extrabold tracking-tight">Tracker Ads</h2>
-        <div className="flex items-center gap-2">
-          {email ? (
-            <>
-              <span className="text-[12px] text-muted2">{email}</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => signOut()}>
-                <LogOut className="h-3.5 w-3.5" /> Sair
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowLogin(true)}>
-              <LogIn className="h-3.5 w-3.5" /> Entrar
-            </button>
-          )}
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              if (confirm('Desconectar a Supabase deste navegador?')) {
-                clearCreds()
-                window.location.reload()
-              }
-            }}
-          >
-            <Database className="h-3.5 w-3.5" /> Trocar Supabase
-          </button>
-        </div>
+  if (!isAuthReady) {
+    return (
+      <div className="adintel flex min-h-[60vh] items-center justify-center">
+        <Database className="h-7 w-7 animate-pulse text-blue-400" />
       </div>
-      {tab === 'discovery' ? (
-        <DiscoveryView key={email || 'anon'} />
-      ) : (
-        <OffersView key={email || 'anon'} loggedIn={!!email} onLoginClick={() => setShowLogin(true)} />
+    )
+  }
+  if (!userId) {
+    return (
+      <div className="adintel mx-auto max-w-md py-12">
+        <div className="mb-7 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600/12 border border-blue-500/20">
+            <Database className="h-8 w-8 text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Outfit, sans-serif' }}>Tracker Ads</h1>
+          <p className="mt-1 text-sm text-slate-500">Entre com a conta do TrackerAds (RLS por usuário)</p>
+        </div>
+        <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
+        <button onClick={() => { if (confirm('Desconectar a Supabase deste navegador?')) { clearCreds(); window.location.reload() } }}
+          className="mx-auto mt-4 block text-[11px] text-slate-600 hover:text-slate-400">trocar Supabase</button>
+      </div>
+    )
+  }
+
+  const navItems = [
+    { id: 'grid', icon: LayoutGrid, label: 'Targets' },
+    { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
+    { id: 'compare', icon: ChevronsLeftRight, label: 'Comparar' },
+    { id: 'trajectory', icon: History, label: 'Trajetória' },
+    { id: 'alerts', icon: Bell, label: 'Alertas' },
+    { id: 'discovery', icon: Search, label: 'Descoberta' },
+  ]
+
+  return (
+    <div className="adintel min-h-[70vh] rounded-2xl border border-white/[0.05] bg-[#070b14] text-slate-100">
+      {/* barra de sub-abas (substitui a sidebar do app standalone) */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-white/[0.05] px-3 py-2">
+        {navItems.map(({ id, icon: Icon, label }) => {
+          const isActive = currentScreen === id || (id === 'grid' && currentScreen === 'detail')
+          return (
+            <button key={id} onClick={() => { setCurrentScreen(id); setSelectedOfferId(null) }}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium transition-all ${
+                isActive ? 'bg-blue-600/12 text-blue-300' : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-200'
+              }`}>
+              <Icon size={15} className={isActive ? 'text-blue-400' : 'text-slate-600'} strokeWidth={isActive ? 2.5 : 2} />
+              {label}
+            </button>
+          )
+        })}
+        <span className="ml-auto flex items-center gap-2 pr-1 text-[11px] text-slate-600">
+          <span className="hidden font-mono sm:inline">{userId.substring(0, 10)}…</span>
+          <button onClick={() => sb.auth.signOut().then(() => setUserId(null))} title="Sair"
+            className="flex items-center gap-1 rounded-lg px-2 py-1 hover:bg-white/[0.04] hover:text-slate-300">
+            <LogOut size={13} /> Sair
+          </button>
+        </span>
+      </div>
+
+      <div className="p-1">
+        {isLoading && (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <Database className="h-6 w-6 animate-pulse text-blue-400" />
+          </div>
+        )}
+        {!isLoading && currentScreen === 'grid' && (
+          <OfferGridScreen
+            offers={filteredOffers} onViewDetails={navigateToDetail} onAddOffer={() => setIsAddOfferModalOpen(true)}
+            onEditOffer={handleEditOffer} onToggleArchive={handleToggleArchiveOffer} searchTerm={searchTerm} setSearchTerm={setSearchTerm}
+            viewMode={viewMode} setViewMode={setViewMode} showArchived={showArchived} setShowArchived={setShowArchived}
+            onDeleteOffer={handleDeleteOffer} userId={userId} isAuthReady={isAuthReady} supabaseClient={sb}
+            pinnedOfferIds={pinnedOfferIds} setPinnedOfferIds={setPinnedOfferIds} activeOfferIds={activeOfferIds}
+            setActiveOfferIds={setActiveOfferIds} showToast={showToast} fetchOffers={fetchOffers}
+          />
+        )}
+        {!isLoading && currentScreen === 'dashboard' && <DashboardScreen offers={offers} userId={userId} supabaseClient={sb} />}
+        {!isLoading && currentScreen === 'compare' && <ComparativeAnalysisScreen offers={offers} userId={userId} showToast={showToast} supabaseClient={sb} />}
+        {!isLoading && currentScreen === 'alerts' && <AlertsScreen userId={userId} supabaseClient={sb} offers={offers} showToast={showToast} />}
+        {!isLoading && currentScreen === 'discovery' && <DiscoveryScreen userId={userId} supabaseClient={sb} showToast={showToast} onAddOffer={handleAddOffer} />}
+        {!isLoading && currentScreen === 'trajectory' && <TrajectoryScreen offers={offers} userId={userId} supabaseClient={sb} showToast={showToast} fetchOffers={fetchOffers} />}
+        {!isLoading && currentScreen === 'detail' && selectedOfferId && (
+          <OfferDetailScreen
+            offerId={selectedOfferId} userId={userId} showToast={showToast} onDeleteOffer={handleDeleteOffer}
+            openConfirmationModal={openConfirmationModal} onToggleArchive={handleToggleArchiveOffer} fetchOffers={fetchOffers} supabaseClient={sb}
+          />
+        )}
+      </div>
+
+      <AddOfferModal isOpen={isAddOfferModalOpen} onClose={() => setIsAddOfferModalOpen(false)} onAddOffer={handleAddOffer} showToast={showToast} />
+      {offerToEdit && (
+        <EditOfferModal isOpen={isEditOfferModalOpen} onClose={() => { setIsEditOfferModalOpen(false); setOfferToEdit(null) }}
+          onUpdateOffer={handleUpdateOffer} offerToEdit={offerToEdit} showToast={showToast} />
       )}
-      {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+      <ConfirmationModal isOpen={confirmationModal.isOpen} onClose={closeConfirmationModal} onConfirm={confirmationModal.onConfirm}
+        title={confirmationModal.title} message={confirmationModal.message} />
+      {toast.message && <Toast message={toast.message} type={toast.type} onClose={closeToast} />}
     </div>
   )
 }

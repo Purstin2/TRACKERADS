@@ -51,10 +51,6 @@ export const NAV: NavItem[] = [
     label: 'Tracker Ads',
     icon: Search,
     to: '/tracker',
-    children: [
-      { label: 'Ofertas', to: '/tracker' },
-      { label: 'Discovery', to: '/tracker/discovery' },
-    ],
   },
   {
     id: 'uploader',
