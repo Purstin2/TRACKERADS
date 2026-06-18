@@ -220,7 +220,7 @@ export default function PixelsView() {
       <div className="flex items-center gap-2">
         <p className="text-[12px] text-muted">
           Cada oferta manda pro seu pixel. A mesma oferta em vários gateways/países cai no mesmo pixel.
-          Sem mapeamento → usa o pixel padrão da Vercel.
+          Sem rota cadastrada → o evento NÃO é enviado (não contamina outro pixel).
         </p>
         <button className="btn btn-ghost btn-sm ml-auto" onClick={() => setShowHelp((v) => !v)}>
           {showHelp ? 'Ocultar guia' : '❓ Como adicionar'}
@@ -266,7 +266,7 @@ export default function PixelsView() {
           <ul className="ml-4 list-disc space-y-1">
             <li><b>Kirvano</b> e <b>Hotmart</b> já são suportados — só colar a URL da aba <b>Webhook</b> na plataforma e usar o mesmo segredo.</li>
             <li>Plataforma nova (ex: Cartpanda) → usa o endpoint <span className="font-mono">?gateway=generico</span> se ela enviar o JSON no formato esperado; formatos diferentes precisam de um parser no <span className="font-mono">webhook.js</span> (tarefa de dev).</li>
-            <li>Ofertas sem regra aqui caem no <b>pixel padrão</b> da Vercel (<span className="font-mono">META_PIXEL_ID</span>).</li>
+            <li>Oferta <b>sem rota</b> aqui → o evento <b>não é enviado</b> (fica registrado nos Logs como "sem rota"). Pra um catch-all proposital, crie uma rota <b>Padrão (todas)</b>.</li>
           </ul>
         </div>
       )}

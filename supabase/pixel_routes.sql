@@ -2,7 +2,8 @@
 -- PURSTINLAB · Roteamento multi-pixel por oferta
 -- Cada oferta (offer_id/product_id) manda pro SEU pixel + token CAPI.
 -- A mesma oferta pode rodar em vários gateways/países → todos caem no
--- mesmo pixel da oferta. Sem mapeamento → usa o pixel default da Vercel.
+-- mesmo pixel da oferta. Sem rota casada → o evento NÃO é enviado (não
+-- contamina outro pixel). Pra catch-all proposital, crie uma rota match_type='any'.
 --
 -- SEGURANÇA: o capi_token é sensível. O anon (frontend) pode inserir e
 -- atualizar, mas NÃO pode reler o token cru — só enxerga via a view

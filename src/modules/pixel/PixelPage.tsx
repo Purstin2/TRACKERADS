@@ -111,8 +111,8 @@ export default function PixelPage() {
             <Check className="h-4 w-4" /> Salvar
           </button>
           <div className="rounded-[9px] border border-border bg-surface2 px-3.5 py-2.5 text-[11.5px] text-muted">
-            <b className="text-ink">Pixel ID e token CAPI</b> vão como env vars na Vercel (<code>META_PIXEL_ID</code>, <code>META_CAPI_TOKEN</code>) — são o fallback padrão.
-            Para rotear cada oferta pro pixel certo, use a aba <b>Pixels</b>.
+            Cada oferta manda pro seu pixel pela aba <b>Pixels</b> (por offer_id/product_id).
+            <b className="text-ink"> Sem rota cadastrada, o evento não é enviado</b> — assim um ID errado nunca contamina outro pixel.
           </div>
         </div>
       )}
@@ -152,7 +152,7 @@ export default function PixelPage() {
             <div className="mt-3 rounded-[8px] border border-border bg-[#0a0c19] p-3 text-[11px]">
               <b className="text-ink">Antes de funcionar:</b> rode <code>supabase/kirvano_orders.sql</code> <b>e</b> <code>supabase/pixel_routes.sql</code> na Supabase, e na Vercel:
               <code> SUPABASE_URL</code>, <code>SUPABASE_SERVICE_KEY</code>, <code>WEBHOOK_SECRET</code> (Kirvano), <code>HOTMART_HOTTOK</code> (Hotmart).
-              O <code>META_PIXEL_ID</code>/<code>META_CAPI_TOKEN</code> da Vercel viram o <b>pixel padrão</b> (fallback); cadastre os pixels por oferta na aba Pixels.
+              <b>Cada oferta precisa de uma rota na aba Pixels</b> — sem rota casada, o evento não é enviado (não contamina pixel errado).
             </div>
           </div>
         </div>

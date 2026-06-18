@@ -372,25 +372,22 @@ function parseOrder(gateway, body) {
 }
 
 // Resolve qual pixel/token usar pra esta venda: consulta pixel_routes pela
-// offer_id/product_id; se não achar, cai no pixel default da env var.
-// remove espaços/quebras de linha que vazam de env vars ou copy-paste — o Meta
-// rejeita IDs/tokens/test codes com \n ou espaço.
+// offer_id/product_id. Se NÃO achar rota, retorna null → NÃO envia nada.
+// (Sem fallback pro pixel padrão: um offer_id errado não pode contaminar outro
+// pixel. Erro de config vira "evento faltando" — visível nos Logs — e não um
+// evento no pixel errado. Pra ter um catch-all, crie uma rota match_type='any'.)
+// remove espaços/quebras de linha que vazam de copy-paste — o Meta rejeita
+// IDs/tokens/test codes com \n ou espaço.
 const sanitize = (v) => (v == null ? null : String(v).replace(/\s+/g, '') || null)
 
 async function resolvePixel(o) {
-  const def = {
-    pixelId: sanitize(process.env.META_PIXEL_ID),
-    token: sanitize(process.env.META_CAPI_TOKEN),
-    testCode: sanitize(process.env.META_TEST_EVENT_CODE),
-    source: 'default',
-  }
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return def
+  if (!url || !key) return null
 
   // candidatos de match, em ordem de prioridade
   const keys = [o.offerId, o.productId].filter(Boolean).map(String)
-  if (!keys.length) return def
+  if (!keys.length) return null
 
   try {
     // busca rotas ativas que batam com offer_id OU product_id (ou match_type='any')
@@ -398,7 +395,7 @@ async function resolvePixel(o) {
     const q = `${url}/rest/v1/pixel_routes?active=eq.true&or=(offer_id.in.(${inList}),match_type.eq.any)&select=offer_id,match_type,pixel_id,capi_token,test_code,gateways,fire_on_pix&order=match_type.asc`
     const r = await fetch(q, { headers: sbHeaders(key) })
     const rows = await r.json()
-    if (!Array.isArray(rows) || !rows.length) return def
+    if (!Array.isArray(rows) || !rows.length) return null
 
     // prioridade: match exato de offer/product > 'any'. E respeita gateways[] se setado.
     const exact = rows.find(
@@ -411,10 +408,10 @@ async function resolvePixel(o) {
       (row) => row.match_type === 'any' && (!row.gateways || !row.gateways.length || row.gateways.includes(o.gateway))
     )
     const hit = exact || any
-    if (!hit || !hit.pixel_id || !hit.capi_token) return def
+    if (!hit || !hit.pixel_id || !hit.capi_token) return null
     return { pixelId: sanitize(hit.pixel_id), token: sanitize(hit.capi_token), testCode: sanitize(hit.test_code), source: exact ? 'offer' : 'any', fireOnPix: !!hit.fire_on_pix }
   } catch {
-    return def
+    return null
   }
 }
 
@@ -668,15 +665,29 @@ export default async function handler(req, res) {
     eventsToSend = ['InitiateCheckout']
   }
 
+  // Sem rota de pixel pra esta oferta → NÃO envia (não contamina pixel errado).
+  const hasRoute = !!(route && route.pixelId && route.token)
+
   let capiOk = false
-  for (const ev of eventsToSend) {
-    const ok = await sendCAPI(o, req, route, ev)
-    capiOk = capiOk || ok
+  if (hasRoute) {
+    for (const ev of eventsToSend) {
+      const ok = await sendCAPI(o, req, route, ev)
+      capiOk = capiOk || ok
+    }
   }
 
   await upsertOrder(o, capiOk)
 
   const eventLabel = eventsToSend.length ? eventsToSend.join('+') : o.status
+  let message
+  if (!eventsToSend.length) {
+    message = `registrado (${o.status})`
+  } else if (!hasRoute) {
+    // tem evento pra mandar mas NENHUMA rota casou → pulado de propósito
+    message = `${eventLabel} NÃO enviado — sem rota de pixel p/ offer_id=${o.offerId || '—'} / product_id=${o.productId || '—'}. Cadastre na aba Pixels.`
+  } else {
+    message = `${eventLabel} → pixel ${route.pixelId} (${route.source}) → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
+  }
   await logHit({
     gateway,
     event: o.event || gateway,
@@ -685,13 +696,11 @@ export default async function handler(req, res) {
     http_status: 200,
     secret_ok: true,
     capi_ok: capiOk,
-    message: eventsToSend.length
-      ? `${eventLabel} → pixel ${route?.pixelId || '—'} (${route?.source || 'default'}) → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
-      : `registrado (${o.status})`,
+    message,
     ip,
     raw: body,
     created_at: new Date().toISOString(),
   })
 
-  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, event: eventLabel, pixel: route?.pixelId || null, route: route?.source || 'default' })
+  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, event: eventLabel, pixel: route?.pixelId || null, route: route?.source || (eventsToSend.length ? 'sem-rota' : 'n/a') })
 }
