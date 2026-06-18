@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, RefreshCw, Crosshair, Check, X, Power } from 'lucide-react'
+import { Plus, Trash2, Pencil, RefreshCw, Crosshair, Check, X, Power, Code2, Copy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/components/ui/toast'
 import {
@@ -53,13 +53,22 @@ const EMPTY: FormState = {
 
 const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
-function generateSnippet(r: PixelRoute): string {
-  const lines: string[] = [`window.FB_PIXEL_ID = '${r.pixel_id}'`]
-  lines.push(`window.FB_CLICK_EVENT = 'InitiateCheckout'`)
-  if (r.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${r.checkout_selector}'`)
-  if (r.checkout_keywords?.length) {
-    const kws = r.checkout_keywords.map((k) => `'${k.trim()}'`).join(', ')
-    lines.push(`window.FB_CHECKOUT_KEYWORDS = [${kws}]`)
+type SnippetData = {
+  label: string
+  pixel_id: string
+  checkout_selector: string | null
+  checkout_keywords: string[] | null
+}
+
+function buildSnippet(d: SnippetData): string {
+  const lines: string[] = [`window.FB_PIXEL_ID = '${d.pixel_id}'`]
+  if (d.checkout_selector || d.checkout_keywords?.length) {
+    lines.push(`window.FB_CLICK_EVENT = 'InitiateCheckout'`)
+    if (d.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${d.checkout_selector}'`)
+    if (d.checkout_keywords?.length) {
+      const kws = d.checkout_keywords.map((k) => `'${k.trim()}'`).join(', ')
+      lines.push(`window.FB_CHECKOUT_KEYWORDS = [${kws}]`)
+    }
   }
   const vars = lines.map((l) => `  ${l}`).join('\n')
   return `<script>\n${vars}\n</script>\n<script src="${origin}/fbtrack.js" defer></script>`
@@ -71,7 +80,15 @@ export default function PixelsView() {
   const [form, setForm] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [snippet, setSnippet] = useState<SnippetData | null>(null)
+  const [copied, setCopied] = useState(false)
   const connected = !!supabase()
+
+  function copySnippet(d: SnippetData) {
+    navigator.clipboard.writeText(buildSnippet(d))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   async function load() {
     if (!connected) return
@@ -143,7 +160,14 @@ export default function PixelsView() {
     setSaving(false)
     if (res.error) return toast(res.error, 'err')
     toast(form.id ? 'Pixel atualizado' : 'Pixel adicionado', 'ok')
+    const snippetData: SnippetData = {
+      label: form.label || form.pixel_id,
+      pixel_id: form.pixel_id.trim(),
+      checkout_selector: form.checkout_selector.trim() || null,
+      checkout_keywords: kws.length ? kws : null,
+    }
     setForm(null)
+    setSnippet(snippetData)
     load()
   }
 
@@ -242,6 +266,9 @@ export default function PixelsView() {
                   <button className="btn btn-ghost btn-sm !px-1.5" title={r.active ? 'Desativar' : 'Ativar'} onClick={() => toggle(r)}>
                     <Power className={`h-3.5 w-3.5 ${r.active ? 'text-ok' : 'text-muted2'}`} />
                   </button>
+                  <button className="btn btn-ghost btn-sm !px-1.5" title="Ver script da página" onClick={() => setSnippet({ label: r.label || r.pixel_id, pixel_id: r.pixel_id, checkout_selector: r.checkout_selector, checkout_keywords: r.checkout_keywords })}>
+                    <Code2 className="h-3.5 w-3.5 text-brand-2" />
+                  </button>
                   <button className="btn btn-ghost btn-sm !px-1.5" title="Editar" onClick={() => openEdit(r)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
@@ -265,19 +292,52 @@ export default function PixelsView() {
                 {r.fire_on_pix && <span className="rounded-full bg-warn/15 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-warn">Pix → Purchase</span>}
               </div>
               {(r.checkout_selector || r.checkout_keywords?.length) && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted2">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted2">
                   {r.checkout_selector && <span>selector: <span className="font-mono text-muted">{r.checkout_selector}</span></span>}
                   {r.checkout_keywords?.length && <span>keywords: <span className="font-mono text-muted">{r.checkout_keywords.join(', ')}</span></span>}
-                  <button
-                    className="ml-auto text-[11px] text-brand-2 hover:underline"
-                    onClick={() => { navigator.clipboard.writeText(generateSnippet(r)); toast('Script copiado', 'ok') }}
-                  >
-                    copiar script IC
-                  </button>
                 </div>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal de snippet — aparece automaticamente após salvar ou ao clicar em </> */}
+      {snippet && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-16" onClick={() => setSnippet(null)}>
+          <div className="card w-full max-w-[600px] card-body" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ok/12 text-ok">
+                <Code2 className="h-4 w-4" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[14px] font-bold truncate">Script — {snippet.label}</h3>
+                <p className="text-[11px] text-muted">Cole no &lt;head&gt; de cada página de vendas deste produto</p>
+              </div>
+              <button className="btn btn-ghost btn-sm !px-1.5" onClick={() => setSnippet(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <pre className="my-3 overflow-x-auto rounded-[8px] border border-border bg-[#0a0c19] p-4 text-[11.5px] leading-relaxed text-muted font-mono whitespace-pre">
+              {buildSnippet(snippet)}
+            </pre>
+
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-muted2">
+                {snippet.checkout_selector || snippet.checkout_keywords?.length
+                  ? 'Inclui rastreio de clique (InitiateCheckout) no browser.'
+                  : 'Dispara PageView e anexa fbc/fbp nos links de checkout automaticamente.'}
+              </p>
+              <button
+                className="btn btn-primary shrink-0"
+                onClick={() => { copySnippet(snippet); toast('Script copiado!', 'ok') }}
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? 'Copiado!' : 'Copiar script'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
