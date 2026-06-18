@@ -22,11 +22,26 @@ export interface HourPoint {
   hour: string
   value: number
 }
+export interface FunnelStageData {
+  label: string
+  n: number
+  color: string
+}
+export interface CumulativePoint {
+  hour: string
+  investimento: number
+  faturamento: number
+  lucro: number
+}
 
 export interface DashboardData {
   isSample: boolean
   totalSales: number
   payment: PaymentSlice[]
+  vendasPorProduto: PositioningRow[]
+  funnel: FunnelStageData[]
+  cumulative: CumulativePoint[]
+  paises: PositioningRow[]
   // KPIs principais
   roas: number
   cpa: number
@@ -59,6 +74,27 @@ export const SAMPLE: DashboardData = {
     { name: 'Boleto', value: 18, color: '#545c84' },
     { name: 'Outros', value: 2, color: '#ef4444' },
   ],
+  vendasPorProduto: [
+    { label: 'ULTRA PACK STL PROFISSIONAL 100K', count: 23, pct: 48.9 },
+    { label: 'Biblioteca V3.0 Chaveiros', count: 5, pct: 10.6 },
+    { label: 'Biblioteca Virais da Internet', count: 5, pct: 10.6 },
+    { label: 'Biblioteca Mascotes de Time', count: 5, pct: 10.6 },
+    { label: 'Guia Impressão 3D Sem Erros', count: 3, pct: 6.4 },
+  ],
+  funnel: [
+    { label: 'Cliques', n: 1820, color: '#6366f1' },
+    { label: 'Vis. Página', n: 1240, color: '#7c6cf0' },
+    { label: 'ICs', n: 320, color: '#9d7bf0' },
+    { label: 'Vendas Inic.', n: 64, color: '#b87bf0' },
+    { label: 'Vendas Apr.', n: 47, color: '#d16cf0' },
+  ],
+  cumulative: Array.from({ length: 24 }, (_, h) => ({
+    hour: String(h).padStart(2, '0'),
+    investimento: Math.round((h + 1) * 850),
+    faturamento: Math.round((h + 1) * 1800),
+    lucro: Math.round((h + 1) * 950),
+  })),
+  paises: [],
   roas: 2.11,
   cpa: 16.2,
   faturamentoBruto: 43314.53,

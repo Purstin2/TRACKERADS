@@ -3,13 +3,14 @@
  *  - faturamento/vendas/aprovação/reembolso  → pedidos do gateway (kirvano_orders)
  *  - gasto                                    → soma das campanhas Meta selecionadas
  *  - taxa de gateway / imposto                → % dos Parâmetros aplicados sobre o faturamento real
+ *  - funil (cliques→...→vendas apr)           → métricas Meta + aprovadas reais do gateway
  *
- * Dois filtros independentes alimentam isso (escolhidos na tela):
- *   produtos da Kirvano  +  campanhas do Facebook (ativas/inativas/excluídas).
+ * Filtros que alimentam isso (escolhidos na tela): produtos da Kirvano, fonte de
+ * tráfego (utm_source) e contas/campanhas do Facebook.
  */
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 import type { FinParams } from '@/modules/monitor/finance'
-import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint } from './data'
+import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint } from './data'
 
 const up = (s?: string | null) => (s || '').toUpperCase()
 const orderDate = (o: KirvanoOrder) => o.ordered_at || o.created_at || null
@@ -36,6 +37,25 @@ const PM_COLOR: Record<string, string> = {
   Outros: '#ef4444',
 }
 
+/** Normaliza utm_source pra Fonte de Tráfego (FB/fb→Facebook, ig→Instagram...). */
+export function normSource(s?: string | null): string {
+  const v = (s || '').trim().toLowerCase()
+  if (!v) return '(sem origem)'
+  if (v === 'fb' || v === 'facebook' || v.includes('face')) return 'Facebook'
+  if (v === 'ig' || v.includes('insta')) return 'Instagram'
+  if (v.includes('google') || v === 'gg') return 'Google'
+  if (v.includes('tiktok') || v === 'tt') return 'TikTok'
+  if (v.includes('youtube') || v === 'yt') return 'YouTube'
+  return s as string
+}
+
+/** Fontes de tráfego distintas presentes nos pedidos (pro seletor). */
+export function distinctSources(orders: KirvanoOrder[]): string[] {
+  const s = new Set<string>()
+  orders.forEach((o) => s.add(normSource(o.utm_source)))
+  return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+}
+
 /** Produtos distintos presentes nos pedidos (pro seletor de produtos). */
 export function distinctProducts(orders: KirvanoOrder[]): string[] {
   const s = new Set<string>()
@@ -43,21 +63,27 @@ export function distinctProducts(orders: KirvanoOrder[]): string[] {
   return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }
 
-/** Filtra pedidos pelo conjunto de produtos selecionados (null = todos). */
-export function filterByProducts(orders: KirvanoOrder[], products: Set<string> | null): KirvanoOrder[] {
-  if (!products) return orders
-  return orders.filter((o) => o.product && products.has(o.product))
+export interface FunnelMeta {
+  clicks: number
+  lpv: number // landing page views
+  ic: number // initiate checkout
+  salesInit: number // purchases (pixel)
 }
 
 export interface RealOpts {
   orders: KirvanoOrder[] // já filtrados pelo período
   products: Set<string> | null // produtos do gateway selecionados (null = todos)
+  source: Set<string> | null // fontes de tráfego selecionadas (null = todas)
   spend: number // gasto Meta (BRL) das campanhas selecionadas
+  hourlySpend?: number[] // gasto Meta por hora (24) — pro acumulado
+  funnelMeta?: FunnelMeta | null // métricas de funil do Meta
   fin: FinParams
 }
 
-export function buildRealDashboard({ orders, products, spend, fin }: RealOpts): DashboardData {
-  const rows = filterByProducts(orders, products)
+export function buildRealDashboard({ orders, products, source, spend, hourlySpend, funnelMeta, fin }: RealOpts): DashboardData {
+  let rows = products ? orders.filter((o) => o.product && products.has(o.product)) : orders
+  if (source) rows = rows.filter((o) => source.has(normSource(o.utm_source)))
+
   const byStatus = (st: string) => rows.filter((o) => up(o.status) === st)
   const sum = (a: KirvanoOrder[]) => a.reduce((s, o) => s + (o.value || 0), 0)
 
@@ -76,6 +102,7 @@ export function buildRealDashboard({ orders, products, spend, fin }: RealOpts): 
   const fatLiquido = fatBruto - taxas - imposto - reembolsoVal - chargebackVal
   const custoTotal = vendas * fin.custoUn
   const lucro = fatLiquido - spend - fin.despesas - custoTotal
+  const netFactor = fatBruto > 0 ? fatLiquido / fatBruto : 1
 
   // split de pagamento (% por contagem de vendas aprovadas)
   const pmCount: Record<string, number> = {}
@@ -100,24 +127,57 @@ export function buildRealDashboard({ orders, products, spend, fin }: RealOpts): 
     .map((m) => ({ label: m, pct: apprByMethod(m) }))
     .filter((a) => a.pct > 0)
 
-  // faturamento líquido por hora (real, das vendas aprovadas)
-  const netFactor = fatBruto > 0 ? fatLiquido / fatBruto : 1
-  const byHour = Array.from({ length: 24 }, () => 0)
+  // Vendas por Produto (contagem de aprovadas por produto, % do total)
+  const prodCount: Record<string, number> = {}
+  approved.forEach((o) => {
+    const p = o.product || '(sem produto)'
+    prodCount[p] = (prodCount[p] || 0) + 1
+  })
+  const vendasPorProduto: PositioningRow[] = Object.entries(prodCount)
+    .map(([label, count]) => ({ label, count, pct: vendas > 0 ? +((count / vendas) * 100).toFixed(1) : 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+
+  // faturamento líquido por hora (real, das vendas aprovadas) — gráfico "Lucro por Horário"
+  const revByHour = Array.from({ length: 24 }, () => 0)
   approved.forEach((o) => {
     const t = orderDate(o)
     if (!t) return
     const h = new Date(t).getHours()
-    if (h >= 0 && h < 24) byHour[h] += o.value || 0
+    if (h >= 0 && h < 24) revByHour[h] += o.value || 0
   })
-  const profitByHour: HourPoint[] = byHour.map((v, i) => ({
-    hour: String(i).padStart(2, '0'),
-    value: Math.round(v * netFactor),
-  }))
+  const profitByHour: HourPoint[] = revByHour.map((v, i) => ({ hour: String(i).padStart(2, '0'), value: Math.round(v * netFactor) }))
+
+  // Faturamento × Investimento × Lucro por hora (acumulado)
+  const spH = hourlySpend && hourlySpend.length === 24 ? hourlySpend : Array.from({ length: 24 }, () => 0)
+  let accInv = 0
+  let accFat = 0
+  let accLuc = 0
+  const cumulative: CumulativePoint[] = revByHour.map((rev, h) => {
+    accInv += spH[h] || 0
+    accFat += rev
+    accLuc += rev * netFactor - (spH[h] || 0)
+    return { hour: String(h).padStart(2, '0'), investimento: Math.round(accInv), faturamento: Math.round(accFat), lucro: Math.round(accLuc) }
+  })
+
+  // Funil de Conversão (Meta) → última etapa = aprovadas reais do gateway
+  const fm = funnelMeta
+  const funnel: FunnelStageData[] = [
+    { label: 'Cliques', n: fm?.clicks ?? 0, color: '#6366f1' },
+    { label: 'Vis. Página', n: fm?.lpv ?? 0, color: '#7c6cf0' },
+    { label: 'ICs', n: fm?.ic ?? 0, color: '#9d7bf0' },
+    { label: 'Vendas Inic.', n: fm?.salesInit ?? 0, color: '#b87bf0' },
+    { label: 'Vendas Apr.', n: vendas, color: '#d16cf0' },
+  ]
 
   return {
     isSample: false,
     totalSales: vendas,
     payment,
+    vendasPorProduto,
+    funnel,
+    cumulative,
+    paises: [], // país não é capturado no webhook ainda
     roas: spend > 0 ? fatBruto / spend : 0,
     cpa: vendas > 0 ? spend / vendas : 0,
     faturamentoBruto: fatBruto,
@@ -135,7 +195,7 @@ export function buildRealDashboard({ orders, products, spend, fin }: RealOpts): 
     vendasPendentes: sum(pending),
     vendasReembolsadas: reembolsoVal,
     approval,
-    positioning: [], // posicionamento real exigiria breakdown Meta por placement — fora do escopo deste filtro
+    positioning: [],
     profitByHour,
   }
 }

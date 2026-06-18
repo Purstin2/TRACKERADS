@@ -7,8 +7,13 @@ import {
   BarChart,
   Bar,
   XAxis,
+  YAxis,
   Tooltip,
+  AreaChart,
+  Area,
+  Legend,
 } from 'recharts'
+import Funnel from '@/modules/monitor/components/Funnel'
 import { BRL, PCT, type DashboardData } from './data'
 
 export interface WidgetDef {
@@ -188,6 +193,110 @@ export const WIDGETS: WidgetDef[] = [
       )
     },
   },
+
+  // ── Vendas por Produto ──
+  {
+    id: 'vendas_produto',
+    category: 'Geral',
+    title: 'Vendas por Produto',
+    w: 5,
+    h: 4,
+    minH: 3,
+    render: (d) => {
+      const top = d.vendasPorProduto[0]?.pct || 1
+      return (
+        <div className="flex h-full flex-col justify-center gap-2.5 overflow-y-auto">
+          {d.vendasPorProduto.length === 0 && <div className="text-center text-[12px] text-muted2">Sem vendas no período.</div>}
+          {d.vendasPorProduto.map((p) => (
+            <div key={p.label} className="flex items-center gap-2">
+              <span className="w-[150px] truncate text-[12px] text-ink" title={p.label}>{p.label}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface2">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${(p.pct / top) * 100}%` }} />
+              </div>
+              <span className="w-7 text-right text-[12px] font-semibold text-muted">{p.count}</span>
+              <span className="w-11 text-right text-[11px] text-muted2">{PCT(p.pct)}</span>
+            </div>
+          ))}
+        </div>
+      )
+    },
+  },
+
+  // ── Vendas por País (estável até capturarmos país no checkout) ──
+  {
+    id: 'vendas_pais',
+    category: 'Geral',
+    title: 'Vendas por País',
+    w: 4,
+    h: 4,
+    minH: 3,
+    render: (d) =>
+      d.paises.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+          <span className="text-[13px] font-semibold text-muted">Sem dados de país</span>
+          <span className="max-w-[220px] text-[11px] text-muted2">O país não é capturado no checkout ainda — quando o gateway enviar, aparece aqui.</span>
+        </div>
+      ) : (
+        <div className="flex h-full flex-col justify-center gap-2.5">
+          {d.paises.map((p) => (
+            <div key={p.label} className="flex items-center gap-2">
+              <span className="w-[120px] truncate text-[12px] text-ink">{p.label}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface2">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${(p.pct / (d.paises[0].pct || 1)) * 100}%` }} />
+              </div>
+              <span className="w-7 text-right text-[12px] font-semibold text-muted">{p.count}</span>
+            </div>
+          ))}
+        </div>
+      ),
+  },
+
+  // ── Funil de Conversão (Meta Ads) ──
+  {
+    id: 'funil_conversao',
+    category: 'Gráficos Avançados',
+    title: 'Funil de Conversão (Meta Ads)',
+    w: 12,
+    h: 5,
+    minH: 4,
+    minW: 6,
+    render: (d) => (
+      <div className="h-full overflow-hidden">
+        <Funnel stages={d.funnel} title="Cliques → Visita → IC → Venda iniciada → Aprovada" />
+      </div>
+    ),
+  },
+
+  // ── Faturamento × Investimento × Lucro por Hora (acumulado) ──
+  {
+    id: 'fat_inv_lucro',
+    category: 'Gráficos Avançados',
+    title: 'Faturamento × Investimento × Lucro (acumulado/hora)',
+    w: 12,
+    h: 4,
+    minH: 3,
+    minW: 4,
+    render: (d) => (
+      <div className="h-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={d.cumulative} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gFat" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.35} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
+              <linearGradient id="gInv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} /><stop offset="100%" stopColor="#f59e0b" stopOpacity={0} /></linearGradient>
+              <linearGradient id="gLuc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} /><stop offset="100%" stopColor="#6366f1" stopOpacity={0} /></linearGradient>
+            </defs>
+            <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} minTickGap={20} />
+            <YAxis tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} width={44} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => BRL(v)} labelFormatter={(h) => `${h}h`} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Area type="monotone" dataKey="faturamento" name="Faturamento" stroke="#10b981" strokeWidth={2} fill="url(#gFat)" />
+            <Area type="monotone" dataKey="investimento" name="Investimento" stroke="#f59e0b" strokeWidth={2} fill="url(#gInv)" />
+            <Area type="monotone" dataKey="lucro" name="Lucro" stroke="#6366f1" strokeWidth={2} fill="url(#gLuc)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    ),
+  },
 ]
 
 export const WIDGET_MAP = Object.fromEntries(WIDGETS.map((w) => [w.id, w])) as Record<
@@ -218,7 +327,7 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'lucro', x: 3, y: 4, w: 3, h: 2 },
   { i: 'gasto', x: 6, y: 4, w: 3, h: 2 },
   { i: 'despesas', x: 9, y: 4, w: 3, h: 2 },
-  { i: 'posicionamento', x: 0, y: 6, w: 5, h: 4 },
+  { i: 'vendas_produto', x: 0, y: 6, w: 5, h: 4 },
   { i: 'aprovacao', x: 5, y: 6, w: 4, h: 3 },
   { i: 'taxas', x: 9, y: 6, w: 3, h: 2 },
   { i: 'imposto_total', x: 9, y: 8, w: 3, h: 2 },
@@ -226,7 +335,10 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'chargeback', x: 3, y: 10, w: 3, h: 2 },
   { i: 'vendas_pendentes', x: 6, y: 10, w: 3, h: 2 },
   { i: 'vendas_reembolsadas', x: 9, y: 10, w: 3, h: 2 },
-  { i: 'lucro_horario', x: 0, y: 12, w: 12, h: 4 },
+  { i: 'vendas_pais', x: 0, y: 12, w: 4, h: 4 },
+  { i: 'lucro_horario', x: 4, y: 12, w: 8, h: 4 },
+  { i: 'funil_conversao', x: 0, y: 16, w: 12, h: 5 },
+  { i: 'fat_inv_lucro', x: 0, y: 21, w: 12, h: 4 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
