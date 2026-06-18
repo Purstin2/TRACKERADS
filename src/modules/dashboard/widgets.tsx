@@ -28,11 +28,15 @@ export interface WidgetDef {
   render: (d: DashboardData) => ReactNode
 }
 
-/* ── KPI value (corpo de card simples) ── */
-function kpiBody(value: ReactNode, accent?: boolean, sub?: ReactNode) {
+/* ── KPI value (corpo de card simples) ──
+ * tone: 'ok' = verde, 'bad' = vermelho (prejuízo/abaixo do breakeven), undefined = neutro.
+ * `true` ainda é aceito (= 'ok') pra compatibilidade. */
+type Tone = 'ok' | 'bad' | boolean | undefined
+function kpiBody(value: ReactNode, tone?: Tone, sub?: ReactNode) {
+  const color = tone === 'bad' ? 'text-danger' : tone === 'ok' || tone === true ? 'text-ok' : 'text-ink'
   return (
     <div className="flex h-full flex-col justify-center">
-      <div className={`text-[22px] font-extrabold leading-tight ${accent ? 'text-ok' : 'text-ink'}`}>
+      <div className={`text-[22px] font-extrabold leading-tight ${color}`}>
         {value}
       </div>
       {sub && <div className="mt-0.5 text-[11px] text-muted2">{sub}</div>}
@@ -56,14 +60,15 @@ const TOOLTIP_STYLE = {
 /* ───────────────── registry ───────────────── */
 export const WIDGETS: WidgetDef[] = [
   // ── Geral · KPIs ──
-  { id: 'roas', category: 'Geral', title: 'ROAS', w: 3, h: 2, accent: true, render: (d) => kpiBody(d.roas.toFixed(2), true) },
+  // ROAS/ROI: verde >= 1 (faturou/recuperou o gasto), vermelho < 1 (prejuízo no período).
+  { id: 'roas', category: 'Geral', title: 'ROAS', w: 3, h: 2, accent: true, render: (d) => kpiBody(d.roas.toFixed(2), d.roas >= 1 ? 'ok' : 'bad') },
   { id: 'cpa', category: 'Geral', title: 'CPA', w: 3, h: 2, render: (d) => kpiBody(BRL(d.cpa)) },
   { id: 'faturamento_bruto', category: 'Geral', title: 'Faturamento Bruto', w: 3, h: 2, render: (d) => kpiBody(BRL(d.faturamentoBruto)) },
-  { id: 'margem', category: 'Geral', title: 'Margem', w: 3, h: 2, accent: true, render: (d) => kpiBody(PCT(d.margem), true) },
+  { id: 'margem', category: 'Geral', title: 'Margem', w: 3, h: 2, accent: true, render: (d) => kpiBody(PCT(d.margem), d.margem >= 0 ? 'ok' : 'bad') },
   { id: 'arpu', category: 'Geral', title: 'ARPU', w: 3, h: 2, render: (d) => kpiBody(BRL(d.arpu)) },
   { id: 'faturamento_liquido', category: 'Geral', title: 'Faturamento Líquido', w: 3, h: 2, render: (d) => kpiBody(BRL(d.faturamentoLiquido)) },
-  { id: 'roi', category: 'Geral', title: 'ROI', w: 3, h: 2, accent: true, render: (d) => kpiBody(d.roi.toFixed(2), true) },
-  { id: 'lucro', category: 'Geral', title: 'Lucro', w: 3, h: 2, accent: true, render: (d) => kpiBody(BRL(d.lucro), true) },
+  { id: 'roi', category: 'Geral', title: 'ROI', w: 3, h: 2, accent: true, render: (d) => kpiBody(d.roi.toFixed(2), d.roi >= 1 ? 'ok' : 'bad') },
+  { id: 'lucro', category: 'Geral', title: 'Lucro', w: 3, h: 2, accent: true, render: (d) => kpiBody(BRL(d.lucro), d.lucro >= 0 ? 'ok' : 'bad') },
   { id: 'gasto', category: 'Geral', title: 'Gastos com anúncios', w: 3, h: 2, render: (d) => kpiBody(BRL(d.gastoAds)) },
   { id: 'despesas', category: 'Geral', title: 'Despesas adicionais', w: 3, h: 2, render: (d) => kpiBody(BRL(d.despesasAdicionais)) },
   { id: 'reembolso', category: 'Geral', title: 'Taxa de Reembolso', w: 3, h: 2, render: (d) => kpiBody(PCT(d.reembolsoPct)) },

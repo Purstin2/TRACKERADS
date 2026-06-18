@@ -99,7 +99,11 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
   const imposto = fatBruto * (fin.imposto / 100)
   const reembolsoVal = sum(refunded)
   const chargebackVal = sum(charged)
-  const fatLiquido = fatBruto - taxas - imposto - reembolsoVal - chargebackVal
+  // Líquido = Bruto − taxas de gateway − imposto (mesma conta da UTMify).
+  // Reembolso/chargeback NÃO entram aqui: a venda reembolsada já saiu do Bruto
+  // (status vira REFUNDED), então descontar de novo seria dupla penalização.
+  // Ficam como métricas informativas (reembolsoPct / vendasReembolsadas).
+  const fatLiquido = fatBruto - taxas - imposto
   const custoTotal = vendas * fin.custoUn
   const lucro = fatLiquido - spend - fin.despesas - custoTotal
   const netFactor = fatBruto > 0 ? fatLiquido / fatBruto : 1
