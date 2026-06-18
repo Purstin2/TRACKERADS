@@ -163,15 +163,35 @@
     new MutationObserver(decorateAllLinks).observe(document.documentElement, { childList: true, subtree: true })
   } catch (e) {}
 
+  // ── Evento de funil no clique (opcional, estilo "Contém CSS" da UTMIFY) ───────
+  // DESLIGADO por padrão. Pra ligar, ANTES do script:
+  //   window.FB_CLICK_EVENT = 'AddToCart'              // ou 'InitiateCheckout'
+  //   window.FB_CLICK_SELECTOR = '.btn-primary--full'  // (opcional) além dos links de checkout
+  //   window.FB_CLICK_DATA = { value: 59.9, currency: 'BRL' }   // (opcional)
+  // Dispara quando clicam num link de checkout (Kirvano/Hotmart) OU num elemento que
+  // casa o seletor. Recomendado 'AddToCart': o InitiateCheckout "de verdade" (com
+  // email/telefone/CPF) já vem do servidor — usar IC aqui duplicaria.
+  var CLICK_EVENT = window.FB_CLICK_EVENT || null
+  var CLICK_SELECTOR = window.FB_CLICK_SELECTOR || null
+  function fireFunnelClick() {
+    if (!CLICK_EVENT) return
+    try { fbq('track', CLICK_EVENT, window.FB_CLICK_DATA || {}) } catch (e) {}
+  }
+
   // intercepta clique direto (caso o href seja trocado por JS no último instante)
   document.addEventListener(
     'click',
     function (e) {
-      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null
-      if (a && isCheckout(a.href) && !a.getAttribute('data-fbtrack')) {
+      var t = e.target
+      var a = t && t.closest ? t.closest('a[href]') : null
+      var isCo = a && isCheckout(a.href)
+      if (isCo && !a.getAttribute('data-fbtrack')) {
         a.href = decorate(a.href)
         a.setAttribute('data-fbtrack', '1')
       }
+      // funil opcional: clicou num link de checkout ou num elemento do seletor
+      var matchSel = CLICK_SELECTOR && t && t.closest ? t.closest(CLICK_SELECTOR) : null
+      if (CLICK_EVENT && (isCo || matchSel)) fireFunnelClick()
     },
     true
   )
@@ -183,7 +203,16 @@
   function viewContent(data) {
     try { fbq('track', 'ViewContent', data || {}) } catch (e) {}
   }
-  window.fbTrack = { viewContent: viewContent, decorate: decorate, pixelId: PIXEL_ID }
+  // helpers manuais p/ disparar qualquer evento de funil onde você quiser
+  function track(event, data) { try { fbq('track', event, data || {}) } catch (e) {} }
+  window.fbTrack = {
+    viewContent: viewContent,
+    addToCart: function (d) { track('AddToCart', d) },
+    initiateCheckout: function (d) { track('InitiateCheckout', d) },
+    track: track,
+    decorate: decorate,
+    pixelId: PIXEL_ID,
+  }
   if (window.FB_VIEW_CONTENT) viewContent(window.FB_VIEW_CONTENT)
 
   // expõe pra debug no console: window.__fbtrack
