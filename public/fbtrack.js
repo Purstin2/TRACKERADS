@@ -180,10 +180,40 @@
     ? _kwSrc
     : (_kwSrc ? String(_kwSrc).split(',').map(function (k) { return k.trim() }).filter(Boolean) : [])
 
-  function hrefHasKeyword(href) {
-    if (!href || !CHECKOUT_KEYWORDS.length) return false
-    var lhref = href.toLowerCase()
-    return CHECKOUT_KEYWORDS.some(function (k) { return k && lhref.indexOf(k.toLowerCase()) >= 0 })
+  function strHasKeyword(s) {
+    if (!s || !CHECKOUT_KEYWORDS.length) return false
+    var low = String(s).toLowerCase()
+    return CHECKOUT_KEYWORDS.some(function (k) { return k && low.indexOf(k.toLowerCase()) >= 0 })
+  }
+  var hrefHasKeyword = strHasKeyword   // mantém nome antigo
+
+  // Acha uma URL de checkout no elemento clicado OU nos ancestrais — cobrindo
+  // não só <a href>, mas também botões com onclick="goCheckout('https://pay.kirvano...')",
+  // data-href, data-url, etc. Retorna { url, node } ou null.
+  function findCheckoutTarget(el) {
+    var node = el
+    for (var i = 0; node && node.getAttribute && i < 6; i++, node = node.parentElement) {
+      // 1) link normal
+      if (node.tagName === 'A' && node.getAttribute('href')) {
+        var href = node.href
+        if (isCheckout(href) || strHasKeyword(href)) return { url: href, node: node, isAnchor: true }
+      }
+      // 2) onclick / data-* que carregam a URL (botões com redirect via JS)
+      var blob =
+        (node.getAttribute('onclick') || '') + ' ' +
+        (node.getAttribute('data-href') || '') + ' ' +
+        (node.getAttribute('data-url') || '') + ' ' +
+        (node.getAttribute('data-checkout') || '') + ' ' +
+        (node.getAttribute('data-link') || '')
+      if (blob.trim()) {
+        var m = blob.match(/https?:\/\/[^'"\s)]+/)
+        var url = m ? m[0] : null
+        if ((url && (isCheckout(url) || strHasKeyword(url))) || strHasKeyword(blob)) {
+          return { url: url, node: node, isAnchor: false }
+        }
+      }
+    }
+    return null
   }
 
   function fireFunnelClick() {
@@ -191,21 +221,19 @@
     try { fbq('track', CLICK_EVENT, window.FB_CLICK_DATA || {}) } catch (e) {}
   }
 
-  // intercepta clique direto (caso o href seja trocado por JS no último instante)
+  // intercepta clique (em link OU botão) que leva pro checkout
   document.addEventListener(
     'click',
     function (e) {
       var t = e.target
-      var a = t && t.closest ? t.closest('a[href]') : null
-      var isCo = a && isCheckout(a.href)
-      var matchKw = a && hrefHasKeyword(a.href)
-      if ((isCo || matchKw) && !a.getAttribute('data-fbtrack')) {
-        a.href = decorate(a.href)
-        a.setAttribute('data-fbtrack', '1')
+      var hit = t && t.closest ? findCheckoutTarget(t) : null
+      // se for <a href> de checkout, decora com fbc/fbp (uma vez)
+      if (hit && hit.isAnchor && hit.node && !hit.node.getAttribute('data-fbtrack')) {
+        try { hit.node.href = decorate(hit.node.href); hit.node.setAttribute('data-fbtrack', '1') } catch (e2) {}
       }
-      // funil opcional: clicou num link de checkout, num elemento do seletor ou link com keyword
+      // seletor manual (FB_CLICK_SELECTOR) continua valendo como alternativa
       var matchSel = CLICK_SELECTOR && t && t.closest ? t.closest(CLICK_SELECTOR) : null
-      if (CLICK_EVENT && (isCo || matchSel || matchKw)) fireFunnelClick()
+      if (CLICK_EVENT && (hit || matchSel)) fireFunnelClick()
     },
     true
   )
