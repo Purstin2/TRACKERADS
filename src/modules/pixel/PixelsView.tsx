@@ -50,6 +50,7 @@ export default function PixelsView() {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const connected = !!supabase()
 
   async function load() {
@@ -137,13 +138,47 @@ export default function PixelsView() {
           Cada oferta manda pro seu pixel. A mesma oferta em vários gateways/países cai no mesmo pixel.
           Sem mapeamento → usa o pixel padrão da Vercel.
         </p>
-        <button className="btn btn-ghost btn-sm ml-auto" onClick={load} disabled={loading}>
+        <button className="btn btn-ghost btn-sm ml-auto" onClick={() => setShowHelp((v) => !v)}>
+          {showHelp ? 'Ocultar guia' : '❓ Como adicionar'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
         </button>
         <button className="btn btn-primary btn-sm" onClick={openNew}>
           <Plus className="h-3.5 w-3.5" /> Adicionar pixel
         </button>
       </div>
+
+      {showHelp && (
+        <div className="rounded-[10px] border border-brand/20 border-l-[3px] border-l-brand bg-brand/[0.05] px-4 py-3 text-[12px] leading-relaxed text-muted">
+          <div className="mb-2 text-[13px] font-bold text-ink">➕ Adicionar uma oferta/página nova</div>
+          <ol className="ml-4 list-decimal space-y-1.5">
+            <li>
+              No <b>Events Manager</b> da Meta, escolha (ou crie) o Pixel da oferta e gere o token:
+              <i> Configurações → Conversions API → Gerar token de acesso</i>.
+            </li>
+            <li>
+              Descubra a <b>chave de roteamento</b>:
+              <ul className="ml-4 mt-1 list-disc space-y-1">
+                <li>
+                  <b>Kirvano</b> (1 checkout com várias ofertas de preço, mas 1 produto só) → use
+                  <b> Por produto (product_id)</b>. Assim <u>todas as variações de preço caem no mesmo pixel</u> pra sempre.
+                </li>
+                <li>Se cada oferta for um produto diferente → use <b>Por oferta (offer_id)</b>.</li>
+                <li>O <span className="font-mono">product_id</span>/<span className="font-mono">offer_id</span> aparece em cada venda na aba <b>Pedidos</b> (ou no painel da Kirvano).</li>
+              </ul>
+            </li>
+            <li><b>Adicionar pixel</b> → preencha Nome, Roteamento, a chave, Pixel ID e Token → Salvar. <b>Vale na próxima venda, sem deploy.</b></li>
+            <li>No site da oferta, aponte o <span className="font-mono">window.FB_PIXEL_ID</span> do <span className="font-mono">fbtrack.js</span> pro <b>mesmo</b> pixel (pro PageView/ViewContent baterem no lugar certo).</li>
+          </ol>
+          <div className="mb-1.5 mt-3 text-[13px] font-bold text-ink">🔌 Adicionar um gateway novo</div>
+          <ul className="ml-4 list-disc space-y-1">
+            <li><b>Kirvano</b> e <b>Hotmart</b> já são suportados — só colar a URL da aba <b>Webhook</b> na plataforma e usar o mesmo segredo.</li>
+            <li>Plataforma nova (ex: Cartpanda) → usa o endpoint <span className="font-mono">?gateway=generico</span> se ela enviar o JSON no formato esperado; formatos diferentes precisam de um parser no <span className="font-mono">webhook.js</span> (tarefa de dev).</li>
+            <li>Ofertas sem regra aqui caem no <b>pixel padrão</b> da Vercel (<span className="font-mono">META_PIXEL_ID</span>).</li>
+          </ul>
+        </div>
+      )}
 
       {routes.length === 0 ? (
         <div className="rounded-xl2 border border-dashed border-border py-12 text-center text-[13px] text-muted2">
