@@ -38,8 +38,7 @@ from pixel_routes;
 -- ── RLS ──────────────────────────────────────────────────────────────
 alter table pixel_routes enable row level security;
 
--- anon pode INSERIR e ATUALIZAR rotas (cadastro pela tela),
--- mas NÃO pode dar SELECT na tabela base (token cru fica protegido).
+-- anon pode INSERIR, ATUALIZAR e EXCLUIR rotas (cadastro pela tela).
 drop policy if exists "pixel_routes_insert" on pixel_routes;
 create policy "pixel_routes_insert" on pixel_routes for insert with check (true);
 
@@ -49,7 +48,23 @@ create policy "pixel_routes_update" on pixel_routes for update using (true) with
 drop policy if exists "pixel_routes_delete" on pixel_routes;
 create policy "pixel_routes_delete" on pixel_routes for delete using (true);
 
--- (sem policy de SELECT → anon não lê a tabela base; lê só a view abaixo)
+-- IMPORTANTE: UPDATE/DELETE com WHERE precisam de policy de SELECT pra LOCALIZAR
+-- a linha — sem ela o Postgres afeta 0 linhas e o PATCH vira no-op silencioso
+-- (retorna 204 "ok" mas nada muda; era o bug do Test Event Code que "voltava").
+-- Então damos SELECT (using true), e protegemos o TOKEN por privilégio de COLUNA.
+drop policy if exists "pixel_routes_select" on pixel_routes;
+create policy "pixel_routes_select" on pixel_routes for select using (true);
+
+-- token secreto: revoga SELECT total e concede em TODAS as colunas MENOS capi_token.
+-- (o webhook usa a service key e ignora isto.)
+revoke select on pixel_routes from anon;
+revoke select on pixel_routes from authenticated;
+grant select (id, label, offer_id, match_type, pixel_id, test_code, active,
+  gateways, checkout_selector, checkout_keywords, fire_on_pix, created_at, updated_at)
+  on pixel_routes to anon;
+grant select (id, label, offer_id, match_type, pixel_id, test_code, active,
+  gateways, checkout_selector, checkout_keywords, fire_on_pix, created_at, updated_at)
+  on pixel_routes to authenticated;
 
 -- a view roda com os direitos do dono (security definer) → consegue ler a base,
 -- mas só expõe colunas sem o token. Damos SELECT da view pro anon.
