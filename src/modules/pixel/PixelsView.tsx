@@ -51,7 +51,12 @@ const EMPTY: FormState = {
   hasToken: false,
 }
 
-const origin = typeof window !== 'undefined' ? window.location.origin : ''
+const PROD_URL = 'https://trackerads-nine.vercel.app'
+const origin = typeof window !== 'undefined'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? PROD_URL
+      : window.location.origin)
+  : PROD_URL
 
 type SnippetData = {
   label: string
