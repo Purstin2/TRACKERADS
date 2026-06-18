@@ -118,8 +118,8 @@ export const periodLabel = (val: string) => {
   return `${fmtDate(since)}–${fmtDate(until)}`
 }
 
-function statusClause(s: string[]) {
-  return { field: 'campaign.effective_status', operator: 'IN', value: s || ['ACTIVE'] }
+function statusClause(s: string[], field = 'campaign.effective_status') {
+  return { field, operator: 'IN', value: s || ['ACTIVE'] }
 }
 
 /* ── fetchers ── */
@@ -215,7 +215,9 @@ export function fetchCreatives(accId: string, preset: string, t: string, statuse
     fields:
       'ad_id,ad_name,campaign_name,spend,purchase_roas,cost_per_action_type,actions,action_values',
     ...dateParams(preset),
-    filtering: JSON.stringify([statusClause(statuses)]),
+    // filtro pelo status do PRÓPRIO anúncio (não da campanha) — assim "Apenas excluídas"
+    // pega criativos arquivados/excluídos mesmo dentro de campanhas ainda ativas.
+    filtering: JSON.stringify([statusClause(statuses, 'ad.effective_status')]),
     access_token: t,
     limit: '500',
   })

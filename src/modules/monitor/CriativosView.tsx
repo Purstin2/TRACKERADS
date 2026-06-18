@@ -18,6 +18,11 @@ interface AdRow {
 export default function CriativosView() {
   const m = useMonitor()
   const [period, setPeriod] = useState('last_7d')
+  // datas do modo "Personalizado" (default: últimos 7 dias)
+  const today = new Date().toISOString().split('T')[0]
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0]
+  const [from, setFrom] = useState(weekAgo)
+  const [to, setTo] = useState(today)
   const [sortBy, setSortBy] = useState('spend')
   const [minSpend, setMinSpend] = useState('0')
   const [loading, setLoading] = useState(false)
@@ -25,8 +30,13 @@ export default function CriativosView() {
   const [cur, setCur] = useState('$')
   const [errs, setErrs] = useState<string[]>([])
 
+  // período efetivo enviado à API: preset normal ou custom:since:until
+  const effPeriod = period === 'custom' ? `custom:${from}:${to}` : period
+
   async function load() {
     if (!m.token.trim()) return alert('Cole o token.')
+    if (period === 'custom' && (!from || !to || from > to))
+      return alert('Escolha um intervalo de datas válido (De ≤ Até).')
     const accs = ACCOUNTS.filter((a) => m.selected.has(a.id))
     if (!accs.length) return
     setLoading(true)
@@ -40,7 +50,7 @@ export default function CriativosView() {
     for (const acc of accs) {
       const fx = mixed ? (acc.cur === 'BRL' ? 1 / m.settings.fx : 1) : 1
       try {
-        const rows = await fetchCreatives(acc.id, period, m.token.trim(), statuses)
+        const rows = await fetchCreatives(acc.id, effPeriod, m.token.trim(), statuses)
         rows.forEach((r) => {
           const spend = parseFloat(r.spend || '0') * fx
           if (spend < min) return
@@ -102,7 +112,27 @@ export default function CriativosView() {
               {d.label}
             </option>
           ))}
+          <option value="custom">📅 Personalizado…</option>
         </select>
+        {period === 'custom' && (
+          <span className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={from}
+              max={to || today}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1.5 text-[12px] text-ink [color-scheme:dark]"
+            />
+            <span className="text-[11px] text-muted2">até</span>
+            <input
+              type="date"
+              value={to}
+              max={today}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1.5 text-[12px] text-ink [color-scheme:dark]"
+            />
+          </span>
+        )}
         <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">Ordenar</span>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink">
           <option value="spend">Maior gasto</option>

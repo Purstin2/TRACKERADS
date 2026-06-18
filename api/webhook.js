@@ -442,8 +442,8 @@ async function sendCAPI(o, req, route) {
   const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
   const clientUa = req.headers['user-agent'] || null
 
-  const isAbandoned = o.abandoned
-  const eventName = isAbandoned ? 'InitiateCheckout' : 'Purchase'
+  const isPurchase = o.approved
+  const eventName = isPurchase ? 'Purchase' : 'InitiateCheckout'
 
   // external_id: identificadores fortes e estáveis do mesmo usuário.
   // CPF é o mais forte (único por pessoa); checkout_id ajuda a amarrar a sessão.
@@ -493,7 +493,7 @@ async function sendCAPI(o, req, route) {
     num_items: numItems,
     currency,
     value: totalValue,
-    ...(isAbandoned ? {} : { order_id: String(o.saleId || o.checkoutId) }),
+    ...(isPurchase ? { order_id: String(o.saleId || o.checkoutId) } : {}),
     // rastreio próprio (não é sinal de match, mas fica registrado no evento)
     ...(o.gclid ? { gclid: o.gclid } : {}),
   }
@@ -507,9 +507,13 @@ async function sendCAPI(o, req, route) {
   const eventPayload = {
     event_name: eventName,
     event_time: eventTime,
-    // event_id = sale_id (Purchase) / checkout_id (InitiateCheckout).
-    // Único por transação → dedup automática caso futuramente haja pixel no browser.
-    event_id: String(o.saleId || o.checkoutId),
+    // event_id estável: Purchase = sale_id (1 por venda); InitiateCheckout = checkout_id
+    // (1 por carrinho → dedup automática entre os vários webhooks do mesmo checkout:
+    // pix gerado → recusado → expirado → abandonado contam como UM só InitiateCheckout;
+    // e dedup com o pixel do browser, se este mandar o mesmo event_id).
+    event_id: isPurchase
+      ? String(o.saleId || o.checkoutId)
+      : String(o.checkoutId || o.saleId),
     action_source: 'website',
     event_source_url: o.checkoutUrl || undefined,
     user_data: userData,
@@ -557,7 +561,9 @@ async function upsertOrder(o, capiOk) {
     event: o.event,
     status: o.status,
     value: o.value,
-    currency: 'BRL',
+    // moeda real do pedido (a que o gateway mandou, senão deriva do país) — antes
+    // gravava 'BRL' fixo, o que distorcia pedidos PT/CL/ES no Financeiro.
+    currency: o.currency || currencyOf(isoCountry(o.country)),
     product: o.product,
     products: o.products?.length ? o.products : null,
     payment_method: o.paymentMethod,
@@ -639,13 +645,16 @@ export default async function handler(req, res) {
   // resolve qual pixel/token usar (por oferta) antes de mandar
   const route = await resolvePixel(o)
 
-  // CAPI dispara em aprovada E em carrinho abandonado (InitiateCheckout)
-  const shouldSendCAPI = o.approved || o.abandoned
+  // CAPI: Purchase em venda aprovada; InitiateCheckout em QUALQUER iniciação de
+  // checkout (pix/boleto gerado, recusada, expirada, abandonada) — não só abandono.
+  // A dedup por event_id=checkout_id garante 1 IC por carrinho mesmo com vários hits.
+  const IC_STATES = ['PENDING', 'REFUSED', 'EXPIRED', 'ABANDONED']
+  const shouldSendCAPI = o.approved || IC_STATES.includes(o.status)
   const capiOk = shouldSendCAPI ? await sendCAPI(o, req, route) : false
 
   await upsertOrder(o, capiOk)
 
-  const eventLabel = o.approved ? 'Purchase' : o.abandoned ? 'InitiateCheckout' : o.status
+  const eventLabel = o.approved ? 'Purchase' : shouldSendCAPI ? 'InitiateCheckout' : o.status
   await logHit({
     gateway,
     event: o.event || gateway,

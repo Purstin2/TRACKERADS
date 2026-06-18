@@ -173,7 +173,7 @@ export default function PixelPage() {
               <li>O gateway dispara o webhook a cada evento (venda <i>e</i> carrinho abandonado).</li>
               <li>A função valida o token e <b>registra o hit</b> em <code>kirvano_webhook_logs</code> (aba Logs — onde você confirma que tá pegando).</li>
               <li><b>Salva/atualiza o pedido</b> pela <code>checkout_id</code> — o mesmo carrinho vira venda no mesmo registro (aba Pedidos).</li>
-              <li>Se for <b>aprovada/abandonada</b>, manda <b>Purchase/InitiateCheckout</b> ao Meta (CAPI) com até 13 sinais, pro <b>pixel da oferta</b> (aba Pixels).</li>
+              <li><b>Venda aprovada</b> → <b>Purchase</b>. <b>Qualquer iniciação de checkout</b> (pix/boleto gerado, recusada, expirada, abandonada) → <b>InitiateCheckout</b> (dedup por carrinho). Ambos ao Meta (CAPI) com até 13 sinais, pro <b>pixel da oferta</b> (aba Pixels).</li>
               <li>Carrinho abandonado ganha botão de <b>recuperar no WhatsApp</b>.</li>
             </ol>
             <div className="mt-3 rounded-[8px] border border-border bg-[#0a0c19] p-3 text-[11px]">

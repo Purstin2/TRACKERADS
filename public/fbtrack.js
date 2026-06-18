@@ -1,19 +1,42 @@
 /*!
- * fbtrack.js — captura fbclid/_fbc/_fbp e repassa pro checkout Kirvano.
- * Substitui o que a UTMIFY fazia. Sem dependências, ~1.5KB.
+ * fbtrack.js — Meta Pixel (browser) + captura fbclid/_fbc/_fbp pro checkout.
+ * Substitui o que a UTMIFY fazia. Sem dependências, ~3KB.
  *
  * COMO USAR:
  * 1. Hospede este arquivo (já vai no /public do PURSTINLAB → https://SEU-APP.vercel.app/fbtrack.js)
- * 2. No <head> do seu site (premium.ultrapack3d.com), antes de qualquer link de checkout:
+ * 2. No <head> do seu site (premium.ultrapack3d.com), antes de qualquer link de checkout.
+ *    (opcional) defina o pixel ANTES, se for diferente do padrão:
+ *      <script>window.FB_PIXEL_ID = '2290509241458184'</script>
  *      <script src="https://SEU-APP.vercel.app/fbtrack.js" defer></script>
  * 3. Pronto. Ele:
- *    - lê o fbclid da URL (vindo do clique no anúncio) e grava o cookie _fbc no formato do Meta
+ *    - inicializa o Meta Pixel e dispara PageView automaticamente
+ *    - expõe window.fbTrack.viewContent(...) pra páginas de produto
+ *    - lê o fbclid da URL (clique do anúncio) e grava o cookie _fbc no formato do Meta
  *    - garante que o cookie _fbp exista (cria se faltar)
- *    - acrescenta _fbc, _fbp, fbclid e os UTMs em TODO link que aponta pro checkout
- *      (pay.kirvano.com), pra Kirvano repassar no webhook → nosso CAPI manda fbc/fbp.
+ *    - acrescenta _fbc, _fbp, fbclid e os UTMs em TODO link de checkout (Kirvano/Hotmart),
+ *      pra o gateway repassar no webhook → nosso CAPI manda fbc/fbp.
+ *
+ * DIVISÃO DE EVENTOS (sem duplicar): o BROWSER dispara só topo de funil
+ * (PageView/ViewContent). InitiateCheckout e Purchase ficam no SERVIDOR (CAPI no
+ * webhook), que tem match melhor (email/telefone/CPF/IP do comprador).
  */
 (function () {
   'use strict'
+
+  // ── Meta Pixel (base code) ───────────────────────────────────────────────────
+  var DEFAULT_PIXEL_ID = '2290509241458184'   // pixel principal (fallback)
+  var PIXEL_ID = window.FB_PIXEL_ID || DEFAULT_PIXEL_ID
+  /* eslint-disable */
+  !function (f, b, e, v, n, t, s) {
+    if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments) }
+    if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0'; n.queue = []
+    t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s)
+  }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js')
+  /* eslint-enable */
+  if (PIXEL_ID) {
+    fbq('init', PIXEL_ID)
+    fbq('track', 'PageView')
+  }
 
   var DOMAIN = location.hostname.replace(/^www\./, '')
   // domínios de checkout pra onde propagar os parâmetros
@@ -153,6 +176,16 @@
     true
   )
 
+  // ── ViewContent (página de produto) ──────────────────────────────────────────
+  // Chame em páginas de produto: fbTrack.viewContent({ content_ids:['SKU'],
+  // content_name:'Pack Festas', value:29.9, currency:'BRL' }).
+  // Ou, sem código, defina window.FB_VIEW_CONTENT = {...} antes do script → auto-dispara.
+  function viewContent(data) {
+    try { fbq('track', 'ViewContent', data || {}) } catch (e) {}
+  }
+  window.fbTrack = { viewContent: viewContent, decorate: decorate, pixelId: PIXEL_ID }
+  if (window.FB_VIEW_CONTENT) viewContent(window.FB_VIEW_CONTENT)
+
   // expõe pra debug no console: window.__fbtrack
-  window.__fbtrack = { fbc: fbc, fbp: fbp, fbclid: fbclid, utms: utms, gclid: gclid, decorate: decorate }
+  window.__fbtrack = { fbc: fbc, fbp: fbp, fbclid: fbclid, utms: utms, gclid: gclid, decorate: decorate, pixelId: PIXEL_ID }
 })()
