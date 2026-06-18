@@ -419,7 +419,8 @@ async function resolvePixel(o) {
 }
 
 // ─── CAPI ────────────────────────────────────────────────────────────────────
-async function sendCAPI(o, req, route) {
+// eventName é decidido pelo handler (Purchase / InitiateCheckout / AddPaymentInfo).
+async function sendCAPI(o, req, route, eventName) {
   const pixelId = route?.pixelId
   const token = route?.token
   if (!pixelId || !token) return false
@@ -446,10 +447,7 @@ async function sendCAPI(o, req, route) {
   const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
   const clientUa = req.headers['user-agent'] || null
 
-  // fire_on_pix: dispara Purchase também quando Pix é gerado (PENDING).
-  // Meta dedup por event_id=checkout_id — o mesmo Pix gerado + aprovado conta como 1.
-  const isPurchase = o.approved || (route?.fireOnPix && o.status === 'PENDING')
-  const eventName = isPurchase ? 'Purchase' : 'InitiateCheckout'
+  const isPurchase = eventName === 'Purchase'
 
   // external_id: identificadores fortes e estáveis do mesmo usuário.
   // CPF é o mais forte (único por pessoa); checkout_id ajuda a amarrar a sessão.
@@ -510,16 +508,17 @@ async function sendCAPI(o, req, route) {
   let eventTime = o.orderedAt ? Math.floor(new Date(o.orderedAt).getTime() / 1000) : now
   if (!eventTime || now - eventTime > 7 * 24 * 3600 || eventTime > now + 60) eventTime = now
 
+  // event_id estável p/ dedup: Purchase = sale_id (1 por venda); demais = checkout_id
+  // (1 por carrinho). Nomes diferentes (InitiateCheckout vs AddPaymentInfo) não colidem
+  // mesmo com o mesmo checkout_id — Meta dedupa por (nome + event_id). Assim os vários
+  // webhooks do mesmo checkout contam como 1 de cada etapa.
+  const eventId = isPurchase
+    ? String(o.saleId || o.checkoutId)
+    : `${eventName}_${String(o.checkoutId || o.saleId)}`
   const eventPayload = {
     event_name: eventName,
     event_time: eventTime,
-    // event_id estável: Purchase = sale_id (1 por venda); InitiateCheckout = checkout_id
-    // (1 por carrinho → dedup automática entre os vários webhooks do mesmo checkout:
-    // pix gerado → recusado → expirado → abandonado contam como UM só InitiateCheckout;
-    // e dedup com o pixel do browser, se este mandar o mesmo event_id).
-    event_id: isPurchase
-      ? String(o.saleId || o.checkoutId)
-      : String(o.checkoutId || o.saleId),
+    event_id: eventId,
     action_source: 'website',
     event_source_url: o.checkoutUrl || undefined,
     user_data: userData,
@@ -651,16 +650,33 @@ export default async function handler(req, res) {
   // resolve qual pixel/token usar (por oferta) antes de mandar
   const route = await resolvePixel(o)
 
-  // CAPI: Purchase em venda aprovada; InitiateCheckout em QUALQUER iniciação de
-  // checkout (pix/boleto gerado, recusada, expirada, abandonada) — não só abandono.
-  // A dedup por event_id=checkout_id garante 1 IC por carrinho mesmo com vários hits.
-  const IC_STATES = ['PENDING', 'REFUSED', 'EXPIRED', 'ABANDONED']
-  const shouldSendCAPI = o.approved || IC_STATES.includes(o.status)
-  const capiOk = shouldSendCAPI ? await sendCAPI(o, req, route) : false
+  // Funil server-side (cada etapa = 1 evento, sem sobrepor o browser):
+  //   APROVADA           → Purchase
+  //   PIX gerado/RECUSADA → InitiateCheckout + AddPaymentInfo (chegou no checkout E
+  //                          tentou pagar) — dedup por event_id, 1 de cada por carrinho
+  //   EXPIRADA/ABANDONADA → InitiateCheckout (chegou no checkout, não pagou)
+  // (O clique no botão vira AddToCart no browser — não passa por aqui.)
+  // fire_on_pix (opcional): em mercado Pix-pesado, conta Pix gerado já como Purchase.
+  let eventsToSend = []
+  if (o.approved) {
+    eventsToSend = ['Purchase']
+  } else if (route?.fireOnPix && o.status === 'PENDING') {
+    eventsToSend = ['Purchase']
+  } else if (o.status === 'PENDING' || o.status === 'REFUSED') {
+    eventsToSend = ['InitiateCheckout', 'AddPaymentInfo']
+  } else if (o.status === 'EXPIRED' || o.status === 'ABANDONED') {
+    eventsToSend = ['InitiateCheckout']
+  }
+
+  let capiOk = false
+  for (const ev of eventsToSend) {
+    const ok = await sendCAPI(o, req, route, ev)
+    capiOk = capiOk || ok
+  }
 
   await upsertOrder(o, capiOk)
 
-  const eventLabel = o.approved ? 'Purchase' : shouldSendCAPI ? 'InitiateCheckout' : o.status
+  const eventLabel = eventsToSend.length ? eventsToSend.join('+') : o.status
   await logHit({
     gateway,
     event: o.event || gateway,
@@ -669,7 +685,7 @@ export default async function handler(req, res) {
     http_status: 200,
     secret_ok: true,
     capi_ok: capiOk,
-    message: shouldSendCAPI
+    message: eventsToSend.length
       ? `${eventLabel} → pixel ${route?.pixelId || '—'} (${route?.source || 'default'}) → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
       : `registrado (${o.status})`,
     ip,

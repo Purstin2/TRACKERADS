@@ -72,7 +72,9 @@ function buildSnippet(d: SnippetData): string {
   // ViewContent automático na página (além do PageView) — usa o nome do pixel
   lines.push(`window.FB_VIEW_CONTENT = { content_name: '${safe(d.label || 'Pagina de vendas')}', currency: 'BRL' }`)
   if (d.checkout_selector || d.checkout_keywords?.length) {
-    lines.push(`window.FB_CLICK_EVENT = 'InitiateCheckout'`)
+    // clique no botão = AddToCart (intenção). InitiateCheckout/AddPaymentInfo/Purchase
+    // ficam no servidor (webhook), com dados do comprador — sem dupla contagem.
+    lines.push(`window.FB_CLICK_EVENT = 'AddToCart'`)
     if (d.checkout_selector) lines.push(`window.FB_CLICK_SELECTOR = '${safe(d.checkout_selector)}'`)
     if (d.checkout_keywords?.length) {
       const kws = d.checkout_keywords.map((k) => `'${safe(k.trim())}'`).join(', ')
@@ -460,32 +462,36 @@ export default function PixelsView() {
               </div>
 
               <div className="border-t border-border pt-3">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted2">Rastreio browser — InitiateCheckout (opcional)</div>
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted2">Rastreio do clique no botão — AddToCart (opcional)</div>
+                <div className="mb-2 text-[11px] text-muted2">
+                  O clique no botão vira <b>AddToCart</b> (topo do funil). InitiateCheckout, AddPaymentInfo e Purchase
+                  vêm do <b>servidor</b> (webhook) — sem dupla contagem.
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="field">
                     <label>CSS Selector do botão</label>
                     <input
                       value={form.checkout_selector}
                       onChange={(e) => setForm({ ...form, checkout_selector: e.target.value })}
-                      placeholder=".btn-checkout, #comprar"
+                      placeholder=".btn-checkout, .plan-cta"
                       className="font-mono text-[12px]"
                     />
-                    <div className="text-[11px] text-muted2">Dispara IC no clique de qualquer elemento que case o seletor.</div>
+                    <div className="text-[11px] text-muted2">Dispara AddToCart no clique de qualquer elemento que case o seletor.</div>
                   </div>
                   <div className="field">
                     <label>Keywords no link (vírgula)</label>
                     <input
                       value={form.checkout_keywords}
                       onChange={(e) => setForm({ ...form, checkout_keywords: e.target.value })}
-                      placeholder="kirvano, lobinhos, pay."
+                      placeholder="kirvano, pay., hotmart"
                       className="font-mono text-[12px]"
                     />
-                    <div className="text-[11px] text-muted2">Dispara IC quando o href do botão contém qualquer uma das palavras.</div>
+                    <div className="text-[11px] text-muted2">Dispara AddToCart quando o link/onclick do botão contém uma das palavras.</div>
                   </div>
                 </div>
                 <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
                   <input type="checkbox" checked={form.fire_on_pix} onChange={(e) => setForm({ ...form, fire_on_pix: e.target.checked })} />
-                  Disparar <b>Purchase</b> para Pix gerado (além de aprovado) — Meta dedup por checkout_id
+                  Pix gerado conta como <b>Purchase</b> (mercado Pix-pesado) — senão vira InitiateCheckout + AddPaymentInfo
                 </label>
               </div>
 
