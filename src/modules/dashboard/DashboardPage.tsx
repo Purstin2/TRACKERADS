@@ -6,7 +6,7 @@ import {
   RefreshCw, Info, SlidersHorizontal, Check, X, Plus, Save, RotateCcw, Pencil, Eye, Settings,
   ChevronDown, Search, ListFilter,
 } from 'lucide-react'
-import { SAMPLE, type DashboardData } from './data'
+import { type DashboardData } from './data'
 import { buildRealDashboard, distinctProducts, distinctSources, normSource, type FunnelMeta } from './realbuild'
 import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type GridItem } from './widgets'
 import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
@@ -253,11 +253,11 @@ export default function DashboardPage() {
 
   const accIds = useMemo(() => ACCOUNTS.filter((a) => accSel === null || accSel.has(a.name)).map((a) => a.id), [accSel])
 
-  async function load() {
-    if (!token.trim()) return alert('Cole o access token do Meta primeiro.')
+  async function load(silent = false) {
+    if (!token.trim()) { if (!silent) alert('Cole o access token do Meta primeiro.'); return }
     localStorage.setItem('meta_tok', token.trim())
     const accs = ACCOUNTS.filter((a) => accIds.includes(a.id))
-    if (!accs.length) return alert('Selecione ao menos uma conta.')
+    if (!accs.length) { if (!silent) alert('Selecione ao menos uma conta.'); return }
     setLoading(true)
     const fx = getFx()
     const statuses = STATUS_FILTERS[campStatus]?.values || ['ACTIVE']
@@ -324,6 +324,12 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
+  // auto-carrega da API do Meta ao abrir (token permanente salvo) — sem mockup
+  useEffect(() => {
+    if (token.trim()) load(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // agregações dependentes da seleção (sem refetch)
   const selectedCamps = useMemo(() => camps.filter((c) => selCamps.has(c.key)), [camps, selCamps])
   const spend = useMemo(() => selectedCamps.reduce((s, c) => s + c.spend, 0), [selectedCamps])
@@ -338,10 +344,11 @@ export default function DashboardPage() {
     return arr
   }, [selectedCamps, hourlyByName])
 
-  const data: DashboardData = useMemo(() => {
-    if (!loaded) return SAMPLE
-    return buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, funnelMeta, fin })
-  }, [loaded, orders, selProducts, selSources, spend, hourlySpend, funnelMeta, fin])
+  // dados sempre reais (da API). Antes de carregar, tudo zero — sem mockup.
+  const data: DashboardData = useMemo(
+    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, funnelMeta, fin }),
+    [orders, selProducts, selSources, spend, hourlySpend, funnelMeta, fin],
+  )
 
   const d = data
   const visibleLayout = useMemo(() => layout.filter((l) => enabled.includes(l.i) && WIDGET_MAP[l.i]), [layout, enabled])
@@ -376,7 +383,7 @@ export default function DashboardPage() {
           <p className="mt-0.5 text-[13px] text-muted">P&amp;L real · gateway (faturamento) + Meta (gasto){updatedAt && ` · atualizado ${updatedAt}`}</p>
         </div>
         <div className="flex items-center gap-2">
-          {d.isSample && <span className="hidden rounded-full bg-warn/10 px-3 py-1 text-[11px] font-bold text-warn sm:inline">dados de exemplo — clique Atualizar</span>}
+          {loading && <span className="hidden rounded-full bg-brand/10 px-3 py-1 text-[11px] font-bold text-brand-2 sm:inline">carregando da API…</span>}
           {!editing && <button className="btn btn-ghost btn-sm" onClick={startEdit}><SlidersHorizontal className="h-3.5 w-3.5" /> Editar visualização</button>}
         </div>
       </div>
@@ -407,7 +414,7 @@ export default function DashboardPage() {
           <div className="ml-auto flex items-end gap-2">
             <button className="btn btn-ghost btn-sm" onClick={() => setCampDrawer(true)} title="Refino por campanha (status, on/off)"><ListFilter className="h-3.5 w-3.5" /> Campanhas {camps.length ? `${selCamps.size}/${camps.length}` : ''}</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowParams(true)}><Settings className="h-3.5 w-3.5" /> Parâmetros</button>
-            <button className="btn btn-primary btn-sm" onClick={load} disabled={loading}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Carregando...' : 'Atualizar'}</button>
+            <button className="btn btn-primary btn-sm" onClick={() => load()} disabled={loading}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Carregando...' : 'Atualizar'}</button>
           </div>
         </div>
         <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; gateway-fee e imposto são % nos Parâmetros.</p>
@@ -450,7 +457,7 @@ export default function DashboardPage() {
         </>
       )}
 
-      {campDrawer && <CampDrawer camps={camps} sel={selCamps} onSel={setSelCamps} status={campStatus} onStatus={setCampStatus} onClose={() => setCampDrawer(false)} onReload={load} loading={loading} />}
+      {campDrawer && <CampDrawer camps={camps} sel={selCamps} onSel={setSelCamps} status={campStatus} onStatus={setCampStatus} onClose={() => setCampDrawer(false)} onReload={() => load()} loading={loading} />}
       {showParams && <ParamsModal fin={fin} onClose={() => setShowParams(false)} onSave={(f) => { setFin(f); saveFinParams(f); setShowParams(false) }} />}
     </div>
   )

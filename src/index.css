@@ -115,11 +115,14 @@
 .react-grid-item {
   transition: transform 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
+/* placeholder de drop ao arrastar — pontilhado sóbrio (a lib vem com vermelho;
+   !important pra vencer o default red do react-grid-layout/css/styles.css) */
 .react-grid-item.react-grid-placeholder {
-  background: rgba(99, 102, 241, 0.16);
-  border: 1px dashed #6366f1;
-  border-radius: 14px;
-  opacity: 1;
+  background: rgba(99, 102, 241, 0.06) !important;
+  border: 2px dotted rgba(134, 143, 180, 0.5) !important;
+  border-radius: 14px !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
 }
 .react-grid-item.resizing,
 .react-grid-item.react-draggable-dragging {
