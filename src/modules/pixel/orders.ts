@@ -22,6 +22,7 @@ export interface KirvanoOrder {
   utm_term: string | null
   checkout_url: string | null
   capi_ok: boolean | null
+  manual: boolean | null
   recovered: boolean | null
   wa_sent_at: string | null
   wa_status: string | null

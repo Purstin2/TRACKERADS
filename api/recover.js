@@ -185,8 +185,11 @@ export default async function handler(req, res) {
     const inList = manualIds.map((i) => `"${i}"`).join(',')
     query = `${url}/rest/v1/kirvano_orders?id=in.(${inList})&select=*`
   } else {
+    // recupera carrinho abandonado E pix/boleto PENDENTE (gerado mas não pago) —
+    // a Kirvano dá poucos abandonados, então o Pix pendente é o grosso da recuperação.
+    // Para sozinho ao virar APPROVED (sai do filtro) ou recovered.
     query =
-      `${url}/rest/v1/kirvano_orders?status=eq.ABANDONED` +
+      `${url}/rest/v1/kirvano_orders?status=in.(ABANDONED,PENDING)` +
       `&or=(wa_step.is.null,wa_step.lt.3)&customer_phone=not.is.null` +
       `&created_at=gte.${cutoff}&select=*&order=created_at.asc&limit=80`
   }

@@ -102,10 +102,7 @@ export function distinctProducts(orders: KirvanoOrder[]): string[] {
 export interface FunnelMeta {
   clicks: number
   lpv: number // landing page views (Visita)
-  atc: number // add to cart (Carrinho)
-  ic: number // initiate checkout (Checkout)
-  api: number // add payment info (Info Pgto)
-  salesInit: number // purchases atribuídas pelo Meta (Compra)
+  ic: number // initiate checkout (Meta — clique/checkout)
 }
 
 export interface RealOpts {
@@ -220,18 +217,17 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     return { hour: String(h).padStart(2, '0'), investimento: Math.round(accInv), faturamento: Math.round(accFat), lucro: Math.round(accLuc) }
   })
 
-  // Funil real (eventos que a gente dispara) → última etapa = aprovadas do gateway.
-  // "Compra (Meta)" = compras que o Meta CONSEGUIU atribuir aos anúncios;
-  // "Aprovada (gateway)" = vendas reais. A diferença é o gap de atribuição.
+  // Funil (igual UTMify): topo = Meta (cliques/visita/checkout); base = GATEWAY real.
+  // "Vendas iniciadas" = checkouts que geraram transação (pix/boleto/cartão) = tudo
+  // que NÃO é abandonado. "Aprovadas" = pagas. Isso a gente tem no banco (confiável).
+  const vendasIniciadas = rows.filter((o) => up(o.status) !== 'ABANDONED').length
   const fm = funnelMeta
   const funnel: FunnelStageData[] = [
     { label: 'Cliques', n: fm?.clicks ?? 0, color: '#6366f1' },
-    { label: 'Visita', n: fm?.lpv ?? 0, color: '#7065ef' },
-    { label: 'Carrinho', n: fm?.atc ?? 0, color: '#8064ef' },
-    { label: 'Checkout', n: fm?.ic ?? 0, color: '#9166ef' },
-    { label: 'Info Pgto', n: fm?.api ?? 0, color: '#a767ed' },
-    { label: 'Compra (Meta)', n: fm?.salesInit ?? 0, color: '#bf6ce8' },
-    { label: 'Aprovada (gateway)', n: vendas, color: '#d16cf0' },
+    { label: 'Visita', n: fm?.lpv ?? 0, color: '#7c6cf0' },
+    { label: 'Checkout (IC)', n: fm?.ic ?? 0, color: '#9166ef' },
+    { label: 'Vendas iniciadas', n: vendasIniciadas, color: '#b76ce8' },
+    { label: 'Aprovadas', n: vendas, color: '#d16cf0' },
   ]
 
   return {

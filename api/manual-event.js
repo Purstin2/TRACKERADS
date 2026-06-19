@@ -14,6 +14,31 @@ import crypto from 'node:crypto'
 const sha = (v) => (v ? crypto.createHash('sha256').update(String(v).trim().toLowerCase()).digest('hex') : undefined)
 const digits = (v) => (v ? String(v).replace(/\D/g, '') : '')
 const sanitize = (v) => (v == null ? null : String(v).replace(/\s+/g, '') || null)
+const sbH = (key, extra = {}) => ({ apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...extra })
+
+// grava a venda manual no histórico (kirvano_orders) com manual=true, sem duplicar
+async function logOrder(url, key, o) {
+  if (!o.orderId) return
+  let existing = null
+  try {
+    const r = await fetch(`${url}/rest/v1/kirvano_orders?or=(sale_id.eq.${encodeURIComponent(o.orderId)},checkout_id.eq.${encodeURIComponent(o.orderId)})&select=id&limit=1`, { headers: sbH(key) })
+    const rows = await r.json()
+    existing = Array.isArray(rows) && rows[0] ? rows[0].id : null
+  } catch {}
+  const base = {
+    status: 'APPROVED', manual: true, capi_ok: true, value: Number(o.value) || 0,
+    product: o.product || 'Venda manual', customer_name: o.name || null, customer_email: o.email || null,
+    customer_phone: o.phone || null, customer_doc: o.cpf || null, payment_method: 'MANUAL', event: 'MANUAL',
+    updated_at: new Date().toISOString(),
+  }
+  try {
+    if (existing) {
+      await fetch(`${url}/rest/v1/kirvano_orders?id=eq.${existing}`, { method: 'PATCH', headers: sbH(key, { Prefer: 'return=minimal' }), body: JSON.stringify(base) })
+    } else {
+      await fetch(`${url}/rest/v1/kirvano_orders`, { method: 'POST', headers: sbH(key, { Prefer: 'return=minimal' }), body: JSON.stringify({ ...base, checkout_id: o.orderId, sale_id: o.orderId, ordered_at: new Date().toISOString() }) })
+    }
+  } catch {}
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
@@ -35,8 +60,8 @@ export default async function handler(req, res) {
 
   // localiza a rota (token) por offer_id OU pixel_id — ignora active (disparo manual)
   let q
-  if (offerId) q = `${url}/rest/v1/pixel_routes?offer_id=eq.${encodeURIComponent(offerId)}&select=pixel_id,capi_token&limit=1`
-  else if (pixelId) q = `${url}/rest/v1/pixel_routes?pixel_id=eq.${encodeURIComponent(pixelId)}&select=pixel_id,capi_token&limit=1`
+  if (offerId) q = `${url}/rest/v1/pixel_routes?offer_id=eq.${encodeURIComponent(offerId)}&select=pixel_id,capi_token,label&limit=1`
+  else if (pixelId) q = `${url}/rest/v1/pixel_routes?pixel_id=eq.${encodeURIComponent(pixelId)}&select=pixel_id,capi_token,label&limit=1`
   else return res.status(400).json({ error: 'informe offerId ou pixelId' })
 
   let route
@@ -79,6 +104,10 @@ export default async function handler(req, res) {
     })
     const j = await r.json()
     if (j.error) return res.status(200).json({ ok: false, pixel: pid, error: j.error.message, code: j.error.code, details: j.error.error_user_msg || null })
+    // venda real (não teste) → grava no histórico com badge "manual"
+    if (!sanitize(testCode)) {
+      await logOrder(url, key, { orderId, value, product: route.label, name: [firstName, lastName].filter(Boolean).join(' '), email, phone, cpf })
+    }
     return res.status(200).json({ ok: true, pixel: pid, event: eventName, value: Number(value) || 0, events_received: j.events_received, fbtrace_id: j.fbtrace_id, messages: j.messages || [] })
   } catch (e) {
     return res.status(500).json({ ok: false, error: 'graph api: ' + (e?.message || e) })

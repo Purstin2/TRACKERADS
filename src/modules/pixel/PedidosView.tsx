@@ -276,6 +276,9 @@ export default function PedidosView() {
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-semibold ${meta.cls}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} /> {meta.label}
                       </span>
+                      {o.manual && (
+                        <span className="ml-1 inline-block rounded-full border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-2" title="Venda lançada manualmente (paga fora da Kirvano)">manual</span>
+                      )}
                     </td>
                     <td className="py-2">
                       <div className="font-semibold text-ink">{o.customer_name || '—'}</div>
