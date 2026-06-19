@@ -39,6 +39,33 @@ interface Order {
   created_at: string | null
 }
 
+// converte a chave VAPID (base64url) pra Uint8Array (exigido pelo pushManager)
+function urlB64ToUint8(base64: string): Uint8Array {
+  const pad = '='.repeat((4 - (base64.length % 4)) % 4)
+  const b64 = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(b64)
+  const arr = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+  return arr
+}
+// inscreve o dispositivo no push em segundo plano (notifica com o app fechado)
+async function subscribePush() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const vapid = import.meta.env.VITE_VAPID_PUBLIC as string | undefined
+    if (!vapid) return
+    const reg = await navigator.serviceWorker.ready
+    const sub =
+      (await reg.pushManager.getSubscription()) ||
+      (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(vapid) as unknown as BufferSource }))
+    await fetch('/api/push-subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub }),
+    })
+  } catch {}
+}
+
 // bipe curto via Web Audio (sem precisar de arquivo)
 function beep() {
   try {
@@ -106,6 +133,7 @@ export default function MobileApp() {
 
   useEffect(() => {
     fetchSales()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') subscribePush()
     const t = setInterval(fetchSales, 25000)
     const onVis = () => { if (document.visibilityState === 'visible') fetchSales() }
     document.addEventListener('visibilitychange', onVis)
@@ -125,7 +153,8 @@ export default function MobileApp() {
     setNotif(p)
     if (p === 'granted') {
       beep()
-      try { new Notification('🔔 Alertas ativados', { body: 'Você será avisado a cada venda.', icon: '/app-icon-192.png' }) } catch {}
+      subscribePush() // push em segundo plano (avisa mesmo com o app fechado)
+      try { new Notification('🔔 Alertas ativados', { body: 'Você será avisado a cada venda — mesmo com o app fechado.', icon: '/app-icon-192.png' }) } catch {}
     }
   }
   async function doInstall() {

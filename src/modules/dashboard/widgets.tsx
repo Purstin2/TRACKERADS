@@ -267,7 +267,7 @@ export const WIDGETS: WidgetDef[] = [
     minW: 6,
     render: (d) => (
       <div className="h-full overflow-hidden">
-        <Funnel stages={d.funnel} title="Cliques → Visita → IC → Venda iniciada → Aprovada" />
+        <Funnel stages={d.funnel} title="Cliques → Visita → Carrinho → Checkout → Info Pgto → Compra → Aprovada" subtitle="Compra (Meta) = vendas que o Meta atribuiu aos anúncios · Aprovada (gateway) = vendas reais · a diferença é o gap de atribuição" />
       </div>
     ),
   },

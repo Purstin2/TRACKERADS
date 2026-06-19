@@ -28,9 +28,11 @@ const PERIODS = [
 ]
 const PLATFORMS = ['Qualquer', 'Kirvano', 'Hotmart', 'Greenn', 'Kiwify']
 
-// métricas de funil do Meta
+// métricas de funil do Meta (nomes das actions nos insights)
 const LPV = ['landing_page_view', 'omni_landing_page_view']
+const ATC = ['add_to_cart', 'omni_add_to_cart', 'offsite_conversion.fb_pixel_add_to_cart']
 const IC = ['initiate_checkout', 'omni_initiated_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']
+const API_ = ['add_payment_info', 'omni_add_payment_info', 'offsite_conversion.fb_pixel_add_payment_info']
 
 interface CampMetric { key: string; accId: string; accName: string; name: string; spend: number; rev: number; sales: number }
 interface Persisted { enabled: string[]; layout: GridItem[] }
@@ -283,7 +285,9 @@ export default function DashboardPage() {
           fByCamp[`${acc.id}::${r.campaign_id}`] = {
             clicks: parseFloat(r.inline_link_clicks || '0'),
             lpv: findVal(r.actions, LPV) || 0,
+            atc: findVal(r.actions, ATC) || 0,
             ic: findVal(r.actions, IC) || 0,
+            api: findVal(r.actions, API_) || 0,
             salesInit: getSales(r),
           }
         })
@@ -341,8 +345,11 @@ export default function DashboardPage() {
   const selectedCamps = useMemo(() => camps.filter((c) => selCamps.has(c.key)), [camps, selCamps])
   const spend = useMemo(() => selectedCamps.reduce((s, c) => s + c.spend, 0), [selectedCamps])
   const funnelMeta = useMemo<FunnelMeta>(() => {
-    const acc = { clicks: 0, lpv: 0, ic: 0, salesInit: 0 }
-    selectedCamps.forEach((c) => { const f = funnelByCamp[c.key]; if (f) { acc.clicks += f.clicks; acc.lpv += f.lpv; acc.ic += f.ic; acc.salesInit += f.salesInit } })
+    const acc = { clicks: 0, lpv: 0, atc: 0, ic: 0, api: 0, salesInit: 0 }
+    selectedCamps.forEach((c) => {
+      const f = funnelByCamp[c.key]
+      if (f) { acc.clicks += f.clicks; acc.lpv += f.lpv; acc.atc += f.atc; acc.ic += f.ic; acc.api += f.api; acc.salesInit += f.salesInit }
+    })
     return acc
   }, [selectedCamps, funnelByCamp])
   const hourlySpend = useMemo(() => {
