@@ -19,13 +19,15 @@ const ResponsiveGrid = WidthProvider(Responsive)
 const LS_KEY = 'purstin_dashboard_layout_v2'
 
 const PERIODS = [
-  { value: 'maximum', label: 'Máximo' },
   { value: 'today', label: 'Hoje' },
   { value: 'yesterday', label: 'Ontem' },
   { value: 'last_7d', label: 'Últimos 7 dias' },
   { value: 'this_month', label: 'Esse mês' },
   { value: 'last_month', label: 'Mês passado' },
+  { value: 'maximum', label: 'Máximo' },
+  { value: 'custom', label: 'Personalizado' },
 ]
+const isCustom = (p: string) => p.startsWith('custom:')
 const PLATFORMS = ['Qualquer', 'Kirvano', 'Hotmart', 'Greenn', 'Kiwify']
 
 // métricas de funil do Meta (topo do funil — base vem do gateway)
@@ -51,6 +53,16 @@ function getFx(): number {
  *  que pode estar errado (ex: Windows em UTC). Assim "hoje/ontem" batem com a Kirvano/UTMify. */
 const BR_OFFSET_MS = 3 * 3600000 // BRT = UTC-3
 function periodWindow(period: string): { sinceISO: string; untilISO: string } {
+  // data personalizada (custom:YYYY-MM-DD:YYYY-MM-DD) — dias BR
+  if (period.startsWith('custom:')) {
+    const [, since, until] = period.split(':')
+    if (since && until) {
+      return {
+        sinceISO: new Date(since + 'T00:00:00-03:00').toISOString(),
+        untilISO: new Date(until + 'T23:59:59.999-03:00').toISOString(),
+      }
+    }
+  }
   // parede BRT: um Date cujos campos UTC representam o horário do Brasil
   const brt = new Date(Date.now() - BR_OFFSET_MS)
   const start = new Date(brt); start.setUTCHours(0, 0, 0, 0)
@@ -221,6 +233,16 @@ function CampDrawer({ camps, sel, onSel, status, onStatus, onClose, onReload, lo
   )
 }
 
+// cache local do dashboard: mostra na hora o último resultado, atualiza por trás
+const DASH_CACHE = 'purstin_dash_cache_v1'
+interface DashCache { period: string; camps: CampMetric[]; orders: KirvanoOrder[]; fByCamp: Record<string, FunnelMeta>; hByName: Record<string, number[]>; ts: string }
+function readDashCache(): DashCache | null {
+  try { return JSON.parse(localStorage.getItem(DASH_CACHE) || 'null') } catch { return null }
+}
+function saveDashCache(c: DashCache) {
+  try { localStorage.setItem(DASH_CACHE, JSON.stringify(c)) } catch {}
+}
+
 export default function DashboardPage() {
   const init = useRef(loadPersisted()).current
   const [enabled, setEnabled] = useState<string[]>(init.enabled)
@@ -232,7 +254,10 @@ export default function DashboardPage() {
   const [token, setToken] = useState(() => localStorage.getItem('meta_tok') || '')
   const [showTok, setShowTok] = useState(false)
   const [accSel, setAccSel] = useState<Set<string> | null>(null) // contas (null = todas)
-  const [period, setPeriod] = useState('yesterday')
+  const [period, setPeriod] = useState('today')
+  const todayISO = () => new Date(Date.now() - BR_OFFSET_MS).toISOString().slice(0, 10) // dia BR
+  const [cSince, setCSince] = useState(todayISO())
+  const [cUntil, setCUntil] = useState(todayISO())
   const [campStatus, setCampStatus] = useState('active_paused')
   const [platform, setPlatform] = useState('Qualquer')
   const [fin, setFin] = useState<FinParams>(loadFinParams)
@@ -262,7 +287,9 @@ export default function DashboardPage() {
     setLoading(true)
     const fx = getFx()
     const statuses = STATUS_FILTERS[campStatus]?.values || ['ACTIVE']
-    const preset = period === 'maximum' ? 'maximum' : period
+    // período efetivo: 'custom' vira "custom:since:until" (Meta e periodWindow já entendem)
+    const eff = period === 'custom' ? `custom:${cSince}:${cUntil}` : period
+    const preset = eff
 
     const cs: CampMetric[] = []
     const fByCamp: Record<string, FunnelMeta> = {}
@@ -305,11 +332,12 @@ export default function DashboardPage() {
     setFunnelByCamp(fByCamp)
     setHourlyByName(hByName)
 
+    let within: KirvanoOrder[] = []
     try {
-      const { sinceISO, untilISO } = periodWindow(period)
+      const { sinceISO, untilISO } = periodWindow(eff)
       const all = await fetchOrders(sinceISO)
       const since = Date.parse(sinceISO), until = Date.parse(untilISO)
-      const within = all.filter((o) => {
+      within = all.filter((o) => {
         const t = Date.parse(o.ordered_at || o.created_at || '')
         return !isNaN(t) && t >= since && t <= until
       })
@@ -321,13 +349,24 @@ export default function DashboardPage() {
     } catch { setOrders([]); setProducts([]); setSources([]) }
 
     setLoaded(true)
-    setUpdatedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
+    const stamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    setUpdatedAt(stamp)
     setLoading(false)
+    // salva cache do período pra abrir instantâneo da próxima vez
+    saveDashCache({ period: eff, camps: cs, orders: within, fByCamp, hByName, ts: stamp })
   }
 
   // auto-carrega da API do Meta ao abrir (token permanente salvo) — sem mockup
   // e sincroniza os parâmetros financeiros do Supabase (não se perdem ao limpar cookies)
   useEffect(() => {
+    // mostra o cache na hora (se for do mesmo período) e atualiza por trás
+    const c = readDashCache()
+    if (c && c.period === period && Array.isArray(c.camps)) {
+      setCamps(c.camps); setSelCamps(new Set(c.camps.map((x) => x.key)))
+      setFunnelByCamp(c.fByCamp || {}); setHourlyByName(c.hByName || {})
+      setOrders(c.orders || []); setProducts(distinctProducts(c.orders || [])); setSources(distinctSources(c.orders || []))
+      setLoaded(true); setUpdatedAt(c.ts)
+    }
     if (token.trim()) load(true)
     syncFinParams().then(setFin)
     // layout/visualização do Supabase (não se perde ao limpar cookies)
@@ -412,6 +451,16 @@ export default function DashboardPage() {
               {PERIODS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          {period === 'custom' && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">De / Até (BR)</span>
+              <div className="flex items-center gap-1">
+                <input type="date" value={cSince} max={cUntil} onChange={(e) => setCSince(e.target.value)} className="rounded-[8px] border border-border bg-[#0a0c19] px-2 py-2 text-[12px] text-ink" />
+                <span className="text-muted2">→</span>
+                <input type="date" value={cUntil} min={cSince} max={todayISO()} onChange={(e) => setCUntil(e.target.value)} className="rounded-[8px] border border-border bg-[#0a0c19] px-2 py-2 text-[12px] text-ink" />
+              </div>
+            </div>
+          )}
           <MultiDropdown label="Conta de Anúncio" options={ACCOUNTS.map((a) => a.name)} selected={accSel} onChange={setAccSel} groupLabel="Meta" width="w-[180px]" />
           <MultiDropdown label="Fonte de Tráfego" options={sources} selected={selSources} onChange={setSelSources} width="w-[160px]" />
           <div className="flex flex-col gap-1">
