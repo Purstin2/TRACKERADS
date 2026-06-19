@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from '@/components/ui/toast'
+import { usePersistentState } from '@/lib/appState'
 
 interface PriceTest {
   price: number
@@ -44,15 +45,6 @@ const SEED: Tracker = {
   },
 }
 
-function loadTracker(): Tracker {
-  try {
-    const p = JSON.parse(localStorage.getItem('meta_price_tracker') || 'null')
-    if (p && p.products) return p
-  } catch {}
-  localStorage.setItem('meta_price_tracker', JSON.stringify(SEED))
-  return JSON.parse(JSON.stringify(SEED))
-}
-
 const revPerVisit = (price: number, conv: number) => price * (conv / 100)
 const fmtDate = (iso: string) => {
   if (!iso) return '—'
@@ -61,13 +53,9 @@ const fmtDate = (iso: string) => {
 }
 
 export default function PrecosView() {
-  const [tracker, setTracker] = useState<Tracker>(loadTracker)
+  // tracker de preços persistido no Supabase
+  const [tracker, save] = usePersistentState<Tracker>('meta_price_tracker', JSON.parse(JSON.stringify(SEED)))
   const [form, setForm] = useState({ prod: '', price: '', conv: '', views: '', date: '', tipo: 'OB', note: '' })
-
-  const save = (t: Tracker) => {
-    setTracker({ ...t })
-    localStorage.setItem('meta_price_tracker', JSON.stringify(t))
-  }
 
   function addTest() {
     const prod = form.prod.trim()

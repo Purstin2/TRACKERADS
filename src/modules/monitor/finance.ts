@@ -1,4 +1,5 @@
 import { getSales, getRevenue, type InsightRow } from '@/lib/meta'
+import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
 
 export interface FinParams {
   aprov: number
@@ -26,15 +27,18 @@ export const FIN_DEFAULTS: FinParams = {
   boleto: 5,
 }
 
+// cache local (instantâneo)
 export function loadFinParams(): FinParams {
-  try {
-    return { ...FIN_DEFAULTS, ...JSON.parse(localStorage.getItem('meta_fin') || '{}') }
-  } catch {
-    return { ...FIN_DEFAULTS }
-  }
+  return { ...FIN_DEFAULTS, ...cacheGet<Partial<FinParams>>('meta_fin', {}) }
+}
+// fonte de verdade no Supabase (chama ao montar pra sincronizar)
+export async function syncFinParams(): Promise<FinParams> {
+  const v = await loadState<Partial<FinParams>>('meta_fin', {})
+  return { ...FIN_DEFAULTS, ...v }
 }
 export function saveFinParams(f: FinParams) {
-  localStorage.setItem('meta_fin', JSON.stringify(f))
+  cacheSet('meta_fin', f)
+  remoteSet('meta_fin', f)
 }
 
 /** Agrupa produto pela nomenclatura da campanha (mesma lógica da aba Por Oferta) */

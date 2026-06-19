@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { PALETTE } from './config'
 import Funnel from './components/Funnel'
+import { usePersistentState } from '@/lib/appState'
 
 interface Stage {
   label: string
@@ -24,25 +24,18 @@ const DEFAULT: FunMan = {
   prev: [{ n: 1000 }, { n: 760 }, { n: 260 }, { n: 95 }, { n: 70 }],
 }
 
-function load(): FunMan {
-  try {
-    const p = JSON.parse(localStorage.getItem('meta_funman') || 'null')
-    if (p && p.stages) return p
-  } catch {}
-  return JSON.parse(JSON.stringify(DEFAULT))
-}
 const color = (i: number) => PALETTE[i % PALETTE.length]
 const fmPct = (p: number) => (Math.abs(p - Math.round(p)) < 0.05 ? Math.round(p) : +p.toFixed(1))
 
 export default function FunilManualView() {
-  const [fm, setFm] = useState<FunMan>(load)
+  // funil manual persistido no Supabase
+  const [fm, setFm] = usePersistentState<FunMan>('meta_funman', JSON.parse(JSON.stringify(DEFAULT)))
 
   function save(next: FunMan) {
     // sincroniza prev com nº de stages
     while (next.prev.length < next.stages.length) next.prev.push({ n: 0 })
     next.prev.length = next.stages.length
     setFm({ ...next })
-    localStorage.setItem('meta_funman', JSON.stringify(next))
   }
   const setStage = (i: number, field: 'label' | 'num' | 'prev', val: string) => {
     const next = fm

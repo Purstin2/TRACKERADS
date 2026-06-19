@@ -1,9 +1,11 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from 'react'
+import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
 import {
   fetchAggregate,
   fetchTimeSeries,
@@ -42,19 +44,18 @@ export interface CacheItem {
   msg?: string
 }
 
-function loadSettings(): Settings {
-  try {
-    const s = JSON.parse(localStorage.getItem('meta_settings') || '{}')
-    return {
-      roasGood: +s.roasGood || DEFAULT_SETTINGS.roasGood,
-      roasBe: +s.roasBe || DEFAULT_SETTINGS.roasBe,
-      cpaMax: +s.cpaMax || DEFAULT_SETTINGS.cpaMax,
-      fx: +s.fx || DEFAULT_SETTINGS.fx,
-      freqWarn: DEFAULT_SETTINGS.freqWarn,
-    }
-  } catch {
-    return DEFAULT_SETTINGS
+function normSettings(s: Partial<Settings> | null): Settings {
+  if (!s) return DEFAULT_SETTINGS
+  return {
+    roasGood: +(s.roasGood as number) || DEFAULT_SETTINGS.roasGood,
+    roasBe: +(s.roasBe as number) || DEFAULT_SETTINGS.roasBe,
+    cpaMax: +(s.cpaMax as number) || DEFAULT_SETTINGS.cpaMax,
+    fx: +(s.fx as number) || DEFAULT_SETTINGS.fx,
+    freqWarn: DEFAULT_SETTINGS.freqWarn,
   }
+}
+function loadSettings(): Settings {
+  return normSettings(cacheGet<Partial<Settings>>('meta_settings', {}))
 }
 
 function processTS(rows: InsightRow[]): CampMap {
@@ -144,8 +145,13 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     })
   const saveSettings = (s: Settings) => {
     setSettings(s)
-    localStorage.setItem('meta_settings', JSON.stringify(s))
+    cacheSet('meta_settings', s)
+    remoteSet('meta_settings', s)
   }
+  // sincroniza settings do Supabase ao montar (sobrevive a limpar cookies)
+  useEffect(() => {
+    loadState<Partial<Settings>>('meta_settings', {}).then((s) => setSettings(normSettings(s)))
+  }, [])
 
   async function loadMonitor() {
     if (!token.trim()) {

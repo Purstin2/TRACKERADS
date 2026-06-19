@@ -12,7 +12,8 @@ import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type 
 import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
 import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
 import { ACCOUNTS, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
-import { loadFinParams, saveFinParams, FIN_DEFAULTS, type FinParams } from '@/modules/monitor/finance'
+import { loadFinParams, saveFinParams, syncFinParams, FIN_DEFAULTS, type FinParams } from '@/modules/monitor/finance'
+import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
 
 const ResponsiveGrid = WidthProvider(Responsive)
 const LS_KEY = 'purstin_dashboard_layout_v2'
@@ -34,12 +35,12 @@ const IC = ['initiate_checkout', 'omni_initiated_checkout', 'offsite_conversion.
 interface CampMetric { key: string; accId: string; accName: string; name: string; spend: number; rev: number; sales: number }
 interface Persisted { enabled: string[]; layout: GridItem[] }
 
+function isValidPersisted(p: unknown): p is Persisted {
+  return !!p && Array.isArray((p as Persisted).enabled) && Array.isArray((p as Persisted).layout)
+}
 function loadPersisted(): Persisted {
-  try {
-    const p = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
-    if (p && Array.isArray(p.enabled) && Array.isArray(p.layout)) return p
-  } catch {}
-  return { enabled: DEFAULT_ENABLED, layout: DEFAULT_LAYOUT }
+  const p = cacheGet<Persisted | null>(LS_KEY, null)
+  return isValidPersisted(p) ? p : { enabled: DEFAULT_ENABLED, layout: DEFAULT_LAYOUT }
 }
 function getFx(): number {
   try { return +JSON.parse(localStorage.getItem('meta_settings') || '{}').fx || DEFAULT_SETTINGS.fx } catch { return DEFAULT_SETTINGS.fx }
@@ -325,8 +326,14 @@ export default function DashboardPage() {
   }
 
   // auto-carrega da API do Meta ao abrir (token permanente salvo) — sem mockup
+  // e sincroniza os parâmetros financeiros do Supabase (não se perdem ao limpar cookies)
   useEffect(() => {
     if (token.trim()) load(true)
+    syncFinParams().then(setFin)
+    // layout/visualização do Supabase (não se perde ao limpar cookies)
+    loadState<Persisted | null>(LS_KEY, null).then((p) => {
+      if (isValidPersisted(p)) { setEnabled(p.enabled); setLayout(p.layout); savedSnap.current = p }
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -355,7 +362,7 @@ export default function DashboardPage() {
 
   function startEdit() { savedSnap.current = { enabled: [...enabled], layout: layout.map((l) => ({ ...l })) }; setEditing(true); setDrawerOpen(true) }
   function cancelEdit() { setEnabled(savedSnap.current.enabled); setLayout(savedSnap.current.layout); setEditing(false); setDrawerOpen(false) }
-  function saveEdit() { localStorage.setItem(LS_KEY, JSON.stringify({ enabled, layout })); setEditing(false); setDrawerOpen(false) }
+  function saveEdit() { const v = { enabled, layout }; cacheSet(LS_KEY, v); remoteSet(LS_KEY, v); setEditing(false); setDrawerOpen(false) }
   function resetDefaults() { setEnabled(DEFAULT_ENABLED); setLayout(DEFAULT_LAYOUT) }
   function addWidget(id: string) {
     if (enabled.includes(id)) return

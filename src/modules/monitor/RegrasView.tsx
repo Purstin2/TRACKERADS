@@ -4,6 +4,7 @@ import { useMonitor } from './MonitorContext'
 import { campUrl } from '@/lib/meta'
 import { trunc } from './config'
 import { toast } from '@/components/ui/toast'
+import { usePersistentState } from '@/lib/appState'
 
 const RL_METRICS: Record<string, string> = {
   roas: 'ROAS',
@@ -34,23 +35,12 @@ const RL_PRESETS: Omit<Rule, 'id' | 'enabled'>[] = [
 ]
 
 const rlId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
-function loadRules(): Rule[] {
-  try {
-    return JSON.parse(localStorage.getItem('meta_rules') || '[]')
-  } catch {
-    return []
-  }
-}
 
 export default function RegrasView() {
   const m = useMonitor()
-  const [rules, setRules] = useState<Rule[]>(loadRules)
+  // persistido no Supabase (sobrevive a limpar cookies / trocar de PC)
+  const [rules, save] = usePersistentState<Rule[]>('meta_rules', [])
   const [form, setForm] = useState({ name: '', metric: 'roas', op: '<', value: '', period: 3, action: 'pause' })
-
-  const save = (r: Rule[]) => {
-    setRules(r)
-    localStorage.setItem('meta_rules', JSON.stringify(r))
-  }
   function add(rule?: Omit<Rule, 'id' | 'enabled'>) {
     if (rule) {
       save([...rules, { ...rule, id: rlId(), enabled: true }])

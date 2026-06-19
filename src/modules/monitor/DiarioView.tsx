@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Download, X, Trash2 } from 'lucide-react'
+import { usePersistentState } from '@/lib/appState'
 
 const SEED: Record<string, string> = {
   '2026-06-14': `STL BR — Análise de preço (decisão)
@@ -21,15 +22,6 @@ STL GR — CPA $8, ótimas.
 Backlog: sair Hotmart; contingência; remarketing; recuperação e-mail/WhatsApp; novos checkouts.`,
 }
 
-function loadNotes(): Record<string, string> {
-  try {
-    const n = JSON.parse(localStorage.getItem('meta_diario') || 'null')
-    if (n && typeof n === 'object') return n
-  } catch {}
-  localStorage.setItem('meta_diario', JSON.stringify(SEED))
-  return { ...SEED }
-}
-
 const dKey = (y: number, m: number, d: number) =>
   `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
@@ -37,16 +29,12 @@ const MN = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
 const WD = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
 
 export default function DiarioView() {
-  const [notes, setNotes] = useState<Record<string, string>>(loadNotes)
+  // anotações persistidas no Supabase (não se perdem ao limpar cookies)
+  const [notes, save] = usePersistentState<Record<string, string>>('meta_diario', SEED)
   const now = new Date()
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() })
   const [modalKey, setModalKey] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-
-  const save = (n: Record<string, string>) => {
-    setNotes({ ...n })
-    localStorage.setItem('meta_diario', JSON.stringify(n))
-  }
   function openNote(key: string) {
     setModalKey(key)
     setDraft(notes[key] || '')
