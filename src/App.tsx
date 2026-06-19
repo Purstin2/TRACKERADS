@@ -7,6 +7,7 @@ const MonitorPage = lazy(() => import('./modules/monitor/MonitorPage'))
 const TrackerPage = lazy(() => import('./modules/tracker/TrackerPage'))
 const UploaderPage = lazy(() => import('./modules/uploader/UploaderPage'))
 const PixelPage = lazy(() => import('./modules/pixel/PixelPage'))
+const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
 
 function Loading() {
   return (
@@ -19,6 +20,15 @@ function Loading() {
 export default function App() {
   return (
     <Routes>
+      {/* App mobile instalável (PWA) — tela cheia, sem sidebar */}
+      <Route
+        path="/app"
+        element={
+          <Suspense fallback={<Loading />}>
+            <MobileApp />
+          </Suspense>
+        }
+      />
       <Route element={<AppShell />}>
         <Route
           index
