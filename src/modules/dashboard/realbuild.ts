@@ -15,6 +15,42 @@ import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningR
 const up = (s?: string | null) => (s || '').toUpperCase()
 const orderDate = (o: KirvanoOrder) => o.ordered_at || o.created_at || null
 
+/** Converte preço (número OU string BR tipo "R$ 49,90") em número. */
+function numPrice(v: unknown): number {
+  if (typeof v === 'number') return v
+  if (v == null) return 0
+  let s = String(v).replace(/[^\d.,]/g, '')
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.') // 1.234,56 → 1234.56
+  const n = parseFloat(s)
+  return isNaN(n) ? 0 : n
+}
+
+/** Todos os produtos de um pedido (principal + order bumps), pelo nome. */
+function orderProductNames(o: KirvanoOrder): string[] {
+  const names: string[] = []
+  if (Array.isArray(o.products)) o.products.forEach((p) => p?.name && names.push(p.name))
+  if (o.product) names.push(o.product)
+  return names
+}
+
+/** Valor do pedido considerando o filtro de produtos:
+ *  - sem filtro → valor cheio do pedido
+ *  - com filtro → soma só dos itens (principal/bumps) que casam (valor real do produto) */
+function valueForFilter(o: KirvanoOrder, products: Set<string> | null): number {
+  if (!products) return o.value || 0
+  let sum = 0
+  let matched = false
+  if (Array.isArray(o.products)) {
+    o.products.forEach((p) => {
+      if (p?.name && products.has(p.name)) { matched = true; sum += numPrice(p.price ?? p.amount ?? p.total_price) }
+    })
+  }
+  if (matched && sum > 0) return sum
+  // fallback: produto principal casa mas sem preço de linha → valor cheio
+  if (o.product && products.has(o.product)) return o.value || 0
+  return 0
+}
+
 /** Rótulo PT do método de pagamento da Kirvano. */
 const PM_LABEL: Record<string, string> = {
   PIX: 'Pix',
@@ -56,10 +92,10 @@ export function distinctSources(orders: KirvanoOrder[]): string[] {
   return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }
 
-/** Produtos distintos presentes nos pedidos (pro seletor de produtos). */
+/** Produtos distintos nos pedidos — INCLUI order bumps (não só o principal). */
 export function distinctProducts(orders: KirvanoOrder[]): string[] {
   const s = new Set<string>()
-  orders.forEach((o) => o.product && s.add(o.product))
+  orders.forEach((o) => orderProductNames(o).forEach((n) => s.add(n)))
   return [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }
 
@@ -81,7 +117,17 @@ export interface RealOpts {
 }
 
 export function buildRealDashboard({ orders, products, source, spend, hourlySpend, funnelMeta, fin }: RealOpts): DashboardData {
-  let rows = products ? orders.filter((o) => o.product && products.has(o.product)) : orders
+  // filtro de produto casa principal OU order bump; e revaloriza o pedido pro valor
+  // real do(s) produto(s) selecionado(s) — assim filtrar por um bump não infla.
+  let rows = orders
+  if (products) {
+    rows = orders
+      .map((o): KirvanoOrder | null => {
+        const v = valueForFilter(o, products)
+        return v > 0 ? { ...o, value: v } : null
+      })
+      .filter((o): o is KirvanoOrder => o !== null)
+  }
   if (source) rows = rows.filter((o) => source.has(normSource(o.utm_source)))
 
   const byStatus = (st: string) => rows.filter((o) => up(o.status) === st)
@@ -131,14 +177,22 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     .map((m) => ({ label: m, pct: apprByMethod(m) }))
     .filter((a) => a.pct > 0)
 
-  // Vendas por Produto (contagem de aprovadas por produto, % do total)
+  // Vendas por Produto — conta cada ITEM vendido (principal + order bumps),
+  // respeitando o filtro. Mostra o mix real incluindo bumps (a contagem-título de
+  // vendas segue por pedido). % sobre o total de itens.
   const prodCount: Record<string, number> = {}
   approved.forEach((o) => {
-    const p = o.product || '(sem produto)'
-    prodCount[p] = (prodCount[p] || 0) + 1
+    const items = Array.isArray(o.products) && o.products.length
+      ? (o.products.map((p) => p?.name).filter(Boolean) as string[])
+      : [o.product || '(sem produto)']
+    items.forEach((name) => {
+      if (products && !products.has(name)) return
+      prodCount[name] = (prodCount[name] || 0) + 1
+    })
   })
+  const totalUnits = Object.values(prodCount).reduce((s, n) => s + n, 0) || 1
   const vendasPorProduto: PositioningRow[] = Object.entries(prodCount)
-    .map(([label, count]) => ({ label, count, pct: vendas > 0 ? +((count / vendas) * 100).toFixed(1) : 0 }))
+    .map(([label, count]) => ({ label, count, pct: +((count / totalUnits) * 100).toFixed(1) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10)
 
