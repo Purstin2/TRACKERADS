@@ -163,36 +163,34 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setCache([])
     const statuses = STATUS_FILTERS[status]?.values || ['ACTIVE']
     const accs = ACCOUNTS.filter((a) => selected.has(a.id))
-    const out: CacheItem[] = []
-    for (const acc of accs) {
-      try {
-        if (view === 'lista') {
-          const rows = await fetchAggregate(acc.id, datePreset, token.trim(), statuses)
-          const meta: Record<string, CampMeta> = {}
-          try {
-            const cm = await fetchCampaignMeta(acc.id, token.trim())
-            cm.forEach((c: any) => {
+    const tok = token.trim()
+    // PARALELO: todas as contas de uma vez (antes era conta por conta em fila).
+    // Promise.all preserva a ordem das contas no resultado.
+    const out: CacheItem[] = await Promise.all(
+      accs.map(async (acc): Promise<CacheItem> => {
+        try {
+          if (view === 'lista') {
+            const [rows, cm] = await Promise.all([
+              fetchAggregate(acc.id, datePreset, tok, statuses),
+              fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]),
+            ])
+            const meta: Record<string, CampMeta> = {}
+            ;(cm as any[]).forEach((c) => {
               meta[c.id] = {
                 budget: c.daily_budget ? parseInt(c.daily_budget) : c.lifetime_budget ? parseInt(c.lifetime_budget) : null,
                 updatedTime: c.updated_time,
                 status: c.effective_status,
               }
             })
-          } catch {}
-          out.push({ acc, kind: 'lista', rows, meta })
-        } else {
-          const rows = await fetchTimeSeries(acc.id, datePreset, token.trim(), statuses)
-          out.push({
-            acc,
-            kind: view,
-            campMap: processTS(rows),
-            dates: [...new Set(rows.map((r) => r.date_start!))].sort(),
-          })
+            return { acc, kind: 'lista', rows, meta }
+          }
+          const rows = await fetchTimeSeries(acc.id, datePreset, tok, statuses)
+          return { acc, kind: view, campMap: processTS(rows), dates: [...new Set(rows.map((r) => r.date_start!))].sort() }
+        } catch (e: any) {
+          return { acc, kind: 'err', msg: e.message }
         }
-      } catch (e: any) {
-        out.push({ acc, kind: 'err', msg: e.message })
-      }
-    }
+      }),
+    )
     setCache(out)
     setLoading(false)
   }

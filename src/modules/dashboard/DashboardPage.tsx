@@ -267,18 +267,22 @@ export default function DashboardPage() {
     const cs: CampMetric[] = []
     const fByCamp: Record<string, FunnelMeta> = {}
     const hByName: Record<string, number[]> = {}
-    for (const acc of accs) {
-      const toBRL = acc.cur === 'BRL' ? 1 : fx
-      try {
-        const rows = (await fetchFin(acc.id, preset, token.trim(), statuses)) as any[]
-        rows.forEach((r) => {
+    const tok = token.trim()
+    // PARALELO: todas as contas de uma vez, e as 3 chamadas de cada conta juntas
+    // (antes era tudo em fila → ~18 chamadas sequenciais com 6 contas)
+    await Promise.all(
+      accs.map(async (acc) => {
+        const toBRL = acc.cur === 'BRL' ? 1 : fx
+        const [rows, fn, hr] = await Promise.all([
+          fetchFin(acc.id, preset, tok, statuses).catch(() => [] as any[]),
+          fetchFunil(acc.id, preset, tok, statuses).catch(() => [] as any[]),
+          fetchFinHourly(acc.id, preset, tok, statuses).catch(() => [] as any[]),
+        ])
+        ;(rows as any[]).forEach((r) => {
           if (!r.campaign_id) return
           cs.push({ key: `${acc.id}::${r.campaign_id}`, accId: acc.id, accName: acc.name, name: r.campaign_name || '(sem nome)', spend: parseFloat(r.spend || '0') * toBRL, rev: getRevenue(r) * toBRL, sales: getSales(r) })
         })
-      } catch { /* conta sem acesso */ }
-      try {
-        const fn = (await fetchFunil(acc.id, preset, token.trim(), statuses)) as any[]
-        fn.forEach((r) => {
+        ;(fn as any[]).forEach((r) => {
           if (!r.campaign_id) return
           fByCamp[`${acc.id}::${r.campaign_id}`] = {
             clicks: parseFloat(r.inline_link_clicks || '0'),
@@ -286,10 +290,7 @@ export default function DashboardPage() {
             ic: findVal(r.actions, IC) || 0,
           }
         })
-      } catch {}
-      try {
-        const hr = (await fetchFinHourly(acc.id, preset, token.trim(), statuses)) as any[]
-        hr.forEach((r) => {
+        ;(hr as any[]).forEach((r) => {
           const hk = (r.hourly_stats_aggregated_by_advertiser_time_zone as string) || ''
           const hh = parseInt(hk.slice(0, 2))
           if (isNaN(hh) || hh < 0 || hh > 23) return
@@ -297,8 +298,8 @@ export default function DashboardPage() {
           if (!hByName[nameKey]) hByName[nameKey] = Array.from({ length: 24 }, () => 0)
           hByName[nameKey][hh] += parseFloat(r.spend || '0') * toBRL
         })
-      } catch {}
-    }
+      }),
+    )
     setCamps(cs)
     setSelCamps(new Set(cs.map((c) => c.key)))
     setFunnelByCamp(fByCamp)
