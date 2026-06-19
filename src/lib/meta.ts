@@ -169,6 +169,24 @@ export function fetchAds(accId: string, campId: string, preset: string, t: strin
   })
   return paginate(`${BASE}/act_${accId}/insights?${p}`)
 }
+/** Dia-a-dia de UMA campanha (últimos N dias) — pro painel de escala. */
+export function fetchCampDaily(accId: string, campId: string, t: string, days = 6) {
+  const d = new Date()
+  const until = d.toISOString().slice(0, 10)
+  const s = new Date(d)
+  s.setDate(s.getDate() - (days - 1))
+  const since = s.toISOString().slice(0, 10)
+  const p = new URLSearchParams({
+    level: 'campaign',
+    fields: 'spend,purchase_roas,cost_per_action_type,actions,action_values,date_start',
+    time_range: JSON.stringify({ since, until }),
+    time_increment: '1',
+    filtering: JSON.stringify([{ field: 'campaign.id', operator: 'EQUAL', value: campId }]),
+    access_token: t,
+    limit: '100',
+  })
+  return paginate(`${BASE}/act_${accId}/insights?${p}`)
+}
 export function fetchOffer(accId: string, preset: string, t: string, statuses: string[]) {
   const p = new URLSearchParams({
     level: 'campaign',

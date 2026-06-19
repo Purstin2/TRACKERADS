@@ -13,9 +13,11 @@ import {
 import { ExternalLink, ChevronDown, ChevronUp, Search, X, TrendingUp } from 'lucide-react'
 import {
   fetchAds,
+  fetchCampDaily,
   getRoas,
   getCpa,
   getSales,
+  getRevenue,
   getFreq,
   getCpm,
   getImpr,
@@ -27,7 +29,9 @@ import {
   campUrl,
   type InsightRow,
 } from '@/lib/meta'
+import { loadFinParams } from './finance'
 import { useMonitor } from './MonitorContext'
+import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
 import { openLog, lastScale, useLog, addAction } from './actionLog'
 import { toast } from '@/components/ui/toast'
@@ -508,9 +512,89 @@ export function ListaView({ items }: { items: CacheItem[] }) {
   )
 }
 
+/* ── Painel de escala (dentro da campanha): HOJE lucro/ROAS/gasto/vendas + últimos dias ── */
+interface DayProfit { date: string; spend: number; roas: number | null; sales: number; profit: number }
+
+function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: string; name: string; sym: string; cur: string }) {
+  const m = useMonitor()
+  const [days, setDays] = useState<DayProfit[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const fin = loadFinParams()
+  const netFactor = 1 - (fin.gateway + fin.imposto) / 100
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true); setErr('')
+    fetchCampDaily(accId, campId, m.token.trim(), 6)
+      .then((rows) => {
+        if (!alive) return
+        const arr: DayProfit[] = rows
+          .map((r) => {
+            const spend = parseFloat(r.spend || '0')
+            const roas = getRoas(r)
+            const sales = getSales(r)
+            const gross = getRevenue(r) || (roas != null ? roas * spend : 0)
+            return { date: r.date_start as string, spend, roas, sales, profit: gross * netFactor - spend }
+          })
+          .sort((a, b) => (a.date < b.date ? 1 : -1)) // mais recente primeiro
+          .slice(0, 5)
+        setDays(arr); setLoading(false)
+      })
+      .catch((e) => { if (alive) { setErr(e.message); setLoading(false) } })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accId, campId])
+
+  if (loading) return <div className="px-4 py-3 text-[12px] text-muted">Carregando dias…</div>
+  if (err) return <div className="px-4 py-3 text-[12px] text-danger">{err}</div>
+  if (!days || !days.length) return <div className="px-4 py-3 text-[12px] text-muted2">Sem gasto nos últimos dias.</div>
+
+  const today = days[0]
+  const ok = today.profit >= 0
+  const money = (v: number) => sym + v.toFixed(2)
+  const sq = (d: DayProfit) => (d.spend <= 0 ? 'bg-surface2 text-muted2 border-border' : d.profit >= 0 ? 'border-ok/40 bg-ok/15 text-ok' : 'border-danger/40 bg-danger/15 text-danger')
+
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center">
+      {/* HOJE */}
+      <div className="flex shrink-0 items-center gap-4 rounded-xl2 border border-border bg-surface2/50 px-4 py-2.5">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-muted2">Hoje · Lucro</div>
+          <div className={`text-[22px] font-extrabold leading-tight ${ok ? 'text-ok' : 'text-danger'}`}>{ok ? '+' : ''}{money(today.profit)}</div>
+        </div>
+        <div className="flex flex-col gap-0.5 text-[11px] text-muted">
+          <span>ROAS <b className="text-ink">{today.roas != null ? today.roas.toFixed(2) : '—'}</b></span>
+          <span>Gasto <b className="text-ink">{money(today.spend)}</b></span>
+          <span>Vendas <b className="text-ink">{today.sales}</b></span>
+        </div>
+      </div>
+      {/* últimos dias (mais antigo → hoje) */}
+      <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+        {[...days].reverse().map((d) => (
+          <div
+            key={d.date}
+            className={`flex min-w-[56px] flex-col items-center rounded-[9px] border px-2 py-1.5 ${sq(d)}`}
+            title={`${fmtDate(d.date)} · ROAS ${d.roas?.toFixed(2) ?? '—'} · ${d.sales} vendas · gasto ${money(d.spend)} · lucro ${money(d.profit)}`}
+          >
+            <span className="text-[9px] opacity-70">{fmtDate(d.date)}</span>
+            <span className="text-[15px] font-extrabold leading-none">{d.roas != null ? d.roas.toFixed(2) : '—'}</span>
+            <span className="text-[8.5px] opacity-70">{d.sales}v</span>
+          </div>
+        ))}
+      </div>
+      {/* ação: aumentar orçamento (já loga antes/depois + ROAS) */}
+      <div className="shrink-0">
+        <BudgetBtn accId={accId} name={name} campId={campId} roas={today.roas} cur={cur} />
+      </div>
+    </div>
+  )
+}
+
 function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sym: string }) {
   const m = useMonitor()
   const [open, setOpen] = useState(false)
+  const [scaleOpen, setScaleOpen] = useState(false)
   const [ads, setAds] = useState<ListaRow[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -596,6 +680,13 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
             <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
             <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
             <button
+              onClick={() => setScaleOpen((v) => !v)}
+              title="Lucro de hoje + últimos dias (pra decidir escalar)"
+              className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-ok/40 bg-ok/5 px-2 py-0.5 text-[10.5px] font-bold text-ok hover:bg-ok/15"
+            >
+              <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+            </button>
+            <button
               onClick={toggle}
               className="whitespace-nowrap rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
             >
@@ -604,6 +695,13 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           </div>
         </td>
       </tr>
+      {scaleOpen && (
+        <tr className="bg-bg/40">
+          <td colSpan={17} className="border-b border-border p-0">
+            <ScalePanel accId={acc.id} campId={r.id} name={r.name} sym={sym} cur={acc.cur} />
+          </td>
+        </tr>
+      )}
       {open && (
         <tr className="bg-bg/40">
           <td colSpan={17} className="p-0">
