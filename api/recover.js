@@ -185,13 +185,14 @@ export default async function handler(req, res) {
     const inList = manualIds.map((i) => `"${i}"`).join(',')
     query = `${url}/rest/v1/kirvano_orders?id=in.(${inList})&select=*`
   } else {
-    // recupera carrinho abandonado E pix/boleto PENDENTE (gerado mas não pago) —
-    // a Kirvano dá poucos abandonados, então o Pix pendente é o grosso da recuperação.
+    // recupera carrinho abandonado, pix/boleto PENDENTE (gerado mas não pago) E
+    // cartão RECUSADO (REFUSED) — a Kirvano dá poucos abandonados, então pendente +
+    // recusado são o grosso da recuperação.
     // Só vendas >= R$ MIN_VALUE (evita gastar disparo/risco de ban em pedido pequeno).
     // Para sozinho ao virar APPROVED (sai do filtro) ou recovered.
     const MIN_VALUE = parseFloat(process.env.WA_MIN_VALUE || '17')
     query =
-      `${url}/rest/v1/kirvano_orders?status=in.(ABANDONED,PENDING)` +
+      `${url}/rest/v1/kirvano_orders?status=in.(ABANDONED,PENDING,REFUSED)` +
       `&or=(wa_step.is.null,wa_step.lt.3)&customer_phone=not.is.null&value=gte.${MIN_VALUE}` +
       `&created_at=gte.${cutoff}&select=*&order=created_at.asc&limit=80`
   }
@@ -219,10 +220,11 @@ export default async function handler(req, res) {
       continue
     }
 
-    // Pix PENDENTE: só o toque do DIA 1 (mais seguro contra ban). Abandonado segue a cadência.
-    if (!manualIds && o.status === 'PENDING' && (o.wa_step || 0) >= 1) {
+    // Pix PENDENTE e cartão RECUSADO: só o toque do DIA 1 (mais seguro contra ban).
+    // Só o carrinho ABANDONADO segue a cadência completa de 3 dias.
+    if (!manualIds && (o.status === 'PENDING' || o.status === 'REFUSED') && (o.wa_step || 0) >= 1) {
       await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: 3 })
-      results.push({ id: o.id, skipped: 'pix: só dia 1' })
+      results.push({ id: o.id, skipped: o.status === 'PENDING' ? 'pix: só dia 1' : 'recusado: só dia 1' })
       continue
     }
 
