@@ -261,7 +261,7 @@ function parseOrder(gateway, body) {
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
       // Google click id (rastreio próprio / futuro Google Ads)
       gclid: cookies.gclid || body.gclid || trk.gclid || utm.gclid || null,
-      orderedAt: body.created_at || null,
+      orderedAt: brtNaiveToISO(body.created_at),
     }
   }
 
@@ -379,6 +379,16 @@ function parseOrder(gateway, body) {
 // remove espaços/quebras de linha que vazam de copy-paste — o Meta rejeita
 // IDs/tokens/test codes com \n ou espaço.
 const sanitize = (v) => (v == null ? null : String(v).replace(/\s+/g, '') || null)
+
+// A Kirvano manda data/hora em BRT (UTC-3) SEM marcar o fuso ("2026-06-19 00:16:32").
+// Sem isto, o servidor (UTC) interpreta como UTC e grava 3h adiantado. Assume BRT.
+function brtNaiveToISO(s) {
+  if (!s) return null
+  const str = String(s).trim()
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(str) ? str : str.replace(' ', 'T') + '-03:00'
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
 
 async function resolvePixel(o) {
   const url = process.env.SUPABASE_URL
