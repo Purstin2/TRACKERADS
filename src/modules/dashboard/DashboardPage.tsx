@@ -45,17 +45,23 @@ function getFx(): number {
   try { return +JSON.parse(localStorage.getItem('meta_settings') || '{}').fx || DEFAULT_SETTINGS.fx } catch { return DEFAULT_SETTINGS.fx }
 }
 
-/** janela de datas (ISO) pro gateway, conforme o período escolhido */
+/** janela de datas (ISO) no FUSO BR (UTC-3, sem horário de verão desde 2019).
+ *  Sempre usa o dia comercial brasileiro — NÃO depende do relógio/fuso do PC,
+ *  que pode estar errado (ex: Windows em UTC). Assim "hoje/ontem" batem com a Kirvano/UTMify. */
+const BR_OFFSET_MS = 3 * 3600000 // BRT = UTC-3
 function periodWindow(period: string): { sinceISO: string; untilISO: string } {
-  const now = new Date()
-  const end = new Date(now); end.setHours(23, 59, 59, 999)
-  let start = new Date(now); start.setHours(0, 0, 0, 0)
-  if (period === 'yesterday') { start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); end.setHours(23, 59, 59, 999) }
-  else if (period === 'last_7d') start.setDate(start.getDate() - 6)
-  else if (period === 'this_month') start = new Date(now.getFullYear(), now.getMonth(), 1)
-  else if (period === 'last_month') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); const le = new Date(now.getFullYear(), now.getMonth(), 0); le.setHours(23, 59, 59, 999); return { sinceISO: start.toISOString(), untilISO: le.toISOString() } }
-  else if (period === 'maximum') start = new Date(2020, 0, 1)
-  return { sinceISO: start.toISOString(), untilISO: end.toISOString() }
+  // parede BRT: um Date cujos campos UTC representam o horário do Brasil
+  const brt = new Date(Date.now() - BR_OFFSET_MS)
+  const start = new Date(brt); start.setUTCHours(0, 0, 0, 0)
+  const end = new Date(brt); end.setUTCHours(23, 59, 59, 999)
+  if (period === 'yesterday') { start.setUTCDate(start.getUTCDate() - 1); end.setUTCDate(end.getUTCDate() - 1) }
+  else if (period === 'last_7d') start.setUTCDate(start.getUTCDate() - 6)
+  else if (period === 'this_month') start.setUTCDate(1)
+  else if (period === 'last_month') { start.setUTCMonth(start.getUTCMonth() - 1, 1); end.setUTCMonth(end.getUTCMonth(), 0) }
+  else if (period === 'maximum') start.setUTCFullYear(2020, 0, 1)
+  // converte parede BRT de volta pra instante UTC real
+  const toUtcISO = (w: Date) => new Date(w.getTime() + BR_OFFSET_MS).toISOString()
+  return { sinceISO: toUtcISO(start), untilISO: toUtcISO(end) }
 }
 
 /* ── dropdown multi-seleção (Conta / Fonte / Produto) ── */
@@ -301,7 +307,11 @@ export default function DashboardPage() {
     try {
       const { sinceISO, untilISO } = periodWindow(period)
       const all = await fetchOrders(sinceISO)
-      const within = all.filter((o) => { const t = o.ordered_at || o.created_at || ''; return t >= sinceISO && t <= untilISO })
+      const since = Date.parse(sinceISO), until = Date.parse(untilISO)
+      const within = all.filter((o) => {
+        const t = Date.parse(o.ordered_at || o.created_at || '')
+        return !isNaN(t) && t >= since && t <= until
+      })
       setOrders(within)
       setProducts(distinctProducts(within))
       setSelProducts(null)
