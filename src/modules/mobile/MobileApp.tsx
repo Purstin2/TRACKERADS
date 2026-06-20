@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag } from 'lucide-react'
+import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 // dia comercial BR (UTC-3) — alinhado com a dashboard
@@ -82,10 +82,13 @@ function beep() {
   } catch {}
 }
 
+interface AdStats { spend: number; impressions: number; clicks: number }
+
 export default function MobileApp() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState('')
+  const [adStats, setAdStats] = useState<AdStats | null>(null)
   const [notif, setNotif] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default',
   )
@@ -99,13 +102,26 @@ export default function MobileApp() {
     beep()
     try { navigator.vibrate?.([200, 100, 200]) } catch {}
     if (notif === 'granted') {
-      try {
-        new Notification('💰 Nova venda — ' + brl(o.value), {
-          body: `${o.product || 'Produto'} · ${firstName(o.customer_name)}`,
-          icon: '/app-icon-192.png',
-          tag: o.id,
-        })
-      } catch {}
+      // iOS só aceita showNotification via service worker — new Notification() é ignorado.
+      // Usamos SW em todos os casos pra garantir compatibilidade.
+      const title = '💰 Nova venda — ' + brl(o.value)
+      const opts = {
+        body: `${o.product || 'Produto'} · ${firstName(o.customer_name)}`,
+        icon: '/app-icon-192.png',
+        badge: '/app-icon-192.png',
+        vibrate: [200, 100, 200],
+        tag: o.id,
+        data: { url: '/app' },
+      }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.showNotification(title, opts))
+          .catch(() => {
+            try { new Notification(title, opts) } catch {}
+          })
+      } else {
+        try { new Notification(title, opts) } catch {}
+      }
     }
     setFlashIds((s) => new Set(s).add(o.id))
     setTimeout(() => setFlashIds((s) => { const n = new Set(s); n.delete(o.id); return n }), 6000)
@@ -114,12 +130,15 @@ export default function MobileApp() {
   async function fetchSales() {
     const sb = supabase()
     if (!sb) { setLoading(false); return }
-    const { data } = await sb
-      .from('kirvano_orders')
-      .select('id,product,value,customer_name,payment_method,status,ordered_at,created_at')
-      .gte('created_at', brtTodayStartISO())
-      .order('created_at', { ascending: false })
-      .limit(120)
+    const [{ data }, adsRes] = await Promise.all([
+      sb
+        .from('kirvano_orders')
+        .select('id,product,value,customer_name,payment_method,status,ordered_at,created_at')
+        .gte('created_at', brtTodayStartISO())
+        .order('created_at', { ascending: false })
+        .limit(120),
+      fetch('/api/meta-today').then((r) => r.json()).catch(() => null),
+    ])
     const approved = ((data || []) as Order[]).filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
     if (!firstLoad.current) {
       approved.filter((o) => !seen.current.has(o.id)).forEach(notifySale)
@@ -127,6 +146,7 @@ export default function MobileApp() {
     approved.forEach((o) => seen.current.add(o.id))
     firstLoad.current = false
     setOrders(approved)
+    if (adsRes?.ok) setAdStats({ spend: adsRes.spend || 0, impressions: adsRes.impressions || 0, clicks: adsRes.clicks || 0 })
     setUpdatedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
     setLoading(false)
   }
@@ -149,12 +169,23 @@ export default function MobileApp() {
 
   async function askNotif() {
     if (typeof Notification === 'undefined') return
+    // iOS só suporta push se estiver instalado como PWA (home screen).
+    // Pedir permissão fora do standalone no iOS não tem efeito.
+    if (isIOS && !standalone) {
+      alert('No iPhone, instale o app na tela inicial primeiro (Compartilhar → Adicionar à Tela de Início) e depois ative as notificações.')
+      return
+    }
     const p = await Notification.requestPermission()
     setNotif(p)
     if (p === 'granted') {
       beep()
-      subscribePush() // push em segundo plano (avisa mesmo com o app fechado)
-      try { new Notification('🔔 Alertas ativados', { body: 'Você será avisado a cada venda — mesmo com o app fechado.', icon: '/app-icon-192.png' }) } catch {}
+      subscribePush()
+      // usa SW pra exibir a notificação de confirmação (iOS exige SW)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+          .then((reg) => reg.showNotification('🔔 Alertas ativados', { body: 'Você será avisado a cada venda — mesmo com o app fechado.', icon: '/app-icon-192.png' }))
+          .catch(() => {})
+      }
     }
   }
   async function doInstall() {
@@ -165,6 +196,8 @@ export default function MobileApp() {
   }
 
   const total = orders.reduce((s, o) => s + (o.value || 0), 0)
+  const spend = adStats?.spend ?? 0
+  const roas = spend > 0 ? total / spend : null
   const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
   const standalone = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches
 
@@ -205,6 +238,33 @@ export default function MobileApp() {
             <ShoppingBag className="h-4 w-4 text-brand-2" />
             <b className="text-ink">{orders.length}</b> venda{orders.length === 1 ? '' : 's'} aprovada{orders.length === 1 ? '' : 's'}
           </div>
+
+          {/* ROAS + Gasto — só aparece se a API de Ads estiver configurada */}
+          {adStats && (
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/60 pt-3">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted2">
+                  <Target className="h-3 w-3" /> Gasto em Ads
+                </div>
+                <div className="text-[20px] font-extrabold leading-none text-warn">{brl(spend)}</div>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <div className="text-[10.5px] font-semibold uppercase tracking-wide text-muted2">ROAS</div>
+                {roas !== null ? (
+                  <div className={`text-[20px] font-extrabold leading-none ${roas >= 1.23 ? 'text-ok' : 'text-danger'}`}>
+                    {roas.toFixed(2)}×
+                  </div>
+                ) : (
+                  <div className="text-[20px] font-extrabold leading-none text-muted2">—</div>
+                )}
+                {roas !== null && (
+                  <div className={`text-[10px] font-semibold ${roas >= 1.23 ? 'text-ok/70' : 'text-danger/70'}`}>
+                    {roas >= 1.23 ? '✓ acima do BE' : '✗ abaixo do BE 1.23'}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ativar notificações */}
@@ -230,8 +290,9 @@ export default function MobileApp() {
           </button>
         )}
         {!standalone && isIOS && (
-          <div className="mt-3 rounded-xl2 border border-border bg-surface2 px-3.5 py-2.5 text-[12px] text-muted">
-            📲 Pra instalar: toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>
+          <div className="mt-3 rounded-xl2 border border-warn/30 bg-warn/[0.06] px-3.5 py-2.5 text-[12px] text-muted">
+            📲 <b>iPhone:</b> as notificações com o app fechado exigem que você instale o app na tela inicial.<br />
+            Toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b> e depois ative os alertas.
           </div>
         )}
 
