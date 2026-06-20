@@ -99,7 +99,7 @@ export default async function handler(req, res) {
   let body = {}
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}) } catch {}
 
-  const { id, utmSource, utmCampaign, utmMedium, utmContent } = body
+  const { id, utmSource, utmCampaign, utmMedium, utmContent, fbclid: fbclidManual } = body
   if (!id) return res.status(400).json({ error: 'id obrigatório' })
 
   // 1. Lê o pedido do Supabase
@@ -119,8 +119,12 @@ export default async function handler(req, res) {
   const raw = o.raw || {}
   const cookies = raw.cookies || {}
   const addr = (raw.customer && raw.customer.address) || {}
-  const fbclid = cookies.fbclid || raw.fbclid || null
-  const rawFbc = cookies._fbc || raw.fbc || null
+  // fbclidManual (colado da UTMIFY = clique de anúncio real) tem prioridade — é o que
+  // reatribui a campanha no Meta. Sem ele, usa o fbclid que veio na venda (pode ser orgânico).
+  const hasManual = !!(fbclidManual && String(fbclidManual).trim())
+  const fbclid = hasManual ? String(fbclidManual).trim() : (cookies.fbclid || raw.fbclid || null)
+  // se o usuário colou um fbclid de anúncio, ignora o _fbc orgânico que veio na venda
+  const rawFbc = hasManual ? null : (cookies._fbc || raw.fbc || null)
   const rawFbp = cookies._fbp || raw.fbp || null
   const fbc = buildFbc(fbclid, rawFbc, o.ordered_at || o.created_at)
   const fbp = rawFbp && /^fb\.1\./.test(rawFbp) ? rawFbp : (rawFbp ? `fb.1.${Date.now()}.${rawFbp}` : null)

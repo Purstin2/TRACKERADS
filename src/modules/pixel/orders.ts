@@ -158,27 +158,64 @@ export async function fetchWaMessages(limit = 200): Promise<WaMessage[]> {
   })) as WaMessage[]
 }
 
-/** Pedidos APPROVED com capi_ok=false — precisam de re-atribuição CAPI. */
-export async function fetchNaoTrackeado(): Promise<KirvanoOrder[]> {
+/**
+ * Classifica por que uma venda aprovada "não trackeou" a campanha:
+ *  - 'erro_envio'    → capi_ok != true: erro de config (sem rota/token). NÃO foi pro Meta. Re-disparo resolve.
+ *  - 'organico'      → veio do IG/bio (utm_source=ig / medium=social / content=link_in_bio).
+ *                      Foi pro Meta, mas SEM clique de anúncio → Meta não atribui à campanha (venda "perdida pra otimização").
+ *  - 'sem_campanha'  → sem utm_campaign nenhuma (acesso direto). Mesmo caso: Meta não otimiza.
+ *  - null            → FB com campanha + capi_ok: trackeada certa, não aparece.
+ */
+export type TrackIssue = 'erro_envio' | 'organico' | 'sem_campanha'
+
+export function classifyTracking(o: KirvanoOrder): TrackIssue | null {
+  if (o.capi_ok !== true) return 'erro_envio'
+  const src = (o.utm_source || '').toLowerCase()
+  const med = (o.utm_medium || '').toLowerCase()
+  const cont = (o.utm_content || '').toLowerCase()
+  if (src.includes('ig') || src.includes('insta') || med.includes('social') || cont.includes('bio')) return 'organico'
+  if (!(o.utm_campaign || '').trim()) return 'sem_campanha'
+  return null
+}
+
+export interface NaoTrackeadoOrder extends KirvanoOrder {
+  issue: TrackIssue
+}
+
+/** Vendas aprovadas que não trackearam a campanha (orgânicas/sem-utm/erro de envio). */
+export async function fetchNaoTrackeado(sinceDays = 30): Promise<NaoTrackeadoOrder[]> {
   const sb = supabase()
   if (!sb) return []
+  const since = new Date()
+  since.setDate(since.getDate() - sinceDays)
   const { data } = await sb
     .from('kirvano_orders')
     .select('*')
     .eq('status', 'APPROVED')
-    .or('capi_ok.is.null,capi_ok.eq.false')
+    .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
-    .limit(500)
-  return (data || []) as KirvanoOrder[]
+    .limit(1000)
+  return (data || [])
+    .map((o) => {
+      const issue = classifyTracking(o as KirvanoOrder)
+      return issue ? ({ ...(o as KirvanoOrder), issue }) : null
+    })
+    .filter(Boolean) as NaoTrackeadoOrder[]
 }
 
-/** Re-dispara CAPI pra um pedido específico via /api/refire-capi. */
-export async function refireCapi(secret: string, id: string, utms?: { utmSource?: string; utmCampaign?: string; utmMedium?: string; utmContent?: string }): Promise<any> {
+/** Re-dispara CAPI pra um pedido específico via /api/refire-capi.
+ *  fbclid = o clique de anúncio real (da UTMIFY/link do anúncio); é o ÚNICO campo
+ *  que reatribui a campanha no Meta. As UTMs vão só pro relatório (Meta atribui por fbc). */
+export async function refireCapi(
+  secret: string,
+  id: string,
+  opts?: { utmSource?: string; utmCampaign?: string; utmMedium?: string; utmContent?: string; fbclid?: string },
+): Promise<any> {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const r = await fetch(`${origin}/api/refire-capi?secret=${encodeURIComponent(secret)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, ...utms }),
+    body: JSON.stringify({ id, ...opts }),
   })
   return r.json()
 }
