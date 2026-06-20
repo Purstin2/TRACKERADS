@@ -128,3 +128,57 @@ export async function triggerRecover(secret: string, ids?: string[]): Promise<an
   const r = await fetch(`${origin}/api/recover?${qs}`, { method: 'POST' })
   return r.json()
 }
+
+export interface WaMessage {
+  id: string
+  order_id: string | null
+  step: number | null
+  phone: string | null
+  status: string | null   // 'ok' | 'error'
+  response: any
+  created_at: string | null
+  // joined from kirvano_orders
+  customer_name?: string | null
+  product?: string | null
+}
+
+export async function fetchWaMessages(limit = 200): Promise<WaMessage[]> {
+  const sb = supabase()
+  if (!sb) return []
+  const { data } = await sb
+    .from('wa_messages')
+    .select('*, kirvano_orders(customer_name, product)')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (!data) return []
+  return data.map((r: any) => ({
+    ...r,
+    customer_name: r.kirvano_orders?.customer_name ?? null,
+    product: r.kirvano_orders?.product ?? null,
+  })) as WaMessage[]
+}
+
+/** Pedidos APPROVED com capi_ok=false — precisam de re-atribuição CAPI. */
+export async function fetchNaoTrackeado(): Promise<KirvanoOrder[]> {
+  const sb = supabase()
+  if (!sb) return []
+  const { data } = await sb
+    .from('kirvano_orders')
+    .select('*')
+    .eq('status', 'APPROVED')
+    .or('capi_ok.is.null,capi_ok.eq.false')
+    .order('created_at', { ascending: false })
+    .limit(500)
+  return (data || []) as KirvanoOrder[]
+}
+
+/** Re-dispara CAPI pra um pedido específico via /api/refire-capi. */
+export async function refireCapi(secret: string, id: string, utms?: { utmSource?: string; utmCampaign?: string; utmMedium?: string; utmContent?: string }): Promise<any> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const r = await fetch(`${origin}/api/refire-capi?secret=${encodeURIComponent(secret)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...utms }),
+  })
+  return r.json()
+}
