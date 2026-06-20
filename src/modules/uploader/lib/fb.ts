@@ -56,6 +56,17 @@ export async function verifyToken(token: string): Promise<string> {
   return d.name
 }
 
+/**
+ * Inspeciona o próprio token via debug_token → quando expira.
+ * expiresAt em segundos Unix; 0 = não expira (System User / token permanente).
+ * Erro 190/463 ("Session has expired") = token vencido — gere um novo.
+ */
+export async function debugToken(token: string): Promise<{ valid: boolean; expiresAt: number }> {
+  const d = await fbGet(`${fbBase}/debug_token?input_token=${token}&access_token=${token}`)
+  const data = d.data || {}
+  return { valid: !!data.is_valid, expiresAt: data.expires_at || 0 }
+}
+
 /** Verifica página acessível → { id, name } */
 export async function verifyPage(token: string, pageId: string) {
   return fbGet(`${fbBase}/${pageId}?fields=id,name&access_token=${token}`)

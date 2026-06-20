@@ -105,6 +105,29 @@ function toNumber(v) {
   return parseFloat(s) || 0
 }
 
+// A Kirvano às vezes manda UTM como JSON array duplicado ('["FB","FB"]') e usa
+// chaves com prefixo utm_ (utm_source) além de src. Normaliza p/ string limpa.
+function cleanUtm(v) {
+  if (v == null) return null
+  let s = String(v).trim()
+  if (!s) return null
+  if (s[0] === '[') {
+    try {
+      const arr = JSON.parse(s)
+      if (Array.isArray(arr) && arr.length) s = String(arr[0] ?? '').trim()
+    } catch {}
+  }
+  return s || null
+}
+// pega o 1º valor não-vazio (ignora '' e arrays vazios), já normalizado
+function pickUtm(...vals) {
+  for (const v of vals) {
+    const c = cleanUtm(v)
+    if (c) return c
+  }
+  return null
+}
+
 function canonicalStatus(event, rawStatus) {
   const e = String(event || '').toUpperCase()
   const s = String(rawStatus || '').toUpperCase()
@@ -250,11 +273,11 @@ function parseOrder(gateway, body) {
       // moeda: usa a que a Kirvano mandar, senão deriva do país
       currency: (body.currency || '').toUpperCase() || null,
       // UTM
-      utmSource: utm.source || utm.src || body.utm_source,
-      utmMedium: utm.medium || body.utm_medium,
-      utmCampaign: utm.campaign || body.utm_campaign,
-      utmContent: utm.content || body.utm_content,
-      utmTerm: utm.term || body.utm_term,
+      utmSource: pickUtm(utm.source, utm.utm_source, utm.src, body.utm_source),
+      utmMedium: pickUtm(utm.medium, utm.utm_medium, body.utm_medium),
+      utmCampaign: pickUtm(utm.campaign, utm.utm_campaign, body.utm_campaign),
+      utmContent: pickUtm(utm.content, utm.utm_content, body.utm_content),
+      utmTerm: pickUtm(utm.term, utm.utm_term, body.utm_term),
       checkoutUrl,
       // Facebook IDs
       fbc,

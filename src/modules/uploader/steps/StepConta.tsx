@@ -8,6 +8,7 @@ import {
   verifyPage,
   listPages,
   lookupInstagram,
+  debugToken,
 } from '../lib/fb'
 import { toast } from '@/components/ui/toast'
 
@@ -25,11 +26,31 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
 
   async function testToken() {
     setTokenStatus({ ok: false, msg: 'Verificando...' })
+    const token = form.token.trim()
     try {
-      const name = await verifyToken(form.token.trim())
-      setTokenStatus({ ok: true, msg: `✓ ${name}` })
-    } catch {
-      setTokenStatus({ ok: false, msg: '✗ Token inválido' })
+      const name = await verifyToken(token)
+      // mostra a validade — token curto (Graph Explorer) expira em ~1-2h e
+      // gera o erro "Session has expired"; o ideal é um token de longa duração.
+      let extra = ''
+      try {
+        const { expiresAt } = await debugToken(token)
+        if (!expiresAt) {
+          extra = ' · não expira'
+        } else {
+          const ms = expiresAt * 1000 - Date.now()
+          const h = Math.round(ms / 3_600_000)
+          extra =
+            h < 48
+              ? ` · ⚠ expira em ~${h}h — use um token de longa duração`
+              : ` · expira ${new Date(expiresAt * 1000).toLocaleDateString('pt-BR')}`
+        }
+      } catch {
+        /* debug_token pode não estar disponível p/ alguns tokens — ignora */
+      }
+      setTokenStatus({ ok: true, msg: `✓ ${name}${extra}` })
+    } catch (e: any) {
+      // mostra o motivo real (ex.: "Session has expired ... code 190/463" = token vencido)
+      setTokenStatus({ ok: false, msg: `✗ ${e.message || 'Token inválido'}` })
     }
   }
 

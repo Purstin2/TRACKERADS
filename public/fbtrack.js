@@ -61,11 +61,45 @@
     return new URLSearchParams(location.search).get(name)
   }
 
-  // ── _fbc: fb.1.<timestamp_ms>.<fbclid> ───────────────────────────────────────
-  var fbclid = getParam('fbclid')
+  // ── Atribuição "primeiro toque PAGO vence" ───────────────────────────────────
+  // Problema clássico: a pessoa clica no ANÚNCIO (fbclid + utm_source=FB|campanha),
+  // sai, e volta DEPOIS pela BIO do Instagram (utm_source=ig, medium=social,
+  // content=link_in_bio, carregando um fbclid do app). Sem tratamento, esse último
+  // toque "orgânico" sobrescreve o do anúncio e a venda parece orgânica no Meta.
+  // Regra: um toque ORGÂNICO nunca apaga uma atribuição de ANÚNCIO já guardada;
+  // um novo clique de anúncio atualiza pra ele (last paid-click vence).
+  var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
+
+  // É clique de anúncio pago? (tem campanha de verdade e não é social/bio)
+  function looksPaid(src, med, camp, cont) {
+    src = (src || '').toLowerCase(); med = (med || '').toLowerCase()
+    cont = (cont || '').toLowerCase(); camp = camp || ''
+    if (cont.indexOf('link_in_bio') >= 0) return false
+    if (med === 'social' || med === 'organic') return false
+    // FB/IG pago manda utm_campaign (geralmente "Nome|ID"); bio orgânica não tem
+    return !!camp || src === 'fb' || src === 'facebook'
+  }
+
+  var urlFbclid = getParam('fbclid')
+  var urlUtm = {}
+  UTM_KEYS.forEach(function (k) { urlUtm[k] = getParam(k) || '' })
+
+  var hadStored = !!(getCookie('k_utm_source') || getCookie('k_fbclid') || getCookie('_fbc'))
+  var curPaid = looksPaid(urlUtm.utm_source, urlUtm.utm_medium, urlUtm.utm_campaign, urlUtm.utm_content)
+  // grava/sobrescreve a atribuição quando: é clique de anúncio pago, OU ainda não há
+  // nada guardado (primeiro toque, mesmo orgânico, é melhor que nada).
+  var writeAttr = curPaid || !hadStored
+
+  if (writeAttr) {
+    UTM_KEYS.forEach(function (k) { if (urlUtm[k]) setCookie('k_' + k, urlUtm[k], 90) })
+    if (urlFbclid) setCookie('k_fbclid', urlFbclid, 90)
+  }
+
+  // ── _fbc: prioriza o fbclid GUARDADO (do anúncio) sobre o atual (bio) ─────────
+  var fbclid = getCookie('k_fbclid') || urlFbclid || ''
   var fbc = getCookie('_fbc')
-  if (fbclid) {
-    // chegou clique novo do anúncio → (re)grava o _fbc com timestamp atual
+  // (re)grava o _fbc se veio clique de anúncio pago agora, OU se não existe _fbc ainda
+  if (fbclid && (writeAttr || !fbc)) {
     fbc = 'fb.1.' + Date.now() + '.' + fbclid
     setCookie('_fbc', fbc, 90)
   }
@@ -77,14 +111,10 @@
     setCookie('_fbp', fbp, 90)
   }
 
-  // ── UTMs: persiste em cookie pra não perder na navegação ─────────────────────
-  var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
+  // ── UTMs efetivos = os GUARDADOS (já refletem "pago vence") ───────────────────
   var utms = {}
-  UTM_KEYS.forEach(function (k) {
-    var v = getParam(k)
-    if (v) setCookie('k_' + k, v, 90)
-    utms[k] = v || getCookie('k_' + k) || ''
-  })
+  UTM_KEYS.forEach(function (k) { utms[k] = getCookie('k_' + k) || urlUtm[k] || '' })
+
   // gclid também (Google), caso rode tráfego no Google depois
   var gclid = getParam('gclid')
   if (gclid) setCookie('k_gclid', gclid, 90)
@@ -131,9 +161,10 @@
         return u.toString()
       }
 
-      // Kirvano e demais: params diretos
-      if (fbc) u.searchParams.set('fbc', fbc)
-      if (fbp) u.searchParams.set('fbp', fbp)
+      // Kirvano e demais: params diretos (manda fbc/fbp e as variantes _fbc/_fbp,
+      // pq a Kirvano só repassa no webhook alguns nomes — cobrimos os dois jeitos).
+      if (fbc) { u.searchParams.set('fbc', fbc); u.searchParams.set('_fbc', fbc) }
+      if (fbp) { u.searchParams.set('fbp', fbp); u.searchParams.set('_fbp', fbp) }
       if (fbclid) u.searchParams.set('fbclid', fbclid)
       UTM_KEYS.forEach(function (k) { if (utms[k]) u.searchParams.set(k, utms[k]) })
       if (gclid) u.searchParams.set('gclid', gclid)
