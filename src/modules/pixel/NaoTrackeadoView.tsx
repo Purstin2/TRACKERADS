@@ -222,6 +222,20 @@ export default function NaoTrackeadoView() {
                       <tr className="border-b border-border/50 bg-[#0a0c19]">
                         <td colSpan={7} className="px-4 py-3">
                           <div className="mb-2 text-[11px] text-muted2">{m.desc}</div>
+                          {/* UTMs capturadas — referência p/ rastrear conjunto|id e anúncio|id no gerenciador */}
+                          <div className="mb-2 grid gap-1 rounded-[7px] border border-border bg-surface2/40 px-3 py-2 text-[11px] sm:grid-cols-2">
+                            {([
+                              ['campanha', o.utm_campaign],
+                              ['source', o.utm_source],
+                              ['conjunto (medium)', o.utm_medium],
+                              ['anúncio (content)', o.utm_content],
+                            ] as const).map(([lbl, val]) => (
+                              <div key={lbl} className="flex items-baseline gap-1.5">
+                                <span className="shrink-0 text-[9.5px] uppercase tracking-wide text-muted2">{lbl}:</span>
+                                <span className="truncate font-mono text-ink" title={val || ''}>{val || '—'}</span>
+                              </div>
+                            ))}
+                          </div>
                           {o.issue !== 'erro_envio' && (
                             <div className="field mb-2">
                               <label className="!text-[10.5px] !text-brand-2">fbclid do anúncio real (cole da UTMIFY / link do anúncio) — é o que reatribui a campanha</label>
