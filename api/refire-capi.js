@@ -52,6 +52,16 @@ const hashCountry = (v) => sha(isoCountry(v))
 const DDI_BY_ISO = { br: '55', pt: '351', es: '34', cl: '56', mx: '52', ar: '54', co: '57', pe: '51' }
 const ddiOf = (iso) => DDI_BY_ISO[iso] || '55'
 
+// fbc é o sinal de clique mais forte. A Kirvano manda só cookies.fbclid (não o
+// _fbc pronto) — reconstrói no formato fb.1.<ts>.<fbclid>. Mesma lógica do webhook.
+function buildFbc(fbclid, rawFbc, createdAt) {
+  if (rawFbc && /^fb\.1\.\d+\./.test(rawFbc)) return rawFbc
+  const id = fbclid || (rawFbc && !rawFbc.startsWith('fb.') ? rawFbc : null)
+  if (!id) return null
+  const ts = createdAt ? new Date(createdAt).getTime() : Date.now()
+  return `fb.1.${ts || Date.now()}.${id}`
+}
+
 async function resolvePixel(supabaseUrl, supabaseKey, order) {
   // Extrai offer_id e product_id do campo products[] salvo no pedido
   const products = Array.isArray(order.products) ? order.products : []
@@ -105,8 +115,18 @@ export default async function handler(req, res) {
   const route = await resolvePixel(supabaseUrl, supabaseKey, o)
   if (!route) return res.status(422).json({ error: 'nenhuma rota de pixel encontrada pra esse pedido — cadastre uma rota na aba Pixels' })
 
-  // 3. Monta o user_data com o que temos no banco
-  const iso = isoCountry(o.country_iso || 'br')
+  // 3. Sinais de clique/geo/IP vivem dentro do raw (a tabela não tem colunas fbc/fbp/country)
+  const raw = o.raw || {}
+  const cookies = raw.cookies || {}
+  const addr = (raw.customer && raw.customer.address) || {}
+  const fbclid = cookies.fbclid || raw.fbclid || null
+  const rawFbc = cookies._fbc || raw.fbc || null
+  const rawFbp = cookies._fbp || raw.fbp || null
+  const fbc = buildFbc(fbclid, rawFbc, o.ordered_at || o.created_at)
+  const fbp = rawFbp && /^fb\.1\./.test(rawFbp) ? rawFbp : (rawFbp ? `fb.1.${Date.now()}.${rawFbp}` : null)
+  const clientIp = raw.ip || null
+
+  const iso = isoCountry(addr.country || (raw.customer && raw.customer.country) || 'br')
   const { fn, ln } = hashName(o.customer_name)
 
   const userData = {}
@@ -116,14 +136,22 @@ export default async function handler(req, res) {
   if (ph) userData.ph = [ph]
   if (fn) userData.fn = [fn]
   if (ln) userData.ln = [ln]
+  const ctH = hashCity(addr.city)
+  if (ctH) userData.ct = [ctH]
+  const stH = hashState(addr.state)
+  if (stH) userData.st = [stH]
+  const zpH = hashZip(addr.zipcode || addr.zip)
+  if (zpH) userData.zp = [zpH]
+  userData.country = [hashCountry(iso)]
   const docH = hashDoc(o.customer_doc)
   const external_id = []
   if (docH) external_id.push(docH)
   if (o.sale_id) external_id.push(sha(norm(String(o.sale_id))))
   else if (o.checkout_id) external_id.push(sha(norm(String(o.checkout_id))))
   if (external_id.length) userData.external_id = external_id
-  if (o.fbc) userData.fbc = o.fbc
-  if (o.fbp) userData.fbp = o.fbp
+  if (fbc) userData.fbc = fbc
+  if (fbp) userData.fbp = fbp
+  if (clientIp) userData.client_ip_address = clientIp
 
   // 4. Monta custom_data
   const products = Array.isArray(o.products) ? o.products : []
