@@ -4,7 +4,7 @@ import { toast } from '@/components/ui/toast'
 import { fetchWaTemplates, createWaTemplate, type WaTemplateMeta } from './orders'
 
 const LS_SECRET = 'purstin_pixel'
-const LS_DRAFTS = 'purstin_wa_templates'
+const LS_DRAFTS = 'purstin_wa_templates_v3'
 
 function getSecret(): string {
   try { return JSON.parse(localStorage.getItem(LS_SECRET) || '{}').webhookSecret || '' } catch { return '' }
@@ -23,27 +23,27 @@ interface Draft {
 const DEFAULT_DRAFTS: Draft[] = [
   {
     day: 1,
-    name: 'carrinho_dia1_v2',
+    name: 'carrinho_dia1_v3',
     category: 'MARKETING',
-    body: 'Oi {{1}}, você esqueceu algo no carrinho 👀\n\nAinda dá tempo de garantir o seu pedido na {{2}}. É só tocar no botão abaixo e finalizar em menos de 1 minuto 👇',
-    bodyExample: ['João', 'nossa loja'],
+    body: 'Oi {{1}}, você esqueceu algo no carrinho. Ainda dá tempo de garantir o seu pedido na {{2}}. É só tocar no botão abaixo e finalizar em menos de 1 minuto.',
+    bodyExample: ['João', 'Ultrapack'],
     buttonText: 'Finalizar compra',
     video: false,
   },
   {
     day: 2,
-    name: 'carrinho_dia2_v2',
+    name: 'carrinho_dia2_v3',
     category: 'MARKETING',
-    body: 'Oi {{1}}, olha só o que você vai receber 🎁\n\nMilhares de pessoas já estão usando. Bora garantir o seu antes que acabe?',
+    body: 'Oi {{1}}, olha só o que você vai receber. Milhares de pessoas já estão usando e aprovando. Bora garantir o seu antes que acabe?',
     bodyExample: ['João'],
     buttonText: 'Quero garantir',
     video: true,
   },
   {
     day: 3,
-    name: 'carrinho_dia3_v2',
+    name: 'carrinho_dia3_v3',
     category: 'MARKETING',
-    body: 'Psiu {{1}}, última chance ⏰\n\nSeu carrinho expira hoje e eu não garanto o mesmo preço depois. É só tocar no botão e finalizar agora 👇',
+    body: 'Psiu {{1}}, última chance. Seu carrinho expira hoje e eu não garanto o mesmo preço depois. É só tocar no botão e finalizar agora.',
     bodyExample: ['João'],
     buttonText: 'Finalizar agora',
     video: false,
