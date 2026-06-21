@@ -9,6 +9,7 @@ import {
   fetchWaMessages,
   saveWaConfig,
   triggerRecover,
+  waDay,
   brl,
   type KirvanoOrder,
   type WaConfig,
@@ -144,8 +145,8 @@ export default function RecuperacaoView() {
     'R$ 169,80',
   )
 
-  const okMsgs = waMessages.filter((m) => m.status === 'ok').length
-  const errMsgs = waMessages.filter((m) => m.status !== 'ok').length
+  const okMsgs = waMessages.filter((m) => m.ok === true).length
+  const errMsgs = waMessages.filter((m) => m.ok === false).length
 
   return (
     <div className="flex flex-col gap-4">
@@ -212,7 +213,8 @@ export default function RecuperacaoView() {
               </thead>
               <tbody>
                 {waMessages.map((m) => {
-                  const isOk = m.status === 'ok'
+                  const isOk = m.ok === true
+                  const day = waDay(m.body)
                   const wamid = m.response?.messages?.[0]?.id || null
                   const errMsg = m.response?.error?.message || (isOk ? null : 'falhou')
                   return (
@@ -224,7 +226,7 @@ export default function RecuperacaoView() {
                       <td className="max-w-[160px] truncate py-2 text-muted2" title={m.product || ''}>{m.product || '—'}</td>
                       <td className="py-2 text-center">
                         <span className="rounded-full border border-border2 bg-surface2 px-2 py-0.5 text-[10px] font-semibold text-muted">
-                          {STEP_LABEL[m.step ?? 0] || `#${m.step}`}
+                          {day ? STEP_LABEL[day] : '—'}
                         </span>
                       </td>
                       <td className="py-2 font-mono text-[11px] text-muted2">{m.phone || '—'}</td>

@@ -132,14 +132,21 @@ export async function triggerRecover(secret: string, ids?: string[]): Promise<an
 export interface WaMessage {
   id: string
   order_id: string | null
-  step: number | null
+  body: string | null        // "[dia N] templatename" — o passo está aqui
   phone: string | null
-  status: string | null   // 'ok' | 'error'
+  ok: boolean | null         // true = enviado, false = falhou (coluna real do banco)
+  http_status: number | null
   response: any
   created_at: string | null
   // joined from kirvano_orders
   customer_name?: string | null
   product?: string | null
+}
+
+/** Extrai o nº do dia (1..3) do body "[dia N] template". */
+export function waDay(body?: string | null): number | null {
+  const m = (body || '').match(/dia\s*(\d)/i)
+  return m ? parseInt(m[1], 10) : null
 }
 
 export async function fetchWaMessages(limit = 200): Promise<WaMessage[]> {
