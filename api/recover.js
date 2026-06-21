@@ -54,7 +54,7 @@ function getSteps() {
       // body: {{1}}=nome, {{2}}=empresa | botão URL: {{1}}=order_id (índice separado do body)
       bodyParams: (o) => [cleanParam(firstName(o), 'você'), cleanParam(company, 'nossa loja')],
       header: null,
-      hasButton: process.env.WA_BUTTON_URL !== 'false', // desativa com WA_BUTTON_URL=false
+      hasButton: process.env.WA_BUTTON_URL === 'true', // botão só quando ligado (templates _v2 c/ CTA)
     },
     {
       day: 2,
@@ -63,7 +63,7 @@ function getSteps() {
       // body: {{1}}=nome + header de vídeo | botão URL: {{1}}=order_id
       bodyParams: (o) => [cleanParam(firstName(o), 'você')],
       header: videoUrl ? { type: 'video', link: videoUrl } : videoId ? { type: 'video', id: videoId } : null,
-      hasButton: process.env.WA_BUTTON_URL !== 'false',
+      hasButton: process.env.WA_BUTTON_URL === 'true',
     },
     {
       day: 3,
@@ -72,7 +72,7 @@ function getSteps() {
       // body: {{1}}=nome | botão URL: {{1}}=order_id
       bodyParams: (o) => [cleanParam(firstName(o), 'você')],
       header: null,
-      hasButton: process.env.WA_BUTTON_URL !== 'false',
+      hasButton: process.env.WA_BUTTON_URL === 'true',
     },
   ]
 }
