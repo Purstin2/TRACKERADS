@@ -51,25 +51,28 @@ function getSteps() {
       day: 1,
       template: process.env.WA_TEMPLATE_DAY1 || 'carrinho_dia1',
       lang,
-      // dia 1: {{1}}=nome, {{2}}=empresa
-      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem'), cleanParam(company, 'nossa loja')],
+      // body: {{1}}=nome, {{2}}=empresa | botão URL: {{1}}=order_id (índice separado do body)
+      bodyParams: (o) => [cleanParam(firstName(o), 'você'), cleanParam(company, 'nossa loja')],
       header: null,
+      hasButton: process.env.WA_BUTTON_URL !== 'false', // desativa com WA_BUTTON_URL=false
     },
     {
       day: 2,
       template: process.env.WA_TEMPLATE_DAY2 || 'carrinho_dia2',
       lang,
-      // dia 2: {{1}}=nome + header de vídeo (precisa link público ou media id)
-      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem')],
+      // body: {{1}}=nome + header de vídeo | botão URL: {{1}}=order_id
+      bodyParams: (o) => [cleanParam(firstName(o), 'você')],
       header: videoUrl ? { type: 'video', link: videoUrl } : videoId ? { type: 'video', id: videoId } : null,
+      hasButton: process.env.WA_BUTTON_URL !== 'false',
     },
     {
       day: 3,
       template: process.env.WA_TEMPLATE_DAY3 || 'carrinhos_dia3',
       lang,
-      // dia 3: {{1}}=nome
-      bodyParams: (o) => [cleanParam(firstName(o), 'tudo bem')],
+      // body: {{1}}=nome | botão URL: {{1}}=order_id
+      bodyParams: (o) => [cleanParam(firstName(o), 'você')],
       header: null,
+      hasButton: process.env.WA_BUTTON_URL !== 'false',
     },
   ]
 }
@@ -106,6 +109,16 @@ function buildRequest(provider, phone, stepDef) {
   }
   const params = stepDef.bodyParams_resolved.map((t) => ({ type: 'text', text: t }))
   if (params.length) components.push({ type: 'body', parameters: params })
+  // botão CTA com URL dinâmica — parâmetro é o order_id que o endpoint /api/go resolve
+  // O índice "0" corresponde ao 1º botão no template; {{1}} no URL do template = sufixo dinâmico
+  if (stepDef.hasButton && stepDef.buttonParam) {
+    components.push({
+      type: 'button',
+      sub_type: 'url',
+      index: '0',
+      parameters: [{ type: 'text', text: String(stepDef.buttonParam) }],
+    })
+  }
 
   const template = { name: stepDef.template, language: { code: stepDef.lang }, components }
 
@@ -125,8 +138,8 @@ function buildRequest(provider, phone, stepDef) {
 }
 
 async function sendStep(provider, phone, stepDef, o) {
-  // resolve os params do body pra este pedido
   stepDef.bodyParams_resolved = stepDef.bodyParams(o)
+  stepDef.buttonParam = o.id || null // order_id → /api/go?id=ORDER_ID redireciona pro checkout
   const req = buildRequest(provider, phone, stepDef)
   if (!req.url || (provider === 'cloud' && (!process.env.WA_PHONE_ID || !process.env.WA_TOKEN))) {
     return { ok: false, http: 0, response: { error: 'provider não configurado (faltam env vars)' } }
