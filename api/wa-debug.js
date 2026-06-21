@@ -14,12 +14,13 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
-  const since = new Date(Date.now() - 3 * 86400000).toISOString()
+  const days = parseInt(req.query.days || '30', 10)
+  const since = new Date(Date.now() - days * 86400000).toISOString()
 
   // 1) mensagens WA que falharam
   const failRes = await fetch(
     `${url}/rest/v1/wa_messages?ok=eq.false&created_at=gte.${since}` +
-      `&select=created_at,order_id,phone,body,http_status,response&order=created_at.desc&limit=20`,
+      `&select=created_at,order_id,phone,body,http_status,response&order=created_at.desc&limit=30`,
     { headers: sbH(key) },
   )
   const fails = await failRes.json()
@@ -27,10 +28,18 @@ export default async function handler(req, res) {
   // 2) carrinhos abandonados e o estado do WA neles
   const abRes = await fetch(
     `${url}/rest/v1/kirvano_orders?status=eq.ABANDONED&created_at=gte.${since}` +
-      `&select=id,created_at,customer_name,customer_phone,value,wa_step,wa_status,wa_attempts,wa_error&order=created_at.desc&limit=20`,
+      `&select=id,created_at,customer_name,customer_phone,value,wa_step,wa_status,wa_attempts,wa_error&order=created_at.desc&limit=30`,
     { headers: sbH(key) },
   )
   const abandoned = await abRes.json()
+
+  // 3) qualquer pedido marcado como falha de WA (independente de status)
+  const failedOrdersRes = await fetch(
+    `${url}/rest/v1/kirvano_orders?wa_status=eq.failed&created_at=gte.${since}` +
+      `&select=id,created_at,status,customer_name,customer_phone,value,wa_step,wa_attempts,wa_error&order=created_at.desc&limit=30`,
+    { headers: sbH(key) },
+  )
+  const failedOrders = await failedOrdersRes.json()
 
   // resumo dos erros (mensagem + código do Meta)
   const errSummary = (Array.isArray(fails) ? fails : []).map((f) => ({
@@ -47,6 +56,11 @@ export default async function handler(req, res) {
     ok: true,
     falhas_wa: errSummary,
     abandonados: abandoned,
-    contagem: { falhas: errSummary.length, abandonados: Array.isArray(abandoned) ? abandoned.length : 0 },
+    pedidos_falha: failedOrders,
+    contagem: {
+      falhas: errSummary.length,
+      abandonados: Array.isArray(abandoned) ? abandoned.length : 0,
+      pedidos_falha: Array.isArray(failedOrders) ? failedOrders.length : 0,
+    },
   })
 }
