@@ -4,7 +4,7 @@ import { toast } from '@/components/ui/toast'
 import { fetchWaTemplates, createWaTemplate, type WaTemplateMeta } from './orders'
 
 const LS_SECRET = 'purstin_pixel'
-const LS_DRAFTS = 'purstin_wa_templates_v3'
+const LS_DRAFTS = 'purstin_wa_templates_v5'
 
 function getSecret(): string {
   try { return JSON.parse(localStorage.getItem(LS_SECRET) || '{}').webhookSecret || '' } catch { return '' }
@@ -23,27 +23,27 @@ interface Draft {
 const DEFAULT_DRAFTS: Draft[] = [
   {
     day: 1,
-    name: 'carrinho_dia1_v3',
+    name: 'carrinho_dia1_v5',
     category: 'MARKETING',
-    body: 'Oi {{1}}, você esqueceu algo no carrinho. Ainda dá tempo de garantir o seu pedido na {{2}}. É só tocar no botão abaixo e finalizar em menos de 1 minuto.',
+    body: 'Oi {{1}}, você esqueceu algo no carrinho \u{1F440}\n\nAinda dá tempo de garantir o seu pedido na {{2}} \u{1F6D2}\n\nÉ só tocar no botão abaixo e finalizar em menos de 1 minuto \u{1F447}',
     bodyExample: ['João', 'Ultrapack'],
     buttonText: 'Finalizar compra',
     video: false,
   },
   {
     day: 2,
-    name: 'carrinho_dia2_v3',
+    name: 'carrinho_dia2_v5',
     category: 'MARKETING',
-    body: 'Oi {{1}}, olha só o que você vai receber. Milhares de pessoas já estão usando e aprovando. Bora garantir o seu antes que acabe?',
+    body: 'Oi {{1}}, olha só o que você vai receber \u{1F381}\n\nMilhares de pessoas já estão usando e aprovando \u{2B50}\n\nBora garantir o seu antes que acabe? \u{1F60A}',
     bodyExample: ['João'],
     buttonText: 'Quero garantir',
     video: true,
   },
   {
     day: 3,
-    name: 'carrinho_dia3_v3',
+    name: 'carrinho_dia3_v5',
     category: 'MARKETING',
-    body: 'Psiu {{1}}, última chance. Seu carrinho expira hoje e eu não garanto o mesmo preço depois. É só tocar no botão e finalizar agora.',
+    body: 'Psiu {{1}}, última chance \u{23F0}\n\nSeu carrinho expira hoje e eu não garanto o mesmo preço depois \u{1F62C}\n\nÉ só tocar no botão e finalizar agora \u{1F447}',
     bodyExample: ['João'],
     buttonText: 'Finalizar agora',
     video: false,
