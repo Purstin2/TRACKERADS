@@ -34,7 +34,7 @@ const DEFAULT_DRAFTS: Draft[] = [
     day: 2,
     name: 'carrinho_dia2_v2',
     category: 'MARKETING',
-    body: '{{1}}, olha só o que você vai receber 🎁\n\nMilhares de pessoas já estão usando. Bora garantir o seu antes que acabe?',
+    body: 'Oi {{1}}, olha só o que você vai receber 🎁\n\nMilhares de pessoas já estão usando. Bora garantir o seu antes que acabe?',
     bodyExample: ['João'],
     buttonText: 'Quero garantir',
     video: true,
@@ -43,7 +43,7 @@ const DEFAULT_DRAFTS: Draft[] = [
     day: 3,
     name: 'carrinho_dia3_v2',
     category: 'MARKETING',
-    body: '{{1}}, última chance ⏰\n\nSeu carrinho expira hoje e eu não garanto o mesmo preço depois. Finaliza agora 👇',
+    body: 'Psiu {{1}}, última chance ⏰\n\nSeu carrinho expira hoje e eu não garanto o mesmo preço depois. É só tocar no botão e finalizar agora 👇',
     bodyExample: ['João'],
     buttonText: 'Finalizar agora',
     video: false,
@@ -120,6 +120,12 @@ export default function WaTemplatesView() {
     const example = idxs.map((i) => d.bodyExample[i - 1] || '')
     if (example.some((e) => !e.trim())) {
       toast(`Dia ${d.day}: preencha o exemplo de cada variável`, 'err')
+      return false
+    }
+    // Meta rejeita variável no início ou no fim do corpo
+    const trimmed = d.body.trim()
+    if (/^\{\{\d+\}\}/.test(trimmed) || /\{\{\d+\}\}$/.test(trimmed)) {
+      toast(`Dia ${d.day}: a mensagem não pode começar nem terminar com variável {{ }} — coloque um texto antes/depois`, 'err')
       return false
     }
     const res = await createWaTemplate(secret, {
