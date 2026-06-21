@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, RefreshCw, Send, Power, Save, Info, History, CheckCircle2, XCircle, RotateCcw } from 'lucide-react'
+import { MessageCircle, RefreshCw, Send, Power, Save, Info, History, CheckCircle2, XCircle, RotateCcw, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/components/ui/toast'
+import WaTemplatesView from './WaTemplatesView'
 import {
   fetchOrders,
   fetchWaConfig,
@@ -41,7 +42,7 @@ export default function RecuperacaoView() {
   const [saving, setSaving] = useState(false)
   const [firing, setFiring] = useState(false)
   const [firingId, setFiringId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'fila' | 'historico'>('fila')
+  const [activeTab, setActiveTab] = useState<'fila' | 'historico' | 'templates'>('fila')
   const connected = !!supabase()
   const secret = getSecret()
 
@@ -175,7 +176,7 @@ export default function RecuperacaoView() {
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-border pb-1">
-        {([['fila', 'Fila de recuperação', MessageCircle], ['historico', 'Histórico WA', History]] as const).map(([id, label, Icon]) => (
+        {([['fila', 'Fila de recuperação', MessageCircle], ['historico', 'Histórico WA', History], ['templates', 'Templates', FileText]] as const).map(([id, label, Icon]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -258,6 +259,8 @@ export default function RecuperacaoView() {
           )}
         </div>
       )}
+
+      {activeTab === 'templates' && <WaTemplatesView />}
 
       {activeTab === 'fila' && <>
       {/* configuração */}

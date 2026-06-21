@@ -158,6 +158,45 @@ export async function fetchWaMessages(limit = 200): Promise<WaMessage[]> {
   })) as WaMessage[]
 }
 
+/* ── Templates de WhatsApp (gerencia direto pela API do Meta) ── */
+export interface WaTemplateMeta {
+  name: string
+  status: string // APPROVED | PENDING | REJECTED | ...
+  category?: string
+  language?: string
+  components?: any[]
+  rejected_reason?: string
+}
+
+export async function fetchWaTemplates(secret: string): Promise<WaTemplateMeta[]> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const r = await fetch(`${origin}/api/wa-templates?secret=${encodeURIComponent(secret)}`)
+  const j = await r.json()
+  if (j.error) throw new Error(j.error)
+  return (j.templates || []) as WaTemplateMeta[]
+}
+
+export interface WaTemplateInput {
+  name: string
+  category: string
+  language?: string
+  body: string
+  bodyExample?: string[]
+  buttonText?: string
+  buttonUrlBase?: string
+  video?: boolean
+}
+
+export async function createWaTemplate(secret: string, template: WaTemplateInput): Promise<any> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const r = await fetch(`${origin}/api/wa-templates?secret=${encodeURIComponent(secret)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'create', template }),
+  })
+  return r.json()
+}
+
 /**
  * Classifica por que uma venda aprovada "não trackeou" a campanha:
  *  - 'erro_envio'    → capi_ok != true: erro de config (sem rota/token). NÃO foi pro Meta. Re-disparo resolve.
