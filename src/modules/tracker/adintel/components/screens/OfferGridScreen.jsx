@@ -5,6 +5,14 @@ import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
 import AdvancedFilters from '../ui/AdvancedFilters';
 import ImportBookmarksModal from '../ui/ImportBookmarksModal';
+import { smartClassifyOffer } from '../../utils/smartClassification';
+
+// Ranking de "saúde" da oferta (melhores → piores) p/ ordenação padrão
+const STATUS_RANK = {
+    DOMINANT: 100, SCALING_CONFIRMED: 95, SCALING: 90, ACCELERATING: 85,
+    VALIDATING: 75, STABLE: 60, CREATIVE_TESTING: 55, LAUNCH: 50,
+    LOW: 40, OBSERVE: 35, EXHAUSTING: 25, INACTIVE: 15, DYING: 10, DEAD: 5, NO_DATA: 0,
+};
 
 const OfferGridScreen = ({ 
     offers, 
@@ -29,7 +37,7 @@ const OfferGridScreen = ({
     showToast,
     fetchOffers
 }) => {
-    const [sortBy, setSortBy] = useState('newest');
+    const [sortBy, setSortBy] = useState('best');
     const [showSortDropdown, setShowSortDropdown] = useState(false);
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
@@ -115,6 +123,7 @@ const OfferGridScreen = ({
 
     // Sort options
     const sortOptions = [
+        { value: 'best',            label: '🔥 Melhores → Piores' },
         { value: 'newest',          label: 'Recém Adicionados' },
         { value: 'oldest',          label: 'Mais Antigos' },
         { value: 'alphabetical',    label: 'Ordem Alfabética' },
@@ -165,14 +174,14 @@ const OfferGridScreen = ({
         return { maxAds, consistency, trend, lastActivity };
     };
 
-    // Tendência 7d por oferta — usada pra empurrar quedas pro fim e crescimentos pro topo
-    const trendMap = useMemo(() => {
+    // Score de saúde (classificação inteligente) por oferta — base do sort "Melhores → Piores"
+    const rankMap = useMemo(() => {
         const m = {};
         localFilteredOffers.forEach(o => {
-            m[o.id] = calculateMetrics(o, adCountsMap[o.id] || [], 7).trend;
+            const cls = smartClassifyOffer(adCountsMap[o.id] || []);
+            m[o.id] = { score: STATUS_RANK[cls.status] ?? 0, ads: o.last_ad_count || 0 };
         });
         return m;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [localFilteredOffers, adCountsMap]);
 
     // Cards fixados no topo — usa localFilteredOffers quando filtros avançados estão ativos
@@ -184,19 +193,16 @@ const OfferGridScreen = ({
         if (aPinnedIdx !== -1) return -1;
         if (bPinnedIdx !== -1) return 1;
 
-        // Camada de tendência: crescendo (verde) sobe, caindo (vermelho) afunda.
-        // Respeita os sorts explícitos de tendência (trending_up/down).
-        if (sortBy !== 'trending_up' && sortBy !== 'trending_down') {
-            const bucket = (t) => (t > 5 ? 0 : t < -5 ? 2 : 1);
-            const ba = bucket(trendMap[a.id] ?? 0);
-            const bb = bucket(trendMap[b.id] ?? 0);
-            if (ba !== bb) return ba - bb;
-        }
-
         const aCounts = adCountsMap[a.id] || [];
         const bCounts = adCountsMap[b.id] || [];
 
         switch (sortBy) {
+            case 'best': {
+                const ra = rankMap[a.id] || { score: 0, ads: 0 };
+                const rb = rankMap[b.id] || { score: 0, ads: 0 };
+                if (rb.score !== ra.score) return rb.score - ra.score; // melhor saúde primeiro
+                return rb.ads - ra.ads;                                 // empate → mais anúncios
+            }
             case 'newest':
                 return new Date(b.created_at) - new Date(a.created_at);
             case 'oldest':

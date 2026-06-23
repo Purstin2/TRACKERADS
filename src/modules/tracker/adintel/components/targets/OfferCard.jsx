@@ -328,15 +328,12 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                     : 'bg-gradient-to-r from-transparent via-white/[0.06] to-transparent'
             }`} />
 
-            {/* Header */}
+            {/* Header — nome + status + métrica (clean) */}
             <div className="p-4 pb-3">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex-1 min-w-0">
-                        <h3 className="text-[13px] font-semibold text-slate-200 truncate group-hover:text-white transition-colors leading-snug" title={offer.name} style={{fontFamily: 'Outfit, sans-serif'}}>
-                            {offer.name}
-                        </h3>
-                        <span className="text-[11px] text-slate-700 font-medium mt-0.5 block">{formatCreationDate(offer.created_at)}</span>
-                    </div>
+                <div className="flex items-start justify-between gap-2">
+                    <h3 className="flex-1 min-w-0 text-[14px] font-semibold text-slate-100 truncate group-hover:text-white transition-colors leading-snug" title={offer.name} style={{fontFamily: 'Outfit, sans-serif'}}>
+                        {offer.name}
+                    </h3>
                     <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
                         {isActive && (
                             <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/8 border border-emerald-500/18 px-1.5 py-0.5 rounded-full tracking-wider">
@@ -351,19 +348,21 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                     </div>
                 </div>
 
-                {/* Status badge */}
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-[10px] font-bold tracking-wide uppercase ${statusInfo.bgColor} ${statusInfo.borderColor} ${statusInfo.color}`}>
-                    {statusInfo.label}
-                </span>
-            </div>
+                {/* status + idade numa linha só */}
+                <div className="mt-2 flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide ${statusInfo.color}`}>
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'currentColor' }} />
+                        {statusInfo.label}
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600 font-medium">{formatCreationDate(offer.created_at)}</span>
+                </div>
 
-            {/* Metric */}
-            <div className="px-4 pb-3 border-t border-white/[0.04] pt-3">
-                <p className="text-[9px] text-slate-700 font-bold uppercase tracking-[0.12em] mb-1.5">Anúncios Ativos</p>
-                <div className="flex items-end gap-2.5">
-                    <span className="text-[32px] font-bold text-white leading-none num-display">{latestAdCount}</span>
+                {/* número grande + variação do dia */}
+                <div className="mt-3 flex items-end gap-2">
+                    <span className="text-[34px] font-bold text-white leading-none num-display">{latestAdCount}</span>
+                    <span className="text-[10px] text-slate-600 font-medium uppercase tracking-wider mb-1">ads</span>
                     {dailyPercentageChangeDisplay && (
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg mb-1 ${
+                        <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-lg mb-0.5 ${
                             isGrowing
                                 ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/15'
                                 : isFalling
@@ -374,18 +373,6 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         </span>
                     )}
                 </div>
-                {performanceAnalysis.weeklyChange !== "N/A" && (
-                    <p className="text-[11px] text-slate-700 mt-1.5 flex items-center gap-1">
-                        <span className="text-slate-600">7d:</span>
-                        <span className={`font-semibold ${
-                            parseFloat(performanceAnalysis.weeklyChange) > 0
-                                ? 'text-emerald-400'
-                                : parseFloat(performanceAnalysis.weeklyChange) < 0
-                                    ? 'text-rose-400'
-                                    : 'text-slate-600'
-                        }`}>{performanceAnalysis.weeklyChange}</span>
-                    </p>
-                )}
             </div>
 
             {/* Mini chart */}
