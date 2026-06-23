@@ -63,9 +63,10 @@ const OfferGridScreen = ({
             const data = await r.json();
             if (r.ok && data.success) {
                 showToast && showToast(`Buscando o nome de ${data.count} ofertas — os cards vão se atualizando.`, 'success');
+                // o job leva ~10s por oferta → faz polling por ~8 min pra refletir os renomeados ao vivo
                 let n = 0;
-                const iv = setInterval(() => { n++; if (fetchOffers) fetchOffers(); if (n >= 12) clearInterval(iv); }, 10000);
-                setTimeout(() => clearInterval(iv), 130000);
+                const iv = setInterval(() => { n++; if (fetchOffers) fetchOffers(); if (n >= 32) clearInterval(iv); }, 15000);
+                setTimeout(() => clearInterval(iv), 500000);
             } else {
                 showToast && showToast(`Erro: ${data.error || 'falha'}`, 'error');
             }
