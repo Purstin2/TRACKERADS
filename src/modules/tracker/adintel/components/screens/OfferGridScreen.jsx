@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw, CheckSquare, Trash2, Bookmark } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Search, Zap, AlertTriangle, Archive, ArchiveRestore, Filter, ChevronDown, Download, FileJson, FileText, RefreshCw, CheckSquare, Trash2, Bookmark, Tag } from 'lucide-react';
 import { exportToCSV, exportToJSON } from '../../utils/exportHelpers';
 import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
@@ -49,6 +49,32 @@ const OfferGridScreen = ({
     const [selectionMode, setSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [showImportBookmarks, setShowImportBookmarks] = useState(false);
+    const [isRenaming, setIsRenaming] = useState(false);
+
+    // Entra em cada link e renomeia os cards com o nome real da Página (via scraper local)
+    const handleFetchNames = async () => {
+        const base = import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001';
+        setIsRenaming(true);
+        try {
+            showToast && showToast('🏷️ Entrando nos links pra puxar o nome real das páginas...', 'info');
+            const r = await fetch(`${base}/api/scrape/names`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+            });
+            const data = await r.json();
+            if (r.ok && data.success) {
+                showToast && showToast(`Buscando o nome de ${data.count} ofertas — os cards vão se atualizando.`, 'success');
+                let n = 0;
+                const iv = setInterval(() => { n++; if (fetchOffers) fetchOffers(); if (n >= 12) clearInterval(iv); }, 10000);
+                setTimeout(() => clearInterval(iv), 130000);
+            } else {
+                showToast && showToast(`Erro: ${data.error || 'falha'}`, 'error');
+            }
+        } catch {
+            showToast && showToast('Scraper local não está rodando (localhost:3001). Inicie o scraper-service.', 'error');
+        } finally {
+            setTimeout(() => setIsRenaming(false), 5000);
+        }
+    };
 
     // Sync localFilteredOffers when offers prop changes (only if no active advanced filter)
     useEffect(() => {
@@ -319,6 +345,15 @@ const OfferGridScreen = ({
                                 </>
                             );
                         })()}
+                        <button
+                            onClick={handleFetchNames}
+                            disabled={isRenaming}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-fuchsia-600/90 hover:bg-fuchsia-500 disabled:opacity-50 text-white shadow-lg shadow-fuchsia-700/20 transition-all"
+                            title="Entra em cada link e renomeia os cards com o nome real da Página"
+                        >
+                            <Tag size={15} className={isRenaming ? 'animate-pulse' : ''} />
+                            {isRenaming ? 'Buscando...' : 'Nomes reais'}
+                        </button>
                         <button
                             onClick={() => setShowImportBookmarks(true)}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-500/90 hover:bg-amber-400 text-black shadow-lg shadow-amber-700/20 transition-all"
