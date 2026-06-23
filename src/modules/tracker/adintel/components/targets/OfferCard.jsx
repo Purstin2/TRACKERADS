@@ -281,6 +281,12 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
     const isGrowing = dailyPercentageChangeDisplay && dailyPercentageChangeDisplay.startsWith('+');
     const isFalling = dailyPercentageChangeDisplay && dailyPercentageChangeDisplay.startsWith('-') && dailyPercentageChangeDisplay !== '-âˆž';
 
+    // Tendência de 7 dias → borda verde (crescendo) / vermelha (caindo).
+    // weeklyChange vem como "+15.0%" / "-22.0%" / "N/A" / "Novo".
+    const weekly7d = parseFloat(performanceAnalysis.weeklyChange);
+    const trendUp7d = !isNaN(weekly7d) && weekly7d > 5;
+    const trendDown7d = !isNaN(weekly7d) && weekly7d < -5;
+
     return (
         <div
             className={`
@@ -292,7 +298,11 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         ? 'border border-blue-500/30 shadow-xl shadow-blue-950/40 ring-1 ring-blue-500/10'
                         : offer.is_archived
                             ? 'border border-white/[0.04] opacity-45 grayscale-[0.5]'
-                            : 'border border-white/[0.055] hover:border-white/[0.12] hover:shadow-2xl hover:shadow-black/50'
+                            : trendUp7d
+                                ? 'border border-emerald-500/50 hover:border-emerald-400/70 shadow-lg shadow-emerald-950/30'
+                                : trendDown7d
+                                    ? 'border border-rose-500/50 hover:border-rose-400/70 shadow-lg shadow-rose-950/30'
+                                    : 'border border-white/[0.055] hover:border-white/[0.12] hover:shadow-2xl hover:shadow-black/50'
                 }
                 ${selectionMode ? 'cursor-pointer' : ''}
             `}
@@ -424,6 +434,17 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 </div>
             )}
 
+            {/* Placeholder do gráfico — quando ainda não há 2 leituras pra traçar a linha */}
+            {adCountsHistory.length <= 1 && (
+                <div className="px-3 pb-3 border-t border-white/[0.04] pt-3">
+                    <div className="flex h-[52px] w-full items-center justify-center rounded-lg border border-dashed border-white/[0.06]">
+                        <span className="text-[10px] text-slate-600">
+                            {adCountsHistory.length === 1 ? 'Aguardando 2ª leitura p/ traçar a linha' : 'Sem leituras ainda — rode o scraping'}
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Footer */}
             <div className={`mt-auto border-t border-white/[0.04] ${selectionMode ? 'pointer-events-none opacity-40' : ''}`}>
                 {/* Last update */}
@@ -466,11 +487,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                                     {isManualScrapingRunning ? 'Local...' : '💻 Local'}
                                 </button>
                                 <button
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        const currentUrl = window.location.origin + window.location.pathname;
-                                        window.open(`${currentUrl}?view=detail&id=${offer.id}`, '_blank');
-                                    }}
+                                    onClick={() => onViewDetails && onViewDetails(offer.id)}
                                     className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-blue-600/90 hover:bg-blue-500 text-white border border-blue-500/20 transition-all"
                                 >
                                     <Eye size={10} />
@@ -491,11 +508,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                             {isActive ? 'Ativa' : 'Ativar'}
                         </button>
                         <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                const currentUrl = window.location.origin + window.location.pathname;
-                                window.open(`${currentUrl}?view=detail&id=${offer.id}`, '_blank');
-                            }}
+                            onClick={() => onViewDetails && onViewDetails(offer.id)}
                             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-blue-600/90 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30 border border-blue-500/20 transition-all"
                         >
                             <Eye size={11} />
