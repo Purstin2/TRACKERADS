@@ -29,7 +29,7 @@ import {
   campUrl,
   type InsightRow,
 } from '@/lib/meta'
-import { loadFinParams } from './finance'
+import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
@@ -272,6 +272,9 @@ interface ListaRow {
   id: string
   name: string
   spend: number
+  revenue: number
+  lucro: number
+  margem: number
   roas: number | null
   cpa: number | null
   sales: number
@@ -287,17 +290,33 @@ interface ListaRow {
   cls: string
   action: ActionResult
 }
+
+/** Lucro/margem de uma linha pelo modelo financeiro (mesmas taxas do Financeiro). */
+function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
+  const aprov = FIN.aprov / 100
+  const fatBruto = revenue * aprov
+  const fatLiq = fatBruto * (1 - (FIN.gateway + FIN.imposto + FIN.reembolso + FIN.chargeback) / 100)
+  const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
+  return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
+}
 export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>): ListaRow[] {
+  const FIN = loadFinParams()
   return rows
     .map((r) => {
       const roas = getRoas(r)
       const cpa = getCpa(r)
       const sales = getSales(r)
+      const spend = parseFloat(r.spend || '0')
+      const revenue = getRevenue(r) || (roas != null ? roas * spend : 0)
+      const { lucro, margem } = rowFin(spend, revenue, sales, FIN)
       const md = meta?.[r.campaign_id!]
       return {
         id: r.campaign_id!,
         name: r.campaign_name || '',
-        spend: parseFloat(r.spend || '0'),
+        spend,
+        revenue,
+        lucro,
+        margem,
         roas,
         cpa,
         sales,
@@ -369,18 +388,18 @@ export function SummaryStrip({ counts }: { counts: Counts }) {
 
 /* ── Lista (gerenciador estilo Facebook) ── */
 const LISTA_COLS: { key: keyof ListaRow; label: string }[] = [
-  { key: 'spend', label: 'Gasto' },
-  { key: 'impr', label: 'Impr.' },
-  { key: 'cpm', label: 'CPM' },
-  { key: 'ctr', label: 'CTR' },
-  { key: 'cpc', label: 'CPC' },
-  { key: 'cpaIC', label: 'C/Checkout' },
-  { key: 'cpa', label: 'CPA' },
-  { key: 'sales', label: 'Result.' },
-  { key: 'roas', label: 'ROAS' },
-  { key: 'freq', label: 'Freq' },
+  { key: 'sales', label: 'Vendas' },
   { key: 'budget', label: 'Orçam.' },
-  { key: 'updatedTime', label: 'Últ. edição' },
+  { key: 'cpa', label: 'CPA' },
+  { key: 'spend', label: 'Gasto' },
+  { key: 'lucro', label: 'Lucro' },
+  { key: 'roas', label: 'ROAS' },
+  { key: 'cpaIC', label: 'CPI' },
+  { key: 'cpc', label: 'CPC' },
+  { key: 'ctr', label: 'CTR' },
+  { key: 'freq', label: 'Freq' },
+  { key: 'margem', label: 'Margem' },
+  { key: 'updatedTime', label: 'Últ.' },
 ]
 type Sort = { key: string; dir: 'asc' | 'desc' } | null
 
@@ -475,6 +494,14 @@ export function ListaView({ items }: { items: CacheItem[] }) {
         const totSales = all.reduce((acc, r) => acc + r.sales, 0)
         const gc = all.filter((r) => r.cls === 'good').length
         const bc = all.filter((r) => r.cls === 'bad').length
+        // total da tabela (linha de baixo, estilo UTMify) — sobre as linhas visíveis
+        const T = rows.reduce(
+          (a, r) => ({ spend: a.spend + r.spend, sales: a.sales + r.sales, revenue: a.revenue + r.revenue, lucro: a.lucro + r.lucro, budget: a.budget + (r.budget || 0) }),
+          { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0 },
+        )
+        const tRoas = T.spend > 0 ? T.revenue / T.spend : null
+        const tCpa = T.sales > 0 ? T.spend / T.sales : null
+        const tMarg = rowFin(T.spend, T.revenue, T.sales, loadFinParams()).margem
         return (
           <div key={idx}>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]">
@@ -507,6 +534,24 @@ export function ListaView({ items }: { items: CacheItem[] }) {
                     <RowWithExpand key={r.id} r={r} acc={item.acc} sym={sym} />
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-surface2/60 text-[11px] font-bold">
+                    <td colSpan={4} className="px-3 py-2.5 text-left text-muted">{rows.length} campanha{rows.length > 1 ? 's' : ''}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{T.sales || '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{T.budget > 0 ? sym + (T.budget / 100).toFixed(2) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{tCpa != null ? sym + tCpa.toFixed(2) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{sym + T.spend.toFixed(2)}</td>
+                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${T.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{(T.lucro >= 0 ? '' : '-') + sym + Math.abs(T.lucro).toFixed(2)}</td>
+                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${VAL_CLS[roasCls(tRoas, m.settings)]}`}>{tRoas != null ? tRoas.toFixed(2) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
+                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
+                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
+                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
+                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${T.lucro >= 0 ? 'text-muted' : 'text-danger'}`}>{T.revenue > 0 ? (tMarg * 100).toFixed(0) + '%' : '—'}</td>
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
@@ -619,10 +664,16 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           const roas = getRoas(a)
           const cpa = getCpa(a)
           const sales = getSales(a)
+          const spend = parseFloat(a.spend || '0')
+          const revenue = getRevenue(a) || (roas != null ? roas * spend : 0)
+          const { lucro, margem } = rowFin(spend, revenue, sales, loadFinParams())
           return {
             id: a.ad_id!,
             name: a.ad_name || '',
-            spend: parseFloat(a.spend || '0'),
+            spend,
+            revenue,
+            lucro,
+            margem,
             roas,
             cpa,
             sales,
@@ -666,18 +717,18 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           </div>
         </td>
         <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.spend)}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.impr ? r.impr.toLocaleString('pt-BR') : '—'}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.cpm)}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.ctr ? r.ctr.toFixed(2) + '%' : '—'}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.cpc ? money(r.cpc) : '—'}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{money(r.cpaIC)}</td>
-        <td className={`px-2 py-2 text-right font-mono tabular-nums ${r.cpa === null ? 'text-muted2' : r.cpa <= m.settings.cpaMax ? 'text-ok' : 'text-danger'}`}>{money(r.cpa)}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.sales}</td>
-        <td className={`px-2 py-2 text-right font-mono tabular-nums ${VAL_CLS[roasCls(r.roas, m.settings)]}`}>{r.roas !== null ? r.roas.toFixed(2) : '—'}</td>
-        <td className={`px-2 py-2 text-right font-mono tabular-nums ${r.freq >= m.settings.freqWarn ? 'text-warn' : 'text-muted2'}`}>{r.freq ? r.freq.toFixed(1) : '—'}{r.freq >= m.settings.freqWarn ? '🔥' : ''}</td>
-        <td className="px-2 py-2 text-right font-mono tabular-nums">{r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'}</td>
-        <td className="whitespace-nowrap px-2 py-2 text-right font-mono tabular-nums text-muted2">{fmtEdit(r.updatedTime)}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold">{r.sales || '—'}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums">{r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'}</td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.cpa === null ? 'text-muted2' : r.cpa <= m.settings.cpaMax ? 'text-ok' : 'text-danger'}`}>{money(r.cpa)}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums">{money(r.spend)}</td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums font-semibold ${r.spend <= 0 ? 'text-muted2' : r.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{r.spend <= 0 ? '—' : (r.lucro >= 0 ? '' : '-') + sym + Math.abs(r.lucro).toFixed(2)}</td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums font-bold ${VAL_CLS[roasCls(r.roas, m.settings)]}`}>{r.roas !== null ? r.roas.toFixed(2) : '—'}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{money(r.cpaIC)}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{r.cpc ? money(r.cpc) : '—'}</td>
+        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{r.ctr ? r.ctr.toFixed(2) + '%' : '—'}</td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.freq >= m.settings.freqWarn ? 'text-warn' : 'text-muted2'}`}>{r.freq ? r.freq.toFixed(1) : '—'}{r.freq >= m.settings.freqWarn ? '🔥' : ''}</td>
+        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.spend <= 0 || r.revenue <= 0 ? 'text-muted2' : r.margem >= 0 ? 'text-muted' : 'text-danger'}`}>{r.revenue > 0 ? (r.margem * 100).toFixed(0) + '%' : '—'}</td>
+        <td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{fmtEdit(r.updatedTime)}</td>
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
