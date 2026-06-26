@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -387,20 +387,137 @@ export function SummaryStrip({ counts }: { counts: Counts }) {
 }
 
 /* ── Lista (gerenciador estilo Facebook) ── */
-const LISTA_COLS: { key: keyof ListaRow; label: string }[] = [
-  { key: 'sales', label: 'Vendas' },
-  { key: 'budget', label: 'Orçam.' },
-  { key: 'cpa', label: 'CPA' },
-  { key: 'spend', label: 'Gasto' },
-  { key: 'lucro', label: 'Lucro' },
-  { key: 'roas', label: 'ROAS' },
-  { key: 'cpaIC', label: 'CPI' },
-  { key: 'cpc', label: 'CPC' },
-  { key: 'ctr', label: 'CTR' },
-  { key: 'freq', label: 'Freq' },
-  { key: 'margem', label: 'Margem' },
-  { key: 'updatedTime', label: 'Últ.' },
+interface TotAgg { spend: number; sales: number; revenue: number; lucro: number; budget: number }
+const m2 = (v: number | null, sym: string) => (v == null ? '—' : sym + v.toFixed(2))
+
+interface MetCol {
+  key: string
+  label: string
+  render: (r: ListaRow, sym: string, s: Settings) => ReactNode
+  cls?: (r: ListaRow, s: Settings) => string
+  total?: (T: TotAgg, sym: string) => ReactNode
+  totalCls?: (T: TotAgg, s: Settings) => string
+}
+const MET_COLS: MetCol[] = [
+  { key: 'sales', label: 'Vendas', render: (r) => r.sales || '—', total: (T) => T.sales || '—' },
+  { key: 'budget', label: 'Orçam.', render: (r, sym) => (r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'), total: (T, sym) => (T.budget > 0 ? sym + (T.budget / 100).toFixed(2) : '—') },
+  { key: 'cpa', label: 'CPA', render: (r, sym) => m2(r.cpa, sym), cls: (r, s) => (r.cpa == null ? 'text-muted2' : r.cpa <= s.cpaMax ? 'text-ok' : 'text-danger'), total: (T, sym) => (T.sales > 0 ? sym + (T.spend / T.sales).toFixed(2) : '—') },
+  { key: 'spend', label: 'Gasto', render: (r, sym) => sym + r.spend.toFixed(2), total: (T, sym) => sym + T.spend.toFixed(2) },
+  { key: 'lucro', label: 'Lucro', render: (r, sym) => (r.spend <= 0 ? '—' : (r.lucro >= 0 ? '' : '-') + sym + Math.abs(r.lucro).toFixed(2)), cls: (r) => (r.spend <= 0 ? 'text-muted2' : r.lucro >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T, sym) => (T.lucro >= 0 ? '' : '-') + sym + Math.abs(T.lucro).toFixed(2), totalCls: (T) => (T.lucro >= 0 ? 'text-ok' : 'text-danger') },
+  { key: 'roas', label: 'ROAS', render: (r) => (r.roas != null ? r.roas.toFixed(2) : '—'), cls: (r, s) => 'font-bold ' + VAL_CLS[roasCls(r.roas, s)], total: (T) => { const v = T.spend > 0 ? T.revenue / T.spend : null; return v != null ? v.toFixed(2) : '—' }, totalCls: (T, s) => VAL_CLS[roasCls(T.spend > 0 ? T.revenue / T.spend : null, s)] },
+  { key: 'cpaIC', label: 'CPI', render: (r, sym) => m2(r.cpaIC, sym), cls: () => 'text-muted2' },
+  { key: 'cpc', label: 'CPC', render: (r, sym) => (r.cpc ? m2(r.cpc, sym) : '—'), cls: () => 'text-muted2' },
+  { key: 'ctr', label: 'CTR', render: (r) => (r.ctr ? r.ctr.toFixed(2) + '%' : '—'), cls: () => 'text-muted2' },
+  { key: 'freq', label: 'Freq', render: (r, _sym, s) => (r.freq ? r.freq.toFixed(1) : '—') + (r.freq >= s.freqWarn ? '🔥' : ''), cls: (r, s) => (r.freq >= s.freqWarn ? 'text-warn' : 'text-muted2') },
+  { key: 'margem', label: 'Margem', render: (r) => (r.revenue > 0 ? (r.margem * 100).toFixed(0) + '%' : '—'), cls: (r) => (r.spend <= 0 || r.revenue <= 0 ? 'text-muted2' : r.margem >= 0 ? 'text-muted' : 'text-danger') },
+  { key: 'updatedTime', label: 'Últ.', render: (r) => fmtEdit(r.updatedTime), cls: () => 'text-muted2 whitespace-nowrap' },
 ]
+const MET_BY_KEY: Record<string, MetCol> = Object.fromEntries(MET_COLS.map((c) => [c.key, c]))
+
+/* config de colunas (ordem + largura) salva no navegador */
+const COLCFG_KEY = 'monitor_colcfg_v1'
+const DEF_ORDER = MET_COLS.map((c) => c.key)
+const DEF_W = 96
+interface ColCfg { order: string[]; w: Record<string, number> }
+let colCfgCache: ColCfg | null = null
+const colSubs = new Set<() => void>()
+function readColCfg(): ColCfg {
+  try {
+    const c = JSON.parse(localStorage.getItem(COLCFG_KEY) || '{}')
+    let order: string[] = Array.isArray(c.order) ? c.order.filter((k: string) => MET_BY_KEY[k]) : []
+    DEF_ORDER.forEach((k) => { if (!order.includes(k)) order.push(k) })
+    if (!order.length) order = [...DEF_ORDER]
+    return { order, w: c.w && typeof c.w === 'object' ? c.w : {} }
+  } catch { return { order: [...DEF_ORDER], w: {} } }
+}
+function getColCfg(): ColCfg { if (!colCfgCache) colCfgCache = readColCfg(); return colCfgCache }
+function setColCfg(next: ColCfg) { colCfgCache = next; localStorage.setItem(COLCFG_KEY, JSON.stringify(next)); colSubs.forEach((f) => f()) }
+export function resetColCfg() { setColCfg({ order: [...DEF_ORDER], w: {} }) }
+function useColCfg(): ColCfg {
+  return useSyncExternalStore((f) => { colSubs.add(f); return () => { colSubs.delete(f) } }, getColCfg, getColCfg)
+}
+
+/* cabeçalho das métricas — ARRASTAR pra reordenar, PUXAR a borda direita pra redimensionar */
+function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) {
+  const cfg = useColCfg()
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const drop = (target: string) => {
+    if (!dragKey || dragKey === target) return setDragKey(null)
+    const order = [...getColCfg().order]
+    order.splice(order.indexOf(dragKey), 1)
+    order.splice(order.indexOf(target), 0, dragKey)
+    setColCfg({ ...getColCfg(), order })
+    setDragKey(null)
+  }
+  const startResize = (key: string, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startW = getColCfg().w[key] || DEF_W
+    const move = (ev: MouseEvent) => {
+      const cur = getColCfg()
+      setColCfg({ ...cur, w: { ...cur.w, [key]: Math.max(54, startW + (ev.clientX - startX)) } })
+    }
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up) }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+  }
+  return (
+    <>
+      {cfg.order.map((key) => {
+        const c = MET_BY_KEY[key]
+        if (!c) return null
+        const w = cfg.w[key] || DEF_W
+        const active = sort?.key === key
+        return (
+          <th key={key} draggable onDragStart={() => setDragKey(key)} onDragOver={(e) => e.preventDefault()} onDrop={() => drop(key)}
+            style={{ width: w, minWidth: w, maxWidth: w }}
+            className={`relative select-none px-3 py-2.5 text-right text-[10.5px] ${dragKey === key ? 'opacity-40' : ''}`}>
+            <span onClick={() => onSort(key)} title="clique = ordenar · arraste = mover" className="cursor-move hover:text-ink">
+              {c.label}{active ? (sort!.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+            </span>
+            <span onMouseDown={(e) => startResize(key, e)} title="arraste pra redimensionar" className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-brand/50" />
+          </th>
+        )
+      })}
+    </>
+  )
+}
+
+function MetCells({ r, sym, s }: { r: ListaRow; sym: string; s: Settings }) {
+  const cfg = useColCfg()
+  return (
+    <>
+      {cfg.order.map((key) => {
+        const c = MET_BY_KEY[key]
+        if (!c) return null
+        const w = cfg.w[key] || DEF_W
+        return (
+          <td key={key} style={{ width: w, minWidth: w, maxWidth: w }}
+            className={`overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums ${c.cls ? c.cls(r, s) : ''}`}>
+            {c.render(r, sym, s)}
+          </td>
+        )
+      })}
+    </>
+  )
+}
+
+function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
+  const cfg = useColCfg()
+  return (
+    <>
+      {cfg.order.map((key) => {
+        const c = MET_BY_KEY[key]
+        if (!c) return null
+        const w = cfg.w[key] || DEF_W
+        return (
+          <td key={key} style={{ width: w }} className={`px-3 py-2.5 text-right font-mono tabular-nums ${c.total ? (c.totalCls ? c.totalCls(T, s) : '') : 'text-muted2'}`}>
+            {c.total ? c.total(T, sym) : '—'}
+          </td>
+        )
+      })}
+    </>
+  )
+}
 type Sort = { key: string; dir: 'asc' | 'desc' } | null
 
 function sortRows(rows: ListaRow[], sort: Sort): ListaRow[] {
@@ -467,7 +584,8 @@ export function ListaView({ items }: { items: CacheItem[] }) {
             ✕ limpar ordenação ({sort.key})
           </button>
         )}
-        <span className="text-[11px] text-muted2">clique nos títulos pra ordenar · role a tabela →</span>
+        <span className="text-[11px] text-muted2">arraste os títulos pra reordenar · puxe a borda direita pra redimensionar · clique pra ordenar</span>
+        <button onClick={resetColCfg} className="ml-auto rounded border border-border px-2 py-0.5 text-[11px] text-muted2 hover:border-brand hover:text-brand-2">↺ resetar colunas</button>
       </div>
 
       {items.map((item, idx) => {
@@ -499,9 +617,6 @@ export function ListaView({ items }: { items: CacheItem[] }) {
           (a, r) => ({ spend: a.spend + r.spend, sales: a.sales + r.sales, revenue: a.revenue + r.revenue, lucro: a.lucro + r.lucro, budget: a.budget + (r.budget || 0) }),
           { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0 },
         )
-        const tRoas = T.spend > 0 ? T.revenue / T.spend : null
-        const tCpa = T.sales > 0 ? T.spend / T.sales : null
-        const tMarg = rowFin(T.spend, T.revenue, T.sales, loadFinParams()).margem
         return (
           <div key={idx}>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]">
@@ -514,7 +629,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
             <div className="card overflow-x-auto">
-              <table className="w-full border-collapse text-[11px] [&_td]:border-border/15 [&_th]:border-border/15 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l">
+              <table className="w-full text-[12px]">
                 <thead>
                   <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
                     <th className="w-8 py-2.5 text-center">
@@ -523,9 +638,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
                     <th className="w-8 py-2.5 text-center">●</th>
                     <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" />
                     <th className="px-2 py-2.5 text-center">Status</th>
-                    {LISTA_COLS.map((c) => (
-                      <SortTh key={c.key} label={c.label} sortKey={c.key} sort={sort} onSort={onSort} />
-                    ))}
+                    <MetHead sort={sort} onSort={onSort} />
                     <th className="py-2.5 pl-3 text-left">Ação</th>
                   </tr>
                 </thead>
@@ -537,18 +650,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
                 <tfoot>
                   <tr className="border-t-2 border-border bg-surface2/60 text-[11px] font-bold">
                     <td colSpan={4} className="px-3 py-2.5 text-left text-muted">{rows.length} campanha{rows.length > 1 ? 's' : ''}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{T.sales || '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{T.budget > 0 ? sym + (T.budget / 100).toFixed(2) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{tCpa != null ? sym + tCpa.toFixed(2) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums">{sym + T.spend.toFixed(2)}</td>
-                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${T.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{(T.lucro >= 0 ? '' : '-') + sym + Math.abs(T.lucro).toFixed(2)}</td>
-                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${VAL_CLS[roasCls(tRoas, m.settings)]}`}>{tRoas != null ? tRoas.toFixed(2) : '—'}</td>
-                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
-                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
-                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
-                    <td className="px-3 py-2.5 text-right text-muted2">—</td>
-                    <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${T.lucro >= 0 ? 'text-muted' : 'text-danger'}`}>{T.revenue > 0 ? (tMarg * 100).toFixed(0) + '%' : '—'}</td>
-                    <td className="px-3 py-2.5" />
+                    <MetFoot T={T} sym={sym} s={s} />
                     <td className="px-3 py-2.5" />
                   </tr>
                 </tfoot>
@@ -717,18 +819,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           </div>
         </td>
         <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold">{r.sales || '—'}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums">{r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'}</td>
-        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.cpa === null ? 'text-muted2' : r.cpa <= m.settings.cpaMax ? 'text-ok' : 'text-danger'}`}>{money(r.cpa)}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums">{money(r.spend)}</td>
-        <td className={`px-3 py-2.5 text-right font-mono tabular-nums font-semibold ${r.spend <= 0 ? 'text-muted2' : r.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{r.spend <= 0 ? '—' : (r.lucro >= 0 ? '' : '-') + sym + Math.abs(r.lucro).toFixed(2)}</td>
-        <td className={`px-3 py-2.5 text-right font-mono tabular-nums font-bold ${VAL_CLS[roasCls(r.roas, m.settings)]}`}>{r.roas !== null ? r.roas.toFixed(2) : '—'}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{money(r.cpaIC)}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{r.cpc ? money(r.cpc) : '—'}</td>
-        <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{r.ctr ? r.ctr.toFixed(2) + '%' : '—'}</td>
-        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.freq >= m.settings.freqWarn ? 'text-warn' : 'text-muted2'}`}>{r.freq ? r.freq.toFixed(1) : '—'}{r.freq >= m.settings.freqWarn ? '🔥' : ''}</td>
-        <td className={`px-3 py-2.5 text-right font-mono tabular-nums ${r.spend <= 0 || r.revenue <= 0 ? 'text-muted2' : r.margem >= 0 ? 'text-muted' : 'text-danger'}`}>{r.revenue > 0 ? (r.margem * 100).toFixed(0) + '%' : '—'}</td>
-        <td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums text-muted2">{fmtEdit(r.updatedTime)}</td>
+        <MetCells r={r} sym={sym} s={m.settings} />
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
