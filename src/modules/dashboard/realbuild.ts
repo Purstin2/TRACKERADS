@@ -135,6 +135,7 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
   const approved = byStatus('APPROVED')
   const refused = byStatus('REFUSED')
   const pending = byStatus('PENDING')
+  const canceled = byStatus('CANCELED') // pix/boleto gerado e EXPIRADO sem pagar
   const refunded = byStatus('REFUNDED')
   const charged = byStatus('CHARGEBACK')
 
@@ -165,11 +166,14 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     .filter((p) => p.value > 0)
     .sort((a, b) => b.value - a.value)
 
-  // taxa de aprovação por método = aprovadas / (aprovadas + recusadas)
+  // taxa de aprovação por método = pagas / iniciadas.
+  // "não pagas" inclui RECUSADA (cartão), CANCELADA/EXPIRADA (pix gerado e não pago) e
+  // PENDENTE — não só REFUSED. Pix quase nunca "recusa", ele expira → senão dava 100% sempre.
   const apprByMethod = (lab: string): number => {
-    const ap = approved.filter((o) => pmLabel(o.payment_method) === lab).length
-    const rf = refused.filter((o) => pmLabel(o.payment_method) === lab).length
-    const tot = ap + rf
+    const ofM = (arr: KirvanoOrder[]) => arr.filter((o) => pmLabel(o.payment_method) === lab).length
+    const ap = ofM(approved)
+    const naoPagas = ofM(refused) + ofM(canceled) + ofM(pending)
+    const tot = ap + naoPagas
     return tot > 0 ? +((ap / tot) * 100).toFixed(1) : 0
   }
   const approval: ApprovalRate[] = ['Cartão', 'Pix', 'Boleto']

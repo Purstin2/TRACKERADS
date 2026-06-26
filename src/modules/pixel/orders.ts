@@ -82,6 +82,23 @@ export async function fetchOrders(sinceISO?: string): Promise<KirvanoOrder[]> {
   return (data || []) as KirvanoOrder[]
 }
 
+/** Reembolsos/chargebacks que ACONTECERAM no período (por data do estorno = updated_at),
+ *  mesmo que a venda original seja antiga. É o que a UTMify mostra — captura os estornos
+ *  manuais de vendas antigas, que o filtro por data-da-venda deixaria de fora. */
+export async function fetchRefundsByRefundDate(sinceISO: string, untilISO: string): Promise<KirvanoOrder[]> {
+  const sb = supabase()
+  if (!sb) return []
+  const { data } = await sb
+    .from('kirvano_orders')
+    .select('*')
+    .in('status', ['REFUNDED', 'CHARGEBACK'])
+    .gte('updated_at', sinceISO)
+    .lte('updated_at', untilISO)
+    .order('updated_at', { ascending: false })
+    .limit(2000)
+  return (data || []) as KirvanoOrder[]
+}
+
 export async function fetchLogs(limit = 100): Promise<WebhookLog[]> {
   const sb = supabase()
   if (!sb) return []

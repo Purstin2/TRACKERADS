@@ -10,7 +10,7 @@ import { type DashboardData } from './data'
 import { buildRealDashboard, distinctProducts, distinctSources, normSource, type FunnelMeta } from './realbuild'
 import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type GridItem } from './widgets'
 import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
-import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
+import { fetchOrders, fetchRefundsByRefundDate, type KirvanoOrder } from '@/modules/pixel/orders'
 import { ACCOUNTS, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
 import { loadFinParams, saveFinParams, syncFinParams, FIN_DEFAULTS, type FinParams } from '@/modules/monitor/finance'
 import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
@@ -337,15 +337,21 @@ export default function DashboardPage() {
       const { sinceISO, untilISO } = periodWindow(eff)
       const all = await fetchOrders(sinceISO)
       const since = Date.parse(sinceISO), until = Date.parse(untilISO)
-      within = all.filter((o) => {
+      const periodSales = all.filter((o) => {
         const t = Date.parse(o.ordered_at || o.created_at || '')
         return !isNaN(t) && t >= since && t <= until
       })
-      setOrders(within)
-      setProducts(distinctProducts(within))
+      // dropdowns de produto/fonte saem só das vendas do período
+      setProducts(distinctProducts(periodSales))
       setSelProducts(null)
-      setSources(distinctSources(within))
+      setSources(distinctSources(periodSales))
       setSelSources(null)
+      // + estornos que ACONTECERAM no período (por data do estorno = updated_at), mesmo de
+      // vendas antigas — senão os estornos manuais somem do "Vendas Reembolsadas" (igual UTMify)
+      const refunds = await fetchRefundsByRefundDate(sinceISO, untilISO)
+      const seen = new Set(periodSales.map((o) => o.id))
+      within = [...periodSales, ...refunds.filter((o) => !seen.has(o.id))]
+      setOrders(within)
     } catch { setOrders([]); setProducts([]); setSources([]) }
 
     setLoaded(true)
