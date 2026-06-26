@@ -49,10 +49,13 @@ function fromPrefill(p?: LogPrefill): FormState {
 export default function LogActionHost() {
   const [open, setOpen] = useState(false)
   const [f, setF] = useState<FormState>(fromPrefill())
+  // foto do momento + campId que vêm do openLog (não têm campo no form) — pro impacto do orçamento
+  const [extra, setExtra] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
     return registerLogOpener((prefill) => {
       setF(fromPrefill(prefill))
+      setExtra({ campId: prefill?.campId, spendAtTime: prefill?.spendAtTime, salesAtTime: prefill?.salesAtTime, dateBR: prefill?.dateBR })
       setOpen(true)
     })
   }, [])
@@ -67,7 +70,7 @@ export default function LogActionHost() {
 
   function save() {
     if (!f.name.trim()) return toast('Informe a campanha', 'err')
-    const payload = {
+    const payload: Record<string, unknown> = {
       accId: f.accId,
       name: f.name.trim(),
       kind: f.kind,
@@ -81,8 +84,13 @@ export default function LogActionHost() {
       detail: f.detail.trim() || undefined,
       linkedName: f.kind === 'duplicacao' ? f.linkedName.trim() || undefined : undefined,
     }
+    // só na criação a partir de uma linha (não sobrescreve foto na edição)
+    if (extra.campId) payload.campId = extra.campId
+    if (extra.spendAtTime != null) payload.spendAtTime = extra.spendAtTime
+    if (extra.salesAtTime != null) payload.salesAtTime = extra.salesAtTime
+    if (extra.dateBR) payload.dateBR = extra.dateBR
     if (f.editId) updateAction(f.editId, payload)
-    else addAction(payload)
+    else addAction(payload as any)
     toast(f.editId ? '✓ Registro atualizado' : '✓ Ação registrada', 'ok')
     setOpen(false)
   }

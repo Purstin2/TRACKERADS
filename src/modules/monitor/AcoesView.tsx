@@ -9,6 +9,7 @@ import {
   KIND_CLS,
   type ActionEntry,
 } from './actionLog'
+import { ImpactBtn } from './BudgetImpact'
 import { trunc, curSym } from './config'
 
 function fmtTs(ts: string) {
@@ -191,6 +192,9 @@ export default function AcoesView() {
                     <td className="max-w-[200px] py-1.5 text-[11px] text-muted2">{e.detail || ''}</td>
                     <td className="py-1.5 pr-3">
                       <div className="flex items-center gap-1">
+                        {(e.kind === 'orcamento' || e.kind === 'escala') && e.campId && (
+                          <ImpactBtn accId={e.accId || ''} name={e.name} campId={e.campId} cur={e.cur || 'USD'} />
+                        )}
                         {e.verifyBy && !e.done && (
                           <button title="Marcar verificado" onClick={() => updateAction(e.id, { done: true })} className="text-muted2 hover:text-ok">
                             <Check className="h-3.5 w-3.5" />

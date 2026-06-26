@@ -33,7 +33,8 @@ import { loadFinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
-import { openLog, lastScale, useLog, addAction } from './actionLog'
+import { openLog, lastScale, useLog, addAction, todayBR } from './actionLog'
+import { ImpactBtn } from './BudgetImpact'
 import { toast } from '@/components/ui/toast'
 import {
   ICONS,
@@ -88,11 +89,11 @@ export function ScaleBadge({ campId }: { campId?: string }) {
 }
 
 /** Botão pequeno para registrar uma ação na campanha. */
-export function LogBtn({ accId, name, campId, roas, cur }: { accId: string; name: string; campId: string; roas: number | null; cur: string }) {
+export function LogBtn({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
   return (
     <button
       onClick={() =>
-        openLog({ accId, name, campId, kind: 'escala', roasAtTime: roas, cur })
+        openLog({ accId, name, campId, kind: 'escala', roasAtTime: roas, cur, spendAtTime: spend ?? null, salesAtTime: sales ?? null, dateBR: todayBR() })
       }
       title="Registrar o que fiz nesta campanha"
       className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold text-muted hover:border-brand hover:text-brand-2"
@@ -103,7 +104,7 @@ export function LogBtn({ accId, name, campId, roas, cur }: { accId: string; name
 }
 
 /** Botão de aumentar orçamento direto na linha (abre modal). Respeita Execução ON/OFF. */
-export function BudgetBtn({ accId, name, campId, roas, cur }: { accId: string; name: string; campId: string; roas: number | null; cur: string }) {
+export function BudgetBtn({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -114,14 +115,14 @@ export function BudgetBtn({ accId, name, campId, roas, cur }: { accId: string; n
       >
         <TrendingUp className="h-3 w-3" /> $
       </button>
-      {open && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} onClose={() => setOpen(false)} />}
+      {open && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setOpen(false)} />}
     </>
   )
 }
 
 const QUICK = [10, 20, 30, 50]
 
-function BudgetModal({ accId, name, campId, roas, cur, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; onClose: () => void }) {
+function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; onClose: () => void }) {
   const m = useMonitor()
   const sym = curSym(cur)
   const [loading, setLoading] = useState(true)
@@ -172,6 +173,9 @@ function BudgetModal({ accId, name, campId, roas, cur, onClose }: { accId: strin
         sim: !m.exec,
         cur,
         roasAtTime: roas,
+        spendAtTime: spend ?? null, // foto do gasto/vendas acumulados no momento do aumento
+        salesAtTime: sales ?? null,
+        dateBR: todayBR(),
         budgetBefore: Math.round(curTotal * 100) / 100,
         budgetAfter: Math.round(newTotal * 100) / 100,
         detail: `${mode === 'pct' ? `+${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})${m.exec ? '' : ' [simulado]'}`,
@@ -585,7 +589,8 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
       </div>
       {/* ação: aumentar orçamento (já loga antes/depois + ROAS) */}
       <div className="shrink-0">
-        <BudgetBtn accId={accId} name={name} campId={campId} roas={today.roas} cur={cur} />
+        <BudgetBtn accId={accId} name={name} campId={campId} roas={today.roas} cur={cur} spend={today.spend} sales={today.sales} />
+        <ImpactBtn accId={accId} name={name} campId={campId} cur={cur} />
       </div>
     </div>
   )
@@ -677,8 +682,9 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
             <ScaleBadge campId={r.id} />
-            <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
-            <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} />
+            <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
+            <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
+            <ImpactBtn accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} />
             <button
               onClick={() => setScaleOpen((v) => !v)}
               title="Lucro de hoje + últimos dias (pra decidir escalar)"

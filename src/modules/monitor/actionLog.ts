@@ -18,6 +18,10 @@ export interface ActionEntry {
   budgetAfter?: number | null
   roasAtTime?: number | null
   profitAtTime?: number | null
+  // foto ACUMULADA da campanha no momento do aumento (pra comparar antes×depois do aumento)
+  dateBR?: string // YYYY-MM-DD (dia BR) do aumento — agrupa os aumentos do dia
+  spendAtTime?: number | null // gasto acumulado do dia até o aumento
+  salesAtTime?: number | null // vendas acumuladas do dia até o aumento
   verifyBy?: string // YYYY-MM-DD
   done?: boolean
   linkedTo?: string // campId da campanha original (duplicação)
@@ -82,6 +86,37 @@ export function clearActionLog() {
 export function lastScale(campId?: string): ActionEntry | undefined {
   if (!campId) return undefined
   return getLog().find((e) => e.campId === campId && (e.kind === 'escala' || e.kind === 'orcamento') && !e.sim)
+}
+
+/** Dia BR (YYYY-MM-DD) — pra agrupar os aumentos do mesmo dia. */
+export function todayBR(d: Date = new Date()): string {
+  return new Date(d.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+}
+
+/** Aumentos de orçamento de uma campanha num dia BR, com a foto do momento, em ordem cronológica.
+ *  Só conta os reais (não simulados) e que têm a foto de gasto capturada. */
+export function increasesForDay(campId: string, dateBR: string): ActionEntry[] {
+  return getLog()
+    .filter(
+      (e) =>
+        e.campId === campId &&
+        (e.kind === 'orcamento' || e.kind === 'escala') &&
+        !e.sim &&
+        e.spendAtTime != null &&
+        (e.dateBR || todayBR(new Date(e.ts))) === dateBR,
+    )
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+}
+
+/** Datas (dias BR) em que a campanha teve aumento com foto — pra listar quais têm impacto. */
+export function impactDays(campId: string): string[] {
+  const set = new Set<string>()
+  getLog().forEach((e) => {
+    if (e.campId === campId && (e.kind === 'orcamento' || e.kind === 'escala') && !e.sim && e.spendAtTime != null) {
+      set.add(e.dateBR || todayBR(new Date(e.ts)))
+    }
+  })
+  return [...set].sort((a, b) => (a < b ? 1 : -1))
 }
 
 /* ── store reativo ── */
