@@ -660,7 +660,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold text-ok">{gc} ✅</span>
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
-            <div className="overflow-x-auto rounded-xl2">
+            <div className="-mx-4 overflow-x-auto lg:-mx-6">
               <table className="w-full border-collapse text-[12px] [&_td]:border-border/20 [&_th]:border-border/20 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
                 <thead>
                   <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
