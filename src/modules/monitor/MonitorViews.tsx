@@ -33,7 +33,7 @@ import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
-import { openLog, lastScale, useLog, addAction, todayBR } from './actionLog'
+import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay } from './actionLog'
 import { ImpactBtn } from './BudgetImpact'
 import { toast } from '@/components/ui/toast'
 import {
@@ -518,6 +518,38 @@ function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
     </>
   )
 }
+/* Coluna "Aumento": antes → depois do aumento de orçamento de HOJE. Usa o total atual
+ * da linha como "depois" (sem fetch). Só aparece se houve aumento registrado hoje. */
+function BudgetTrackCell({ r, sym }: { r: ListaRow; sym: string }) {
+  useLog()
+  const incs = increasesForDay(r.id, todayBR())
+  if (!incs.length) return <td className="px-2 py-2 text-center text-[11px] text-muted2">—</td>
+  const last = incs[incs.length - 1]
+  const prev = incs.length > 1 ? incs[incs.length - 2] : null
+  const sSpend = last.spendAtTime || 0
+  const sRev = sSpend * (last.roasAtTime || 0)
+  const pSpend = prev ? prev.spendAtTime || 0 : 0
+  const pRev = prev ? (prev.spendAtTime || 0) * (prev.roasAtTime || 0) : 0
+  const bSpend = sSpend - pSpend, bRev = sRev - pRev
+  const aSpend = Math.max(0, r.spend - sSpend), aRev = Math.max(0, r.revenue - sRev)
+  const rb = bSpend > 0 ? bRev / bSpend : null
+  const ra = aSpend > 0 ? aRev / aSpend : null
+  const better = rb != null && ra != null ? ra >= rb : null
+  return (
+    <td className="whitespace-nowrap px-2 py-2 text-[10.5px] leading-tight">
+      <div className="font-mono font-semibold text-ink">
+        {sym}{(last.budgetBefore || 0).toFixed(0)}<span className="text-ok"> → </span>{sym}{(last.budgetAfter || 0).toFixed(0)}
+        {incs.length > 1 ? <span className="text-muted2"> ({incs.length}×)</span> : ''}
+      </div>
+      <div className="flex items-center gap-1 font-mono" title="ROAS antes → depois do aumento">
+        <span className="text-muted2">{rb != null ? rb.toFixed(2) : '—'}</span>
+        <span className={better == null ? 'text-muted2' : better ? 'text-ok' : 'text-danger'}>→ {ra != null ? ra.toFixed(2) : '…'}</span>
+        {better != null && <span>{better ? '✅' : '❌'}</span>}
+      </div>
+    </td>
+  )
+}
+
 type Sort = { key: string; dir: 'asc' | 'desc' } | null
 
 function sortRows(rows: ListaRow[], sort: Sort): ListaRow[] {
@@ -628,8 +660,8 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold text-ok">{gc} ✅</span>
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
-            <div className="card overflow-x-auto">
-              <table className="w-full text-[12px]">
+            <div className="overflow-x-auto rounded-xl2">
+              <table className="w-full border-collapse text-[12px] [&_td]:border-border/20 [&_th]:border-border/20 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
                 <thead>
                   <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
                     <th className="w-8 py-2.5 text-center">
@@ -638,6 +670,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
                     <th className="w-8 py-2.5 text-center">●</th>
                     <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" />
                     <th className="px-2 py-2.5 text-center">Status</th>
+                    <th className="px-2 py-2.5 text-center text-[10.5px]" title="Antes → depois do aumento de orçamento de hoje">📈 Aumento</th>
                     <MetHead sort={sort} onSort={onSort} />
                     <th className="py-2.5 pl-3 text-left">Ação</th>
                   </tr>
@@ -649,7 +682,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-border bg-surface2/60 text-[11px] font-bold">
-                    <td colSpan={4} className="px-3 py-2.5 text-left text-muted">{rows.length} campanha{rows.length > 1 ? 's' : ''}</td>
+                    <td colSpan={5} className="px-3 py-2.5 text-left text-muted">{rows.length} campanha{rows.length > 1 ? 's' : ''}</td>
                     <MetFoot T={T} sym={sym} s={s} />
                     <td className="px-3 py-2.5" />
                   </tr>
@@ -819,6 +852,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           </div>
         </td>
         <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
+        <BudgetTrackCell r={r} sym={sym} />
         <MetCells r={r} sym={sym} s={m.settings} />
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
@@ -845,14 +879,14 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
       </tr>
       {scaleOpen && (
         <tr className="bg-bg/40">
-          <td colSpan={17} className="border-b border-border p-0">
+          <td colSpan={18} className="border-b border-border p-0">
             <ScalePanel accId={acc.id} campId={r.id} name={r.name} sym={sym} cur={acc.cur} />
           </td>
         </tr>
       )}
       {open && (
         <tr className="bg-bg/40">
-          <td colSpan={17} className="p-0">
+          <td colSpan={18} className="p-0">
             {loading && <div className="px-4 py-3 text-[12px] text-muted">Carregando criativos...</div>}
             {err && <div className="px-4 py-3 text-[12px] text-danger">{err}</div>}
             {ads && !ads.length && <div className="px-4 py-3 text-[12px] text-muted">Sem dados no período</div>}
