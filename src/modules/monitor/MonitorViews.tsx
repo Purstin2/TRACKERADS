@@ -28,6 +28,7 @@ import {
   setBudget,
   campUrl,
   type InsightRow,
+  type AdLevel,
 } from '@/lib/meta'
 import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
@@ -299,7 +300,7 @@ function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
   const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
   return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
 }
-export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>): ListaRow[] {
+export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign'): ListaRow[] {
   const FIN = loadFinParams()
   return rows
     .map((r) => {
@@ -309,10 +310,12 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
       const spend = parseFloat(r.spend || '0')
       const revenue = getRevenue(r) || (roas != null ? roas * spend : 0)
       const { lucro, margem } = rowFin(spend, revenue, sales, FIN)
-      const md = meta?.[r.campaign_id!]
+      const id = (level === 'ad' ? r.ad_id : level === 'adset' ? r.adset_id : r.campaign_id) || ''
+      const name = (level === 'ad' ? r.ad_name : level === 'adset' ? r.adset_name : r.campaign_name) || ''
+      const md = level === 'campaign' ? meta?.[r.campaign_id!] : undefined
       return {
-        id: r.campaign_id!,
-        name: r.campaign_name || '',
+        id,
+        name,
         spend,
         revenue,
         lucro,
@@ -605,11 +608,19 @@ export function ListaView({ items }: { items: CacheItem[] }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-[9px] border border-border bg-[#0a0c19] p-0.5 text-[12px]">
+          {([['campaign', 'Campanhas'], ['adset', 'Conjuntos'], ['ad', 'Anúncios']] as const).map(([lv, lb]) => (
+            <button key={lv} onClick={() => m.setLevel(lv)} disabled={m.loading}
+              className={`rounded-[7px] px-3 py-1 font-semibold transition-colors ${m.level === lv ? 'bg-brand text-white' : 'text-muted2 hover:text-ink'}`}>
+              {lb}
+            </button>
+          ))}
+        </div>
         <input
           value={nameFilter}
           onChange={(e) => setNameFilter(e.target.value)}
           placeholder="🔎 Filtrar por nome / nomenclatura..."
-          className="w-[280px] rounded-[9px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink"
+          className="w-[240px] rounded-[9px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink"
         />
         {sort && (
           <button onClick={() => setSort(null)} className="text-[11px] text-muted2 hover:text-ink">
@@ -629,7 +640,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
           )
         if (item.kind !== 'lista' || !item.rows) return null
         const sym = curSym(item.acc.cur)
-        const all = analyzeListaRows(item.rows, s, item.meta)
+        const all = analyzeListaRows(item.rows, s, item.meta, m.level)
         let rows = all.filter(
           (r) =>
             (!m.actionFilter || r.action.code === m.actionFilter) &&
@@ -846,7 +857,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
             <span className="inline-block max-w-[230px] truncate align-middle" title={r.name}>
               {r.name}
             </span>
-            <a href={campUrl(acc.id, r.id)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
+            <a href={m.level === 'ad' ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acc.id}&selected_ad_ids=${r.id}` : m.level === 'adset' ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${acc.id}&selected_adset_ids=${r.id}` : campUrl(acc.id, r.id)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
@@ -857,23 +868,27 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
-            <ScaleBadge campId={r.id} />
-            <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-            <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-            <ImpactBtn accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} />
-            <button
-              onClick={() => setScaleOpen((v) => !v)}
-              title="Lucro de hoje + últimos dias (pra decidir escalar)"
-              className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-ok/40 bg-ok/5 px-2 py-0.5 text-[10.5px] font-bold text-ok hover:bg-ok/15"
-            >
-              <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
-            </button>
-            <button
-              onClick={toggle}
-              className="whitespace-nowrap rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
-            >
-              criativos {open ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
-            </button>
+            {m.level === 'campaign' && (
+              <>
+                <ScaleBadge campId={r.id} />
+                <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
+                <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
+                <ImpactBtn accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} />
+                <button
+                  onClick={() => setScaleOpen((v) => !v)}
+                  title="Lucro de hoje + últimos dias (pra decidir escalar)"
+                  className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-ok/40 bg-ok/5 px-2 py-0.5 text-[10.5px] font-bold text-ok hover:bg-ok/15"
+                >
+                  <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                </button>
+                <button
+                  onClick={toggle}
+                  className="whitespace-nowrap rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
+                >
+                  criativos {open ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                </button>
+              </>
+            )}
           </div>
         </td>
       </tr>

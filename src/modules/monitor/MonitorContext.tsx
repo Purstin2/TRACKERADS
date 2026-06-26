@@ -14,6 +14,7 @@ import {
   getCpa,
   getSales,
   type InsightRow,
+  type AdLevel,
 } from '@/lib/meta'
 import {
   ACCOUNTS,
@@ -84,6 +85,8 @@ interface Ctx {
   setDatePreset: (d: string) => void
   view: MonitorView
   setView: (v: MonitorView) => void
+  level: AdLevel
+  setLevel: (l: AdLevel) => void
   settings: Settings
   saveSettings: (s: Settings) => void
   exec: boolean
@@ -109,6 +112,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState('active')
   const [datePreset, setDatePreset] = useState('last_14d')
   const [view, setView] = useState<MonitorView>('lista')
+  const [level, setLevelState] = useState<AdLevel>('campaign')
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [exec, setExec] = useState(false)
   const [cache, setCache] = useState<CacheItem[]>([])
@@ -153,7 +157,12 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     loadState<Partial<Settings>>('meta_settings', {}).then((s) => setSettings(normSettings(s)))
   }, [])
 
-  async function loadMonitor() {
+  const setLevel = (l: AdLevel) => {
+    setLevelState(l)
+    if (token.trim() && cache.length) loadMonitor(l) // re-busca no novo nível se já tem dados
+  }
+
+  async function loadMonitor(lvl: AdLevel = level) {
     if (!token.trim()) {
       alert('Cole o access token primeiro.')
       return
@@ -171,8 +180,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
         try {
           if (view === 'lista') {
             const [rows, cm] = await Promise.all([
-              fetchAggregate(acc.id, datePreset, tok, statuses),
-              fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]),
+              fetchAggregate(acc.id, datePreset, tok, statuses, lvl),
+              lvl === 'campaign' ? fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]) : Promise.resolve([] as any[]),
             ])
             const meta: Record<string, CampMeta> = {}
             ;(cm as any[]).forEach((c) => {
@@ -206,6 +215,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setDatePreset,
     view,
     setView,
+    level,
+    setLevel,
     settings,
     saveSettings,
     exec,

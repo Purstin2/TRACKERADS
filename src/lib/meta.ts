@@ -123,15 +123,25 @@ function statusClause(s: string[], field = 'campaign.effective_status') {
 }
 
 /* ── fetchers ── */
-export function fetchAggregate(id: string, preset: string, t: string, statuses: string[]) {
+export type AdLevel = 'campaign' | 'adset' | 'ad'
+const LEVEL_FIELDS: Record<AdLevel, string> = {
+  campaign: 'campaign_id,campaign_name',
+  adset: 'adset_id,adset_name,campaign_name',
+  ad: 'ad_id,ad_name,adset_name,campaign_name',
+}
+const LEVEL_STATUS_FIELD: Record<AdLevel, string> = {
+  campaign: 'campaign.effective_status',
+  adset: 'adset.effective_status',
+  ad: 'ad.effective_status',
+}
+export function fetchAggregate(id: string, preset: string, t: string, statuses: string[], level: AdLevel = 'campaign') {
   const p = new URLSearchParams({
-    level: 'campaign',
-    fields:
-      'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,inline_link_clicks,frequency,cpm,impressions,ctr,cpc',
+    level,
+    fields: `${LEVEL_FIELDS[level]},spend,purchase_roas,cost_per_action_type,actions,action_values,inline_link_clicks,frequency,cpm,impressions,ctr,cpc`,
     ...dateParams(preset),
-    filtering: JSON.stringify([statusClause(statuses)]),
+    filtering: JSON.stringify([statusClause(statuses, LEVEL_STATUS_FIELD[level])]),
     access_token: t,
-    limit: '300',
+    limit: '500',
   })
   return paginate(`${BASE}/act_${id}/insights?${p}`)
 }
