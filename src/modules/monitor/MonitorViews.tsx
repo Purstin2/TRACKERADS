@@ -111,7 +111,7 @@ export function BudgetBtn({ accId, name, campId, roas, cur, spend, sales }: { ac
     <>
       <button
         onClick={() => setOpen(true)}
-        title="Aumentar orçamento"
+        title="Ajustar orçamento (aumentar ou diminuir)"
         className="inline-flex items-center gap-0.5 rounded border border-ok/40 bg-ok/5 px-1.5 py-0.5 text-[10px] font-bold text-ok hover:bg-ok/15"
       >
         <TrendingUp className="h-3 w-3" /> $
@@ -121,7 +121,6 @@ export function BudgetBtn({ accId, name, campId, roas, cur, spend, sales }: { ac
   )
 }
 
-const QUICK = [10, 20, 30, 50]
 
 function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; onClose: () => void }) {
   const m = useMonitor()
@@ -179,7 +178,7 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
         dateBR: todayBR(),
         budgetBefore: Math.round(curTotal * 100) / 100,
         budgetAfter: Math.round(newTotal * 100) / 100,
-        detail: `${mode === 'pct' ? `+${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})${m.exec ? '' : ' [simulado]'}`,
+        detail: `${mode === 'pct' ? `${pct >= 0 ? '+' : ''}${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})${m.exec ? '' : ' [simulado]'}`,
       })
       toast(m.exec ? `Orçamento ajustado p/ ${sym}${newTotal.toFixed(2)}/dia` : `Simulado (Execução OFF): ${sym}${curTotal.toFixed(2)} → ${sym}${newTotal.toFixed(2)}`, 'ok')
       onClose()
@@ -193,7 +192,7 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="card w-full max-w-[440px]" onClick={(e) => e.stopPropagation()}>
         <div className="card-header">
-          <h3 className="truncate text-[13px] font-bold" title={name}>💰 Aumentar orçamento</h3>
+          <h3 className="truncate text-[13px] font-bold" title={name}>💰 Ajustar orçamento</h3>
           <button onClick={onClose} className="text-muted2 hover:text-ink">
             <X className="h-4 w-4" />
           </button>
@@ -218,16 +217,29 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
                 </div>
               )}
 
-              <div className="flex gap-1.5">
-                {QUICK.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => { setMode('pct'); setPct(q) }}
-                    className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${mode === 'pct' && pct === q ? 'border-ok bg-ok/15 text-ok' : 'border-border text-muted hover:border-ok/50'}`}
-                  >
-                    +{q}%
-                  </button>
-                ))}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex gap-1.5">
+                  {[10, 20, 30].map((q) => (
+                    <button
+                      key={`d${q}`}
+                      onClick={() => { setMode('pct'); setPct(-q) }}
+                      className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${mode === 'pct' && pct === -q ? 'border-danger bg-danger/15 text-danger' : 'border-border text-muted hover:border-danger/50'}`}
+                    >
+                      −{q}%
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1.5">
+                  {[10, 20, 30, 50].map((q) => (
+                    <button
+                      key={`u${q}`}
+                      onClick={() => { setMode('pct'); setPct(q) }}
+                      className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${mode === 'pct' && pct === q ? 'border-ok bg-ok/15 text-ok' : 'border-border text-muted hover:border-ok/50'}`}
+                    >
+                      +{q}%
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -241,9 +253,9 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
                 </div>
               </div>
 
-              <div className="flex items-center justify-between rounded-[8px] border border-ok/30 bg-ok/[0.06] px-3 py-2 text-[13px]">
+              <div className={`flex items-center justify-between rounded-[8px] border px-3 py-2 text-[13px] ${delta >= 0 ? 'border-ok/30 bg-ok/[0.06]' : 'border-warn/30 bg-warn/[0.06]'}`}>
                 <span className="text-muted">Novo orçamento</span>
-                <span className="font-mono font-extrabold text-ok">
+                <span className={`font-mono font-extrabold ${delta >= 0 ? 'text-ok' : 'text-warn'}`}>
                   {sym}{newTotal.toFixed(2)}/dia <span className="text-[11px] text-muted2">({delta >= 0 ? '+' : ''}{sym}{delta.toFixed(2)})</span>
                 </span>
               </div>
