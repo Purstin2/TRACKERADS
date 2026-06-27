@@ -1,6 +1,6 @@
 import cron from 'node-cron';
-import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, createStealthContext } from './scraper.js';
-import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
+import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, createStealthContext, scrapePageNames } from './scraper.js';
+import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
 
@@ -270,4 +270,30 @@ export async function startSchedulerWithInitialRun() {
     
     console.log('\n⏰ Iniciando agendamento automático...\n');
     startScheduler();
+}
+
+/**
+ * NOMES REAIS: entra em cada link de PÁGINA (view_all_page_id) e grava o nome real.
+ * Roda na nuvem (GitHub Actions via run-once.js). Buscas por keyword (q=) não têm
+ * nome único confiável → ignoradas.
+ */
+export async function runNamesJob() {
+    try {
+        const offers = await getOffersWithFacebookLinks(); // já exclui arquivadas
+        const items = (offers || [])
+            .filter(o => /view_all_page_id=/.test(o.link || ''))
+            .map(o => ({ id: o.id, url: o.link }));
+        if (!items.length) {
+            console.log('🏷️ [NAMES] nenhum link de página (view_all_page_id) pra renomear.');
+            return { total: 0, ok: 0 };
+        }
+        console.log(`🏷️ [NAMES] buscando nome real de ${items.length} ofertas…`);
+        const res = await scrapePageNames(items, async (id, name) => { await updateOfferName(id, name); });
+        const ok = (res || []).filter(r => r.name).length;
+        console.log(`✅ [NAMES] concluído: ${ok}/${items.length} ofertas com nome real`);
+        return { total: items.length, ok };
+    } catch (err) {
+        console.error('❌ [NAMES] erro no job:', err.message);
+        return { total: 0, ok: 0, error: err.message };
+    }
 }

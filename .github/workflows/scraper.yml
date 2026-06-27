@@ -4,13 +4,24 @@ on:
   schedule:
     - cron: '0 12 * * *'   # 09:00 BRT (UTC-3)
     - cron: '0 0 * * *'    # 21:00 BRT (UTC-3)
-  workflow_dispatch:         # permite rodar manualmente pela aba Actions
+  workflow_dispatch:         # permite rodar manualmente pela aba Actions / via API
+    inputs:
+      job:
+        description: 'Qual job rodar'
+        type: choice
+        required: false
+        default: all
+        options:
+          - all
+          - scraping
+          - names
+          - discovery
 
 jobs:
   scrape:
     name: Executar Scraping
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout do repositório
@@ -36,4 +47,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          JOB: ${{ github.event.inputs.job || 'all' }}
         run: node run-once.js
