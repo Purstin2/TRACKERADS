@@ -44,16 +44,33 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         searchPage.setDefaultTimeout(30000);
 
         const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(keyword)}&search_type=keyword_unordered`;
-        console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
 
-        await searchPage.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        // ── WARM-UP: visita a home da Biblioteca pra o FB setar cookies (datr/sb)
+        // e aceita o banner de consentimento, ANTES de buscar. Sem isso o FB serve
+        // a página vazia pro bot (resultados não renderizam). ──────────────────
+        try {
+            console.log('[DISCOVERY] Warm-up: home da Biblioteca…');
+            await searchPage.goto('https://www.facebook.com/ads/library/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await searchPage.waitForTimeout(2500);
+            await searchPage.evaluate(() => {
+                const els = [...document.querySelectorAll('div[role="button"], button, [aria-label]')];
+                const hit = els.find(e => /permitir todos|aceitar todos|allow all|accept all|permitir cookies|aceitar/i.test((e.innerText || '') + ' ' + (e.getAttribute?.('aria-label') || '')));
+                if (hit) hit.click();
+            }).catch(() => {});
+            await searchPage.waitForTimeout(1800);
+        } catch (e) {
+            console.log('[DISCOVERY] warm-up falhou (segue mesmo assim):', e.message);
+        }
+
+        console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
+        await searchPage.goto(searchUrl, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
 
         // Espera os cards de anunciantes aparecerem (ou o aviso de vazio), sem sleep cego
         await searchPage
             .waitForFunction(
                 () => document.querySelector('a[href*="view_all_page_id"]') !== null ||
                     /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(document.body?.innerText || ''),
-                { timeout: 15000 }
+                { timeout: 25000 }
             )
             .catch(() => {});
 
