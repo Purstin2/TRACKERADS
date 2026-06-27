@@ -162,7 +162,9 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     if (token.trim() && cache.length) loadMonitor(l) // re-busca no novo nível se já tem dados
   }
 
-  async function loadMonitor(lvl: AdLevel = level) {
+  async function loadMonitor(lvl?: AdLevel) {
+    // guarda: o botão Atualizar chama isto como handler (passa o evento) → só aceita level válido
+    const useLevel: AdLevel = lvl === 'campaign' || lvl === 'adset' || lvl === 'ad' ? lvl : level
     if (!token.trim()) {
       alert('Cole o access token primeiro.')
       return
@@ -180,8 +182,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
         try {
           if (view === 'lista') {
             const [rows, cm] = await Promise.all([
-              fetchAggregate(acc.id, datePreset, tok, statuses, lvl),
-              lvl === 'campaign' ? fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]) : Promise.resolve([] as any[]),
+              fetchAggregate(acc.id, datePreset, tok, statuses, useLevel),
+              useLevel === 'campaign' ? fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]) : Promise.resolve([] as any[]),
             ])
             const meta: Record<string, CampMeta> = {}
             ;(cm as any[]).forEach((c) => {
