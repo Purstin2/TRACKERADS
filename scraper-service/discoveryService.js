@@ -185,11 +185,17 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         // ── PASSO 3: Verifica cada anunciante contra os filtros ─────────────
         const toProcess = advertisers.slice(0, maxAdvertisers);
 
+        // Contexto LIMPO (deslogado) só pra CONTAR os anúncios de cada página.
+        // Logado, o FB não renderiza o "~X resultados" — deslogado funciona
+        // (mesmo método do contador de ofertas, que roda 85/85). A busca acima
+        // continua usando o contexto LOGADO (`context`).
+        const countContext = await createStealthContext(browser);
+
         for (let i = 0; i < toProcess.length; i++) {
             const { pageId, name } = toProcess[i];
             console.log(`\n[DISCOVERY] [${i + 1}/${toProcess.length}] Verificando: ${name}`);
 
-            const adPage = await context.newPage();
+            const adPage = await countContext.newPage();
             adPage.setDefaultTimeout(30000);
 
             try {
