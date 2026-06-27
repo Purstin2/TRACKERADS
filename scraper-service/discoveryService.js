@@ -91,12 +91,26 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             return result;
         });
 
+        // SONDA: se não achou ninguém, captura o que o FB devolveu (login? bloqueio? vazio?)
+        let diag = null;
+        if (advertisers.length === 0) {
+            diag = await searchPage.evaluate(() => {
+                const t = document.title || '';
+                const txt = (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 350);
+                const loginWall = /(entrar no facebook|fazer login|log in to facebook|create new account|criar conta|você precisa fazer login|continue with|entre para ver)/i.test(txt);
+                const anyLink = document.querySelectorAll('a[href*="view_all_page_id"]').length;
+                const allLinks = document.querySelectorAll('a').length;
+                return { title: t, loginWall, viewAllLinks: anyLink, totalLinks: allLinks, sample: txt };
+            }).catch((e) => ({ error: e.message }));
+        }
+
         await searchPage.close();
 
         console.log(`[DISCOVERY] Anunciantes únicos encontrados: ${advertisers.length}`);
 
         if (advertisers.length === 0) {
             console.log('[DISCOVERY] Nenhum anunciante encontrado para essa keyword.');
+            console.log('[DISCOVERY][SONDA]', JSON.stringify(diag));
             await browser.close();
             return { success: true, offers: [], keyword };
         }
