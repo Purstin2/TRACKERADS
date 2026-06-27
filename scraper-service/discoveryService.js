@@ -1,4 +1,4 @@
-import { createBrowser, createStealthContext, extractAdData } from './scraper.js';
+import { createBrowser, createStealthContext, extractAdData, scrapeFacebookAdsCount } from './scraper.js';
 
 /**
  * Serviço de Descoberta Automática de Ofertas
@@ -221,13 +221,14 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                 await adPage.evaluate(() => window.scrollTo(0, 0));
                 await adPage.waitForTimeout(600);
 
-                // Verifica contagem de anúncios (extração unificada, lado Node)
-                const bodyText = await adPage.evaluate(() => document.body.innerText || '');
-                const { adCount } = extractAdData(bodyText);
+                // Conta os anúncios reusando a função COMPROVADA (a mesma do contador
+                // de ofertas, que roda 85/85). A contagem inline anterior voltava 0.
+                const _cnt = await scrapeFacebookAdsCount(libUrl, { context: countContext });
+                const adCount = (_cnt && typeof _cnt.adCount === 'number') ? _cnt.adCount : null;
 
                 if (i === 0) {
-                    const ttl = await adPage.title().catch(() => '');
-                    console.log(`[DISCOVERY][PROBE2] url=${libUrl} | title="${ttl}" | adCount=${adCount} | snippet="${bodyText.replace(/\s+/g, ' ').slice(0, 240)}"`);
+                    const bodyText = await adPage.evaluate(() => document.body.innerText || '').catch(() => '');
+                    console.log(`[DISCOVERY][PROBE2] url=${libUrl} | success=${_cnt?.success} | adCount=${adCount} | days=${_cnt?.daysRunning} | inline="${bodyText.replace(/\s+/g, ' ').slice(0, 140)}"`);
                 }
 
                 if (adCount === null || adCount < minAdCount) {
