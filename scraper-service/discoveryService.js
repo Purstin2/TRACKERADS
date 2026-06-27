@@ -143,11 +143,23 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         if (advertisers.length === 0) {
             diag = await searchPage.evaluate(() => {
                 const t = document.title || '';
-                const txt = (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 350);
-                const loginWall = /(entrar no facebook|fazer login|log in to facebook|create new account|criar conta|você precisa fazer login|continue with|entre para ver)/i.test(txt);
+                const txt = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+                const loginWall = /(entrar no facebook|fazer login|log in to facebook|create new account|você precisa fazer login|entre para ver)/i.test(txt);
                 const anyLink = document.querySelectorAll('a[href*="view_all_page_id"]').length;
                 const allLinks = document.querySelectorAll('a').length;
-                return { title: t, loginWall, viewAllLinks: anyLink, totalLinks: allLinks, sample: txt };
+                // quantos "resultados/anúncios" o FB diz que achou
+                const resultsCount = (txt.match(/~?\s*[\d.\s]+\s*(resultados?|an[úu]ncios?)/i) || [])[0] || null;
+                // amostra de hrefs que têm número longo (IDs de página/anúncio) → revela o padrão real
+                const hrefs = [...document.querySelectorAll('a[href]')].map(a => a.getAttribute('href')).filter(Boolean);
+                const digitHrefs = [...new Set(hrefs.filter(h => /\d{6,}/.test(h)))].slice(0, 20);
+                // padrões alternativos de link de página/anunciante
+                const pat = {
+                    view_all_page_id: anyLink,
+                    library_id: document.querySelectorAll('a[href*="ads/library/?id="]').length,
+                    page_profile: document.querySelectorAll('a[href*="/profile.php?id="]').length,
+                    role_article: document.querySelectorAll('div[role="article"]').length,
+                };
+                return { title: t, loginWall, viewAllLinks: anyLink, totalLinks: allLinks, resultsCount, pat, digitHrefs, sample: txt.slice(0, 250) };
             }).catch((e) => ({ error: e.message }));
         }
 
