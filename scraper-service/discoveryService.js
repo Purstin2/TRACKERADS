@@ -144,6 +144,8 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             return result;
         }, selfId);
 
+        console.log('[DISCOVERY][PROBE-IDS]', JSON.stringify(advertisers.slice(0, 6)));
+
         // SONDA: se não achou ninguém, captura o que o FB devolveu (login? bloqueio? vazio?)
         let diag = null;
         if (advertisers.length === 0) {
@@ -216,6 +218,11 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                 // Verifica contagem de anúncios (extração unificada, lado Node)
                 const bodyText = await adPage.evaluate(() => document.body.innerText || '');
                 const { adCount } = extractAdData(bodyText);
+
+                if (i === 0) {
+                    const ttl = await adPage.title().catch(() => '');
+                    console.log(`[DISCOVERY][PROBE2] url=${libUrl} | title="${ttl}" | adCount=${adCount} | snippet="${bodyText.replace(/\s+/g, ' ').slice(0, 240)}"`);
+                }
 
                 if (adCount === null || adCount < minAdCount) {
                     console.log(`[DISCOVERY] ✗ ${name}: ${adCount ?? 0} ads ativos (mínimo: ${minAdCount})`);
