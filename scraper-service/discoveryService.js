@@ -39,6 +39,36 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         browser = await createBrowser();
         const context = await createStealthContext(browser);
 
+        // ── SESSÃO LOGADA DO FB (opcional) ──────────────────────────────────
+        // Se FB_COOKIES estiver setado (JSON do Cookie-Editor), injeta a sessão
+        // logada → o FB passa a entregar os resultados da busca pro robô.
+        // Sem isso, a busca volta vazia (FB esconde resultados de bot deslogado).
+        if (process.env.FB_COOKIES) {
+            try {
+                const raw = JSON.parse(process.env.FB_COOKIES);
+                const arr = Array.isArray(raw) ? raw : (raw.cookies || []);
+                const cookies = arr.map((c) => {
+                    const ss = String(c.sameSite || '').toLowerCase();
+                    const sameSite = ss.includes('strict') ? 'Strict' : (ss.includes('none') || ss.includes('no_restriction')) ? 'None' : 'Lax';
+                    return {
+                        name: c.name,
+                        value: c.value,
+                        domain: c.domain || '.facebook.com',
+                        path: c.path || '/',
+                        httpOnly: !!c.httpOnly,
+                        secure: sameSite === 'None' ? true : (c.secure !== false),
+                        sameSite,
+                    };
+                }).filter((c) => c.name && c.value);
+                if (cookies.length) {
+                    await context.addCookies(cookies);
+                    console.log(`[DISCOVERY] sessão FB injetada (${cookies.length} cookies)`);
+                }
+            } catch (e) {
+                console.log('[DISCOVERY] FB_COOKIES inválido (segue deslogado):', e.message);
+            }
+        }
+
         // ── PASSO 1: Busca por keyword ──────────────────────────────────────
         const searchPage = await context.newPage();
         searchPage.setDefaultTimeout(30000);

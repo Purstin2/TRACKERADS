@@ -48,4 +48,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           JOB: ${{ github.event.inputs.job || 'all' }}
+          FB_COOKIES: ${{ secrets.FB_COOKIES }}
         run: node run-once.js
