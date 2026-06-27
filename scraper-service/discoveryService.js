@@ -95,10 +95,11 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
         await searchPage.goto(searchUrl, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
 
-        // Espera os cards de anunciantes aparecerem (ou o aviso de vazio), sem sleep cego
+        // Espera os cards de anunciantes aparecerem (ou o aviso de vazio), sem sleep cego.
+        // Anunciante agora = link facebook.com/<id_da_página>/
         await searchPage
             .waitForFunction(
-                () => document.querySelector('a[href*="view_all_page_id"]') !== null ||
+                () => [...document.querySelectorAll('a[href]')].some((a) => /^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/\d{5,}\/?(?:[?#]|$)/.test(a.href || '')) ||
                     /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(document.body?.innerText || ''),
                 { timeout: 25000 }
             )
@@ -110,33 +111,38 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             await searchPage.waitForTimeout(1200);
         }
 
+        // page_id do próprio usuário logado (pra não capturar o perfil dele)
+        let selfId = '';
+        try { selfId = (JSON.parse(process.env.FB_COOKIES || '[]').find((c) => c.name === 'c_user') || {}).value || ''; } catch { /* noop */ }
+
         // ── PASSO 2: Extrai page IDs únicos dos resultados ──────────────────
-        const advertisers = await searchPage.evaluate(() => {
+        // O FB mudou: o link do anunciante agora é facebook.com/<page_id>/
+        // (antes era view_all_page_id). Pega esses, ignorando redirects de saída
+        // (l.facebook.com), páginas de ajuda e o próprio usuário logado.
+        const advertisers = await searchPage.evaluate((selfId) => {
             const seen = new Set();
             const result = [];
+            const links = document.querySelectorAll('a[href]');
+            links.forEach((link) => {
+                const href = link.href || '';
+                if (/l\.facebook\.com|\/help\//i.test(href)) return;
+                const m = href.match(/^https?:\/\/(?:www\.|web\.|m\.)?facebook\.com\/(\d{5,})\/?(?:[?#]|$)/);
+                if (!m) return;
+                const pageId = m[1];
+                if (!pageId || pageId === selfId || seen.has(pageId)) return;
+                seen.add(pageId);
 
-            // Links que contêm view_all_page_id são os botões "Ver todos os anúncios"
-            const links = document.querySelectorAll('a[href*="view_all_page_id"]');
-            links.forEach(link => {
-                const match = link.href.match(/view_all_page_id=(\d+)/);
-                if (!match || seen.has(match[1])) return;
-                seen.add(match[1]);
-
-                // Tenta extrair o nome do anunciante do card pai
-                const card = link.closest('[data-testid]') || link.closest('div[role="article"]') || link.parentElement;
+                // nome do anunciante a partir do card pai (se houver)
+                const card = link.closest('div[role="article"]') || link.closest('[data-testid]') || link.parentElement;
                 const strongEl = card?.querySelector('strong');
                 const h2El = card?.querySelector('h2, h3');
-                const nameFromLink = link.textContent?.trim();
+                const nameFromLink = (link.textContent || link.getAttribute('aria-label') || '').trim();
                 const name = (strongEl?.textContent?.trim() || h2El?.textContent?.trim() || nameFromLink || '').substring(0, 120);
 
-                result.push({
-                    pageId: match[1],
-                    name: name || `Anunciante ${match[1]}`
-                });
+                result.push({ pageId, name: name || `Anunciante ${pageId}` });
             });
-
             return result;
-        });
+        }, selfId);
 
         // SONDA: se não achou ninguém, captura o que o FB devolveu (login? bloqueio? vazio?)
         let diag = null;
