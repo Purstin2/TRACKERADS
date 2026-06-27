@@ -199,7 +199,29 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             adPage.setDefaultTimeout(30000);
 
             try {
-                const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${pageId}`;
+                // CAMADA EXTRA: o id do link da busca dá 0 ads (é perfil, não a página
+                // de anúncios). Entra no perfil (LOGADO) e varre o HTML atrás do
+                // view_all_page_id REAL — em link OU em dados embutidos (script).
+                let realPageId = pageId;
+                try {
+                    const profPage = await context.newPage();
+                    profPage.setDefaultTimeout(30000);
+                    await profPage.goto(`https://www.facebook.com/${pageId}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                    await profPage.waitForTimeout(3500);
+                    const found = await profPage.evaluate(() => {
+                        const a = [...document.querySelectorAll('a[href*="view_all_page_id"]')][0];
+                        if (a) { const m = a.href.match(/view_all_page_id=(\d+)/); if (m) return m[1]; }
+                        const m2 = (document.documentElement.innerHTML.match(/view_all_page_id["=:\\\/]+(\d{5,})/) || [])[1];
+                        return m2 || null;
+                    }).catch(() => null);
+                    await profPage.close().catch(() => {});
+                    if (found) realPageId = found;
+                    if (i === 0) console.log(`[DISCOVERY][PROBE3] perfil ${pageId} -> view_all_page_id real=${found || 'NADA'}`);
+                } catch (e) {
+                    if (i === 0) console.log('[DISCOVERY][PROBE3] erro perfil:', e.message);
+                }
+
+                const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${realPageId}`;
 
                 await adPage.goto(libUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
