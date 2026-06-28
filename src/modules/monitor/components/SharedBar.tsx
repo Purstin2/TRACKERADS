@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Settings, Bell } from 'lucide-react'
+import { Eye, Settings, Bell, RefreshCw } from 'lucide-react'
 import { useMonitor } from '../MonitorContext'
-import { ACCOUNTS, STATUS_FILTERS } from '../config'
+import { STATUS_FILTERS } from '../config'
 import { useLog } from '../actionLog'
 
 export default function SharedBar({ onSettings }: { onSettings: () => void }) {
@@ -39,7 +39,16 @@ export default function SharedBar({ onSettings }: { onSettings: () => void }) {
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">Contas</span>
-        {ACCOUNTS.map((a) => {
+        <button
+          onClick={m.refreshAccounts}
+          disabled={m.refreshingAccounts}
+          title="Buscar contas novas no Meta e adicionar automaticamente"
+          className="flex items-center gap-1 rounded-full border border-border bg-surface2 px-2 py-1 text-[11px] font-semibold text-muted2 transition-colors hover:border-brand hover:text-ink disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3 w-3 ${m.refreshingAccounts ? 'animate-spin' : ''}`} />
+          {m.refreshingAccounts ? 'Buscando…' : 'Atualizar'}
+        </button>
+        {m.accounts.map((a) => {
           const on = m.selected.has(a.id)
           return (
             <button

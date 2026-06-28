@@ -3,7 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, PieCha
 import { RefreshCw, Search } from 'lucide-react'
 import { fetchBreakdown, getRevenue, getSales } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
-import { ACCOUNTS, STATUS_FILTERS, DATE_OPTIONS, BREAKDOWNS, keyFor, AGE_ORDER, PALETTE, curSym, VAL_CLS, roasCls } from './config'
+import { STATUS_FILTERS, DATE_OPTIONS, BREAKDOWNS, keyFor, AGE_ORDER, PALETTE, curSym, VAL_CLS, roasCls } from './config'
 
 interface Seg {
   k: string
@@ -35,7 +35,7 @@ export default function PublicosView() {
 
   async function load() {
     if (!m.token.trim()) return alert('Cole o token.')
-    const accs = ACCOUNTS.filter((a) => m.selected.has(a.id))
+    const accs = m.accounts.filter((a) => m.selected.has(a.id))
     if (!accs.length) return
     setLoading(true)
     setErr('')

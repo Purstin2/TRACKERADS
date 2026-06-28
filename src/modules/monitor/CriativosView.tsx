@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { fetchCreatives, getRevenue, getSales } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
-import { ACCOUNTS, STATUS_FILTERS, DATE_OPTIONS, curSym, classify, roasCls, ICONS, ROW_BG, VAL_CLS } from './config'
+import { STATUS_FILTERS, DATE_OPTIONS, curSym, classify, roasCls, ICONS, ROW_BG, VAL_CLS } from './config'
 
 interface AdRow {
   acc: string
@@ -37,7 +37,7 @@ export default function CriativosView() {
     if (!m.token.trim()) return alert('Cole o token.')
     if (period === 'custom' && (!from || !to || from > to))
       return alert('Escolha um intervalo de datas válido (De ≤ Até).')
-    const accs = ACCOUNTS.filter((a) => m.selected.has(a.id))
+    const accs = m.accounts.filter((a) => m.selected.has(a.id))
     if (!accs.length) return
     setLoading(true)
     const statuses = STATUS_FILTERS[m.status]?.values || ['ACTIVE']

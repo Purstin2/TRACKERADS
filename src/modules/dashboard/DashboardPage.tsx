@@ -11,7 +11,7 @@ import { buildRealDashboard, distinctProducts, distinctSources, normSource, type
 import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type GridItem } from './widgets'
 import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
 import { fetchOrders, fetchRefundsByRefundDate, type KirvanoOrder } from '@/modules/pixel/orders'
-import { ACCOUNTS, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
+import { getStoredAccounts, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
 import { loadFinParams, saveFinParams, syncFinParams, FIN_DEFAULTS, type FinParams } from '@/modules/monitor/finance'
 import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
 
@@ -277,12 +277,13 @@ export default function DashboardPage() {
   const [loaded, setLoaded] = useState(false)
   const [campDrawer, setCampDrawer] = useState(false)
 
-  const accIds = useMemo(() => ACCOUNTS.filter((a) => accSel === null || accSel.has(a.name)).map((a) => a.id), [accSel])
+  const accountsList = useMemo(() => getStoredAccounts(), [])
+  const accIds = useMemo(() => accountsList.filter((a) => accSel === null || accSel.has(a.name)).map((a) => a.id), [accSel, accountsList])
 
   async function load(silent = false) {
     if (!token.trim()) { if (!silent) alert('Cole o access token do Meta primeiro.'); return }
     localStorage.setItem('meta_tok', token.trim())
-    const accs = ACCOUNTS.filter((a) => accIds.includes(a.id))
+    const accs = accountsList.filter((a) => accIds.includes(a.id))
     if (!accs.length) { if (!silent) alert('Selecione ao menos uma conta.'); return }
     setLoading(true)
     const fx = getFx()
@@ -467,7 +468,7 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
-          <MultiDropdown label="Conta de Anúncio" options={ACCOUNTS.map((a) => a.name)} selected={accSel} onChange={setAccSel} groupLabel="Meta" width="w-[180px]" />
+          <MultiDropdown label="Conta de Anúncio" options={accountsList.map((a) => a.name)} selected={accSel} onChange={setAccSel} groupLabel="Meta" width="w-[180px]" />
           <MultiDropdown label="Fonte de Tráfego" options={sources} selected={selSources} onChange={setSelSources} width="w-[160px]" />
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">Plataforma</span>

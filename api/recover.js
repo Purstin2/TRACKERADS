@@ -33,6 +33,19 @@ function waPhone(raw) {
 }
 
 const firstName = (o) => (o.customer_name || '').split(' ')[0] || ''
+// nome do produto que a pessoa tentou comprar (vem do webhook → kirvano_orders.product)
+const productLabel = (o) => cleanParam(o.product, 'sua oferta')
+
+// Quais produtos recebem o DIA 2 (vídeo dos STLs). Por id de produto (do products[])
+// ou, como rede de segurança, pelo nome conter "STL"/"ULTRA PACK". Configurável na env.
+const STL_PRODUCT_IDS = (process.env.WA_STL_PRODUCT_IDS ||
+  'b42399f8-52da-46a4-8478-e06f80fdcb5e,0c0b52ef-623d-4ba3-bb91-1ba85529b3a1')
+  .split(',').map((s) => s.trim()).filter(Boolean)
+function isStlOrder(o) {
+  const ids = (o.products || []).map((p) => String(p && p.id))
+  if (STL_PRODUCT_IDS.some((id) => ids.includes(id))) return true
+  return /\bstl\b|ultra\s?pack/i.test(o.product || '')
+}
 
 // Sanitiza um parâmetro de template (Meta rejeita vazio/quebra de linha/tab).
 function cleanParam(v, fallback) {
@@ -43,36 +56,33 @@ function cleanParam(v, fallback) {
 // ── definição dos 3 passos da cadência (lidos de env) ────────────────────────
 function getSteps() {
   const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
-  const company = process.env.WA_COMPANY || 'nossa loja'
   const videoUrl = process.env.WA_DAY2_VIDEO_URL || null // link público .mp4 do dia 2
   const videoId = process.env.WA_DAY2_VIDEO_ID || null // ou um media id já enviado
+  // todos os dias agora usam {{1}}=nome, {{2}}=produto (nome real do webhook)
   return [
     {
       day: 1,
-      template: process.env.WA_TEMPLATE_DAY1 || 'carrinho_dia1',
+      template: process.env.WA_TEMPLATE_DAY1 || 'recuperacao_dia1_v3',
       lang,
-      // body: {{1}}=nome, {{2}}=empresa | botão URL: {{1}}=order_id (índice separado do body)
-      bodyParams: (o) => [cleanParam(firstName(o), 'você'), cleanParam(company, 'nossa loja')],
+      bodyParams: (o) => [cleanParam(firstName(o), 'você'), productLabel(o)],
       header: null,
-      hasButton: process.env.WA_BUTTON_URL === 'true', // botão só quando ligado (templates _v2 c/ CTA)
+      hasButton: process.env.WA_BUTTON_URL !== 'false', // botão só quando ligado (templates c/ CTA)
     },
     {
       day: 2,
-      template: process.env.WA_TEMPLATE_DAY2 || 'carrinho_dia2',
+      template: process.env.WA_TEMPLATE_DAY2 || 'recuperacao_dia2_v3',
       lang,
-      // body: {{1}}=nome + header de vídeo | botão URL: {{1}}=order_id
-      bodyParams: (o) => [cleanParam(firstName(o), 'você')],
+      bodyParams: (o) => [cleanParam(firstName(o), 'você'), productLabel(o)],
       header: videoUrl ? { type: 'video', link: videoUrl } : videoId ? { type: 'video', id: videoId } : null,
-      hasButton: process.env.WA_BUTTON_URL === 'true',
+      hasButton: process.env.WA_BUTTON_URL !== 'false',
     },
     {
       day: 3,
-      template: process.env.WA_TEMPLATE_DAY3 || 'carrinhos_dia3',
+      template: process.env.WA_TEMPLATE_DAY3 || 'recuperacao_dia3_v3',
       lang,
-      // body: {{1}}=nome | botão URL: {{1}}=order_id
-      bodyParams: (o) => [cleanParam(firstName(o), 'você')],
+      bodyParams: (o) => [cleanParam(firstName(o), 'você'), productLabel(o)],
       header: null,
-      hasButton: process.env.WA_BUTTON_URL === 'true',
+      hasButton: process.env.WA_BUTTON_URL !== 'false',
     },
   ]
 }
@@ -233,11 +243,11 @@ export default async function handler(req, res) {
       continue
     }
 
-    // Pix PENDENTE e cartão RECUSADO: só o toque do DIA 1 (mais seguro contra ban).
-    // Só o carrinho ABANDONADO segue a cadência completa de 3 dias.
-    if (!manualIds && (o.status === 'PENDING' || o.status === 'REFUSED') && (o.wa_step || 0) >= 1) {
+    // REGRA POR PRODUTO (decisão do usuário): só o STL faz a cadência completa
+    // (dias 1, 2, 3). TODOS os outros produtos recebem APENAS o dia 1.
+    if (!manualIds && !isStlOrder(o) && (o.wa_step || 0) >= 1) {
       await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: 3 })
-      results.push({ id: o.id, skipped: o.status === 'PENDING' ? 'pix: só dia 1' : 'recusado: só dia 1' })
+      results.push({ id: o.id, skipped: 'não-STL: só o dia 1' })
       continue
     }
 
@@ -250,6 +260,18 @@ export default async function handler(req, res) {
     }
     if (idx < 0 || idx > 2) {
       results.push({ id: o.id, waiting: true, step: o.wa_step || 0 })
+      continue
+    }
+
+    // DIA 2 = vídeo dos STLs. Quem NÃO comprou STL não recebe essa mensagem:
+    // pula pro dia 3 (não dispara vídeo de STL pra quem comprou Moldes/Flexi/etc).
+    if (idx === 1 && !isStlOrder(o)) {
+      await patchOrder(url, key, o.id, {
+        wa_step: 2,
+        wa_status: 'sent',
+        wa_last_try: new Date().toISOString(),
+      })
+      results.push({ id: o.id, skipped: 'dia 2 pulado (vídeo é STL; produto não-STL)' })
       continue
     }
 

@@ -5,7 +5,7 @@ import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/he
 import { analyzeOfferPerformance } from '../../utils/helpers';
 import { smartClassifyOffer } from '../../utils/smartClassification';
 
-const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast, selectionMode, isSelected, onToggleSelect }) => {
+const OfferCard = ({ offer, isDuplicate, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast, selectionMode, isSelected, onToggleSelect }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
     const [isScrapingRunning, setIsScrapingRunning] = useState(false);
     const [isManualScrapingRunning, setIsManualScrapingRunning] = useState(false);
@@ -335,6 +335,11 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                         {offer.name}
                     </h3>
                     <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                        {isDuplicate && (
+                            <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 rounded-full tracking-wider" title="Outro card tem o mesmo link da Biblioteca">
+                                DUPLICADA
+                            </span>
+                        )}
                         {isActive && (
                             <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/8 border border-emerald-500/18 px-1.5 py-0.5 rounded-full tracking-wider">
                                 ATIVA

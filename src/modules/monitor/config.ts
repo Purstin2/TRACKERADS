@@ -4,6 +4,8 @@ export interface Account {
   cur: 'USD' | 'BRL'
 }
 
+// Lista-semente. Em runtime o MonitorContext carrega a lista salva (localStorage
+// 'monitor_accounts_v1') e o botão "Atualizar contas" busca novas do Meta.
 export const ACCOUNTS: Account[] = [
   { id: '1182053470681632', name: 'MALDIVAS', cur: 'USD' },
   { id: '884258587535238', name: 'CHILE', cur: 'USD' },
@@ -11,6 +13,8 @@ export const ACCOUNTS: Account[] = [
   { id: '1149436580510398', name: 'CANADA', cur: 'USD' },
   { id: '1903971303669696', name: 'BILLIONARE', cur: 'BRL' },
   { id: '984584710777200', name: 'TANJIRO', cur: 'USD' },
+  { id: '1809928933778874', name: 'CONTA 8874', cur: 'USD' },
+  { id: '1640879137096586', name: 'CONTA 6586', cur: 'USD' },
 ]
 
 export interface Settings {
@@ -105,8 +109,28 @@ export function keyFor(r: any, dim: string): string {
 }
 
 export const curSym = (c: string) => (c === 'BRL' ? 'R$' : '$')
-export const accCur = (id: string) => ACCOUNTS.find((a) => a.id === id)?.cur || 'USD'
-export const accName = (id: string) => ACCOUNTS.find((a) => a.id === id)?.name || id
+// Chave única da lista de contas salva (Monitor e Dashboard compartilham).
+export const ACCOUNTS_KEY = 'monitor_accounts_v1'
+// Lê a lista salva (contas adicionadas via "Atualizar contas") ou a semente.
+export function getStoredAccounts(): Account[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length && arr.every((a) => a && a.id && a.name)) return arr as Account[]
+    }
+  } catch { /* ignora */ }
+  return ACCOUNTS
+}
+
+// Lista "viva" — o MonitorContext atualiza via setLiveAccounts quando carrega do
+// localStorage / busca contas novas. accCur/accName leem daqui pra refletir tudo.
+let _live: Account[] = getStoredAccounts()
+export const setLiveAccounts = (a: Account[]) => {
+  _live = Array.isArray(a) && a.length ? a : ACCOUNTS
+}
+export const accCur = (id: string) => _live.find((a) => a.id === id)?.cur || 'USD'
+export const accName = (id: string) => _live.find((a) => a.id === id)?.name || id
 export const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) + '…' : s)
 
 /* ── classificação ── */

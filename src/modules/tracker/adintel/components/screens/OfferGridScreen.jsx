@@ -14,6 +14,14 @@ const STATUS_RANK = {
     LOW: 40, OBSERVE: 35, EXHAUSTING: 25, INACTIVE: 15, DYING: 10, DEAD: 5, NO_DATA: 0,
 };
 
+// Chave de duplicata: usa o page_id da Biblioteca se houver (pega "mesmo anunciante"
+// mesmo com URL um pouco diferente); senão o link inteiro normalizado.
+const linkKey = (l) => {
+    if (!l) return '';
+    const m = String(l).match(/view_all_page_id=(\d+)/);
+    return m ? 'pid:' + m[1] : String(l).trim().toLowerCase().replace(/\/+$/, '');
+};
+
 const OfferGridScreen = ({ 
     offers, 
     onViewDetails, 
@@ -51,27 +59,25 @@ const OfferGridScreen = ({
     const [showImportBookmarks, setShowImportBookmarks] = useState(false);
     const [isRenaming, setIsRenaming] = useState(false);
 
-    // Entra em cada link e renomeia os cards com o nome real da Página (via scraper local)
+    // Dispara o job de NOMES REAIS na NUVEM (GitHub Actions). O job entra em cada
+    // link e renomeia os cards; o site reflete conforme o Supabase é atualizado.
     const handleFetchNames = async () => {
-        const base = import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001';
         setIsRenaming(true);
         try {
-            showToast && showToast('🏷️ Entrando nos links pra puxar o nome real das páginas...', 'info');
-            const r = await fetch(`${base}/api/scrape/names`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-            });
+            showToast && showToast('🏷️ Disparando busca dos nomes reais na nuvem...', 'info');
+            const r = await fetch('/api/scraper-run?job=names', { method: 'POST' });
             const data = await r.json();
-            if (r.ok && data.success) {
-                showToast && showToast(`Buscando o nome de ${data.count} ofertas — os cards vão se atualizando.`, 'success');
-                // o job leva ~10s por oferta → faz polling por ~8 min pra refletir os renomeados ao vivo
+            if (r.ok && data.ok) {
+                showToast && showToast('Rodada de nomes disparada na nuvem — os cards se atualizam em alguns minutos.', 'success');
+                // o job roda na nuvem (~6-10 min) → faz polling pra refletir os renomeados ao vivo
                 let n = 0;
-                const iv = setInterval(() => { n++; if (fetchOffers) fetchOffers(); if (n >= 32) clearInterval(iv); }, 15000);
-                setTimeout(() => clearInterval(iv), 500000);
+                const iv = setInterval(() => { n++; if (fetchOffers) fetchOffers(); if (n >= 40) clearInterval(iv); }, 20000);
+                setTimeout(() => clearInterval(iv), 820000);
             } else {
-                showToast && showToast(`Erro: ${data.error || 'falha'}`, 'error');
+                showToast && showToast(`Erro: ${data.error || 'falha ao disparar'}`, 'error');
             }
         } catch {
-            showToast && showToast('Scraper local não está rodando (localhost:3001). Inicie o scraper-service.', 'error');
+            showToast && showToast('Não consegui disparar a rodada na nuvem. Tente de novo.', 'error');
         } finally {
             setTimeout(() => setIsRenaming(false), 5000);
         }
@@ -123,6 +129,13 @@ const OfferGridScreen = ({
 
     // Fetch ad_counts for all visible offers (last 30 days) to enable time-based sorting
     const offerIds = useMemo(() => offers.map(o => o.id), [offers]);
+
+    // Duplicatas: conta quantas ofertas (não arquivadas) têm o mesmo link → marca no card
+    const dupCount = useMemo(() => {
+        const c = {};
+        offers.forEach(o => { if (o.is_archived) return; const k = linkKey(o.link); if (k) c[k] = (c[k] || 0) + 1; });
+        return c;
+    }, [offers]);
 
     const fetchAdCounts = useCallback(async () => {
         if (!supabaseClient?.from || offerIds.length === 0) return;
@@ -540,6 +553,7 @@ const OfferGridScreen = ({
                         <OfferCard
                             key={offer.id}
                             offer={offer}
+                            isDuplicate={!offer.is_archived && dupCount[linkKey(offer.link)] > 1}
                             onViewDetails={onViewDetails}
                             onEditOffer={onEditOffer}
                             onToggleArchive={onToggleArchive}

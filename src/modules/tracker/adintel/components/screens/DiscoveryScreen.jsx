@@ -102,25 +102,22 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
             return;
         }
         setIsRunning(true);
-        showToast('Busca iniciada em background. Aguarde alguns minutos...', 'info');
+        showToast('Disparando busca na nuvem (GitHub Actions)...', 'info');
         try {
-            const res = await fetch(`${SCRAPER_URL}/api/discovery/run`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            // Aciona o scraper na NUVEM — não depende de rede local
+            const res = await fetch('/api/scraper-run?job=discovery', { method: 'POST' });
             const data = await res.json();
-            if (data.success) {
-                showToast('Busca em andamento! Atualize a lista em alguns minutos.', 'success');
-                // Atualiza após 90s automaticamente
-                setTimeout(() => {
-                    fetchDiscoveries();
-                    fetchKeywords();
-                }, 90000);
+            if (res.ok && data.ok) {
+                showToast('Busca disparada na nuvem! As ofertas aparecem aqui em alguns minutos.', 'success');
+                // a rodada na nuvem leva alguns minutos → recarrega periodicamente
+                let n = 0;
+                const iv = setInterval(() => { n++; fetchDiscoveries(); fetchKeywords(); if (n >= 30) clearInterval(iv); }, 30000);
+                setTimeout(() => clearInterval(iv), 920000);
             } else {
-                showToast('Erro ao iniciar busca: ' + (data.error || ''), 'error');
+                showToast('Erro ao disparar busca: ' + (data.error || ''), 'error');
             }
         } catch {
-            showToast('Scraper offline. Verifique o serviço.', 'error');
+            showToast('Não consegui disparar a busca na nuvem. Tente de novo.', 'error');
         } finally {
             setIsRunning(false);
         }

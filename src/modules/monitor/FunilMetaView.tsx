@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { fetchFunil, getRevenue, previousPeriod, periodLabel } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
-import { ACCOUNTS, STATUS_FILTERS, DATE_OPTIONS } from './config'
+import { STATUS_FILTERS, DATE_OPTIONS } from './config'
 import { aggregateFunnel, fnlPurch, toUSD, type FnlRow } from './funnelData'
 import Funnel from './components/Funnel'
 
@@ -34,7 +34,7 @@ export default function FunilMetaView() {
 
   async function load() {
     if (!m.token.trim()) return alert('Cole o token.')
-    const accs = ACCOUNTS.filter((a) => m.selected.has(a.id))
+    const accs = m.accounts.filter((a) => m.selected.has(a.id))
     if (!accs.length) return alert('Selecione ao menos uma conta.')
     if (period === 'custom' && (!customSince || !customUntil)) return alert('Escolha as duas datas (de / até).')
     const actualPeriod = period === 'custom' ? `custom:${customSince}:${customUntil}` : period

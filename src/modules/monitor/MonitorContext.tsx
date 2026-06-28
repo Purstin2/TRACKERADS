@@ -10,6 +10,7 @@ import {
   fetchAggregate,
   fetchTimeSeries,
   fetchCampaignMeta,
+  fetchAdAccounts,
   getRoas,
   getCpa,
   getSales,
@@ -17,7 +18,9 @@ import {
   type AdLevel,
 } from '@/lib/meta'
 import {
-  ACCOUNTS,
+  getStoredAccounts,
+  ACCOUNTS_KEY,
+  setLiveAccounts,
   DEFAULT_SETTINGS,
   STATUS_FILTERS,
   type Account,
@@ -77,6 +80,9 @@ function processTS(rows: InsightRow[]): CampMap {
 interface Ctx {
   token: string
   setToken: (t: string) => void
+  accounts: Account[]
+  refreshAccounts: () => Promise<void>
+  refreshingAccounts: boolean
   selected: Set<string>
   toggleAccount: (id: string) => void
   status: string
@@ -108,7 +114,10 @@ const MonitorCtx = createContext<Ctx | null>(null)
 
 export function MonitorProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState(() => localStorage.getItem('meta_tok') || '')
-  const [selected, setSelected] = useState<Set<string>>(new Set(ACCOUNTS.map((a) => a.id)))
+  const initAcc = getStoredAccounts()
+  const [accounts, setAccounts] = useState<Account[]>(initAcc)
+  const [refreshingAccounts, setRefreshingAccounts] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set(initAcc.map((a) => a.id)))
   const [status, setStatus] = useState('active')
   const [datePreset, setDatePreset] = useState('last_14d')
   const [view, setView] = useState<MonitorView>('lista')
@@ -147,6 +156,53 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
       n.has(id) ? n.delete(id) : n.add(id)
       return n
     })
+
+  // mantém accCur/accName (config) em sincronia com a lista atual
+  useEffect(() => {
+    setLiveAccounts(accounts)
+  }, [accounts])
+
+  // Busca as contas do Meta e adiciona as novas (mantém o nome custom das já existentes)
+  const refreshAccounts = async () => {
+    if (!token.trim()) {
+      alert('Cole o access token primeiro.')
+      return
+    }
+    setRefreshingAccounts(true)
+    try {
+      const live = await fetchAdAccounts(token.trim())
+      if (!live.length) {
+        alert('Nenhuma conta retornada pelo Meta (verifique o token).')
+        return
+      }
+      const byId = new Map(accounts.map((a) => [a.id, a]))
+      // ordem: as que já existiam primeiro, depois novas do Meta. O Meta é a
+      // fonte da verdade do nome/moeda (nomeou a conta lá → reflete ao Atualizar).
+      const merged: Account[] = accounts.map((a) => {
+        const m = live.find((l) => l.id === a.id)
+        return m ? { ...a, name: m.name, cur: m.cur } : a
+      })
+      const newOnes = live.filter((l) => !byId.has(l.id))
+      merged.push(...newOnes)
+      setAccounts(merged)
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(merged))
+      setLiveAccounts(merged)
+      if (newOnes.length) {
+        setSelected((s) => {
+          const n = new Set(s)
+          newOnes.forEach((a) => n.add(a.id))
+          return n
+        })
+        alert(`${newOnes.length} conta(s) nova(s) adicionada(s): ${newOnes.map((a) => a.name).join(', ')}`)
+      } else {
+        alert('Tudo atualizado — nenhuma conta nova encontrada.')
+      }
+    } catch (e: any) {
+      alert('Erro ao buscar contas: ' + e.message)
+    } finally {
+      setRefreshingAccounts(false)
+    }
+  }
   const saveSettings = (s: Settings) => {
     setSettings(s)
     cacheSet('meta_settings', s)
@@ -173,7 +229,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setCache([])
     const statuses = STATUS_FILTERS[status]?.values || ['ACTIVE']
-    const accs = ACCOUNTS.filter((a) => selected.has(a.id))
+    const accs = accounts.filter((a) => selected.has(a.id))
     const tok = token.trim()
     // PARALELO: todas as contas de uma vez (antes era conta por conta em fila).
     // Promise.all preserva a ordem das contas no resultado.
@@ -209,6 +265,9 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     token,
     setToken,
+    accounts,
+    refreshAccounts,
+    refreshingAccounts,
     selected,
     toggleAccount,
     status,

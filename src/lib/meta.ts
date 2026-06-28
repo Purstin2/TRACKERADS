@@ -30,6 +30,25 @@ export interface InsightRow {
   [k: string]: unknown
 }
 
+/** Lista as contas de anúncio do usuário (me/adaccounts). Usado pelo botão
+ *  "Atualizar contas" do Monitor pra descobrir contas novas automaticamente. */
+export interface AdAccount {
+  id: string
+  name: string
+  cur: 'USD' | 'BRL'
+}
+export async function fetchAdAccounts(t: string): Promise<AdAccount[]> {
+  const p = new URLSearchParams({ fields: 'name,currency,account_status', limit: '500', access_token: t })
+  const r = await fetch(`${BASE}/me/adaccounts?${p}`)
+  const j: any = await r.json()
+  if (j.error) throw new Error(j.error.message)
+  return (j.data || []).map((a: any) => {
+    const id = String(a.id || '').replace(/^act_/, '')
+    const name = a.name && String(a.name).trim() ? String(a.name).trim() : `Conta ${id.slice(-4)}`
+    return { id, name, cur: a.currency === 'BRL' ? 'BRL' : 'USD' } as AdAccount
+  })
+}
+
 export async function paginate(url: string): Promise<InsightRow[]> {
   let data: InsightRow[] = []
   let next: string | null = url
