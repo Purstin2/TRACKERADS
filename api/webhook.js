@@ -800,6 +800,7 @@ export default async function handler(req, res) {
   } else {
     message = `${eventLabel} → pixel ${route.pixelId} (${route.source}) → CAPI ${capiOk ? 'ok' : 'falhou/sem config'}`
   }
+  if (eventsToSend.includes('Purchase')) message += ` | TikTok ${ttOk ? 'ok' : 'falhou/sem token'}`
   await logHit({
     gateway,
     event: o.event || gateway,
