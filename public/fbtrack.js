@@ -120,6 +120,12 @@
   if (gclid) setCookie('k_gclid', gclid, 90)
   gclid = gclid || getCookie('k_gclid') || ''
 
+  // ttclid (TikTok) — pro Events API server-side. _ttp é o cookie que o pixel do TikTok cria.
+  var ttclid = getParam('ttclid')
+  if (ttclid) setCookie('k_ttclid', ttclid, 90)
+  ttclid = ttclid || getCookie('k_ttclid') || ''
+  var ttp = getCookie('_ttp') || ''
+
   // ── propaga tudo pros links de checkout ──────────────────────────────────────
   function isCheckout(href) {
     try {
@@ -151,6 +157,8 @@
         if (fbp) parts.push('fbp:' + fbp)
         if (fbclid) parts.push('fbclid:' + fbclid)
         if (gclid) parts.push('gclid:' + gclid)
+        if (ttclid) parts.push('ttclid:' + ttclid)
+        if (ttp) parts.push('ttp:' + ttp)
         if (parts.length) {
           var blob = parts.join('|')
           u.searchParams.set('sck', blob)   // sck é o campo de tracking devolvido no webhook
@@ -168,6 +176,8 @@
       if (fbclid) u.searchParams.set('fbclid', fbclid)
       UTM_KEYS.forEach(function (k) { if (utms[k]) u.searchParams.set(k, utms[k]) })
       if (gclid) u.searchParams.set('gclid', gclid)
+      if (ttclid) u.searchParams.set('ttclid', ttclid)
+      if (ttp) u.searchParams.set('ttp', ttp)
       return u.toString()
     } catch (e) {
       return url

@@ -284,6 +284,9 @@ function parseOrder(gateway, body) {
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
       // Google click id (rastreio próprio / futuro Google Ads)
       gclid: cookies.gclid || body.gclid || trk.gclid || utm.gclid || null,
+      // TikTok: ttclid (clique) + ttp (cookie _ttp) pro Events API server-side
+      ttclid: cookies.ttclid || body.ttclid || trk.ttclid || null,
+      ttp: cookies.ttp || body.ttp || trk.ttp || null,
       orderedAt: brtNaiveToISO(body.created_at),
     }
   }
@@ -358,6 +361,8 @@ function parseOrder(gateway, body) {
       fbc,
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
       gclid: origin.gclid || parseTrkField(trkBlob, 'gclid') || null,
+      ttclid: origin.ttclid || parseTrkField(trkBlob, 'ttclid') || null,
+      ttp: origin.ttp || parseTrkField(trkBlob, 'ttp') || null,
       orderedAt: purchase.order_date
         ? new Date(purchase.order_date).toISOString()
         : (body.creation_date ? new Date(body.creation_date).toISOString() : null),
@@ -580,6 +585,76 @@ async function sendCAPI(o, req, route, eventName) {
   return false
 }
 
+// ─── TikTok Events API (server-side, igual o CAPI do Meta) ───────────────────
+// Dispara CompletePayment na venda APROVADA. Só roda se TIKTOK_ACCESS_TOKEN +
+// TIKTOK_PIXEL_CODE estiverem na env (sem isso, é no-op → seguro deployar antes).
+// Casa por ttclid/ttp + email/telefone hasheados (SHA-256), igual o Meta.
+async function sendTikTok(o, req) {
+  const token = process.env.TIKTOK_ACCESS_TOKEN
+  const pixelCode = process.env.TIKTOK_PIXEL_CODE
+  if (!token || !pixelCode) return false
+
+  const iso = isoCountry(o.country)
+  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
+  const clientUa = req.headers['user-agent'] || null
+  const currency = o.currency || currencyOf(iso)
+  const value = o.value || 0
+
+  // TikTok quer telefone em E.164 COM "+" (o Meta quer sem) → hash próprio.
+  const phoneDigits = normalizePhone(o.phone, ddiOf(iso))
+  const user = {
+    email: hashEmail(o.email),
+    phone: phoneDigits ? sha('+' + phoneDigits) : undefined,
+    external_id: hashDoc(o.doc) || (o.checkoutId ? sha(norm(String(o.checkoutId))) : undefined),
+    ttclid: o.ttclid || undefined, // clique do TikTok (não hasheado)
+    ttp: o.ttp || undefined,       // cookie _ttp (não hasheado)
+    ip: clientIp || undefined,
+    user_agent: clientUa || undefined,
+  }
+  Object.keys(user).forEach((k) => user[k] === undefined && delete user[k])
+
+  const now = Math.floor(Date.now() / 1000)
+  let eventTime = o.orderedAt ? Math.floor(new Date(o.orderedAt).getTime() / 1000) : now
+  if (!eventTime || eventTime > now + 60) eventTime = now
+
+  const contents = (o.products?.length ? o.products : [{ id: o.product, name: o.product, price: value }]).map((p) => ({
+    content_id: String(p.id || p.name || o.product),
+    content_name: p.name || o.product,
+    price: toNumber(p.price ?? p.amount ?? p.total_price) || value,
+    quantity: p.quantity || 1,
+  }))
+
+  const payload = {
+    event_source: 'web',
+    event_source_id: pixelCode,
+    data: [{
+      event: 'CompletePayment',
+      event_time: eventTime,
+      event_id: String(o.saleId || o.checkoutId), // dedup
+      user,
+      properties: { currency, value, content_type: 'product', contents },
+      ...(o.checkoutUrl ? { page: { url: o.checkoutUrl } } : {}),
+    }],
+  }
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 100 * Math.pow(4, attempt - 1)))
+      const r = await fetch('https://business-api.tiktok.com/open_api/v1.3/event/track/', {
+        method: 'POST',
+        headers: { 'Access-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const j = await r.json()
+      if (j.code === 0) return true       // sucesso
+      if (j.code && j.code !== 0) return false // erro de config → não retenta
+    } catch {
+      // rede → retenta
+    }
+  }
+  return false
+}
+
 // ─── Supabase helpers ────────────────────────────────────────────────────────
 function sbHeaders(key, extra = {}) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...extra }
@@ -710,6 +785,9 @@ export default async function handler(req, res) {
     }
   }
 
+  // TikTok Events API — só na venda APROVADA (Purchase). Independe do pixel do Meta.
+  const ttOk = eventsToSend.includes('Purchase') ? await sendTikTok(o, req) : false
+
   await upsertOrder(o, capiOk)
 
   const eventLabel = eventsToSend.length ? eventsToSend.join('+') : o.status
@@ -736,5 +814,5 @@ export default async function handler(req, res) {
     created_at: new Date().toISOString(),
   })
 
-  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, event: eventLabel, pixel: route?.pixelId || null, route: route?.source || (eventsToSend.length ? 'sem-rota' : 'n/a') })
+  return res.status(200).json({ ok: true, status: o.status, capi: capiOk, tiktok: ttOk, event: eventLabel, pixel: route?.pixelId || null, route: route?.source || (eventsToSend.length ? 'sem-rota' : 'n/a') })
 }
