@@ -612,6 +612,7 @@ async function upsertOrder(o, capiOk) {
     utm_content: o.utmContent || null,
     utm_term: o.utmTerm || null,
     checkout_url: o.checkoutUrl || null,
+    gclid: o.gclid || null, // clique do Google → usado no offline conversion import
     capi_ok: capiOk,
     recovered: o.approved ? true : undefined,
     // se aprovou, tira da fila de recuperação (não manda WhatsApp pra quem já comprou)
