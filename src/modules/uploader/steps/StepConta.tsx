@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Key, IdCard, Eye, Check, Search, Save, Trash2, FolderOpen } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
-import { Card, Input, Select } from '../components/fields'
+import { Card, Select } from '../components/fields'
+import { IdLibraryButton, PickField } from '../components/IdLibrary'
 import { PIXEL_EVENTS } from '../types'
 import {
   verifyToken,
@@ -199,6 +200,8 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
         >
           <Trash2 className="h-3 w-3" /> Apagar
         </button>
+        <span className="mx-1 h-4 w-px bg-border/70" />
+        <IdLibraryButton />
         <span className="ml-auto text-[11px] text-muted2">
           Campos salvos automaticamente neste navegador (exceto o token)
         </span>
@@ -244,13 +247,19 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
       {/* IDs */}
       <Card title="IDs da Conta" icon={<IdCard className="h-3.5 w-3.5" />}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            field="ad_account"
-            label="Ad Account ID"
-            required
-            placeholder="act_000000000000"
-            hint="Formato: act_XXXXXXXXX"
-          />
+          <div className="field">
+            <label>Ad Account ID <span className="text-danger">*</span></label>
+            <div className="flex gap-1.5">
+              <input
+                value={form.ad_account}
+                placeholder="act_000000000000"
+                className="flex-1"
+                onChange={(e) => setField('ad_account', e.target.value)}
+              />
+              <PickField kind="accounts" onPick={(en) => setField('ad_account', en.id)} />
+            </div>
+            <div className="text-[11px] text-muted2">Formato: act_XXXXXXXXX</div>
+          </div>
           <div className="field">
             <label>
               Page ID (Fanpage) <span className="text-danger">*</span>
@@ -270,6 +279,7 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
               <button className="btn btn-ghost btn-sm" onClick={searchPages} title="Buscar páginas">
                 <Search className="h-3 w-3" />
               </button>
+              <PickField kind="pages" onPick={(en) => { setField('page_id', en.id); ctx.setPageVerified(false); setPageStatus(null) }} />
             </div>
             {pageStatus && (
               <div
@@ -313,12 +323,24 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
               >
                 <Search className="h-3 w-3" />
               </button>
+              <PickField kind="instagrams" onPick={(en) => setField('instagram_id', en.id)} />
             </div>
             <div className="text-[11px] text-muted2">
               {igStatus || 'Clique na lupa após preencher Page ID e Token.'}
             </div>
           </div>
-          <Input field="pixel_id" label="Pixel ID" placeholder="000000000000" />
+          <div className="field">
+            <label>Pixel ID</label>
+            <div className="flex gap-1.5">
+              <input
+                value={form.pixel_id}
+                placeholder="000000000000"
+                className="flex-1"
+                onChange={(e) => setField('pixel_id', e.target.value)}
+              />
+              <PickField kind="pixels" onPick={(en) => setField('pixel_id', en.id)} />
+            </div>
+          </div>
           <Select field="pixel_event" label="Evento do Pixel" options={PIXEL_EVENTS} />
         </div>
       </Card>
