@@ -3,6 +3,7 @@ import { Key, IdCard, Eye, Check, Search, Save, Trash2, FolderOpen } from 'lucid
 import { useUploader } from '../UploaderContext'
 import { Card, Select } from '../components/fields'
 import { IdLibraryButton, PickField } from '../components/IdLibrary'
+import { getLibrary } from '../lib/idLibrary'
 import { CatalogSetupButton } from '../components/CatalogSetup'
 import { PIXEL_EVENTS } from '../types'
 import {
@@ -79,14 +80,27 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
 
   async function searchPages() {
     setPageStatus({ ok: false, msg: 'Buscando...' })
+    // mescla com a Biblioteca de IDs — o me/accounts não retorna páginas
+    // do Business Manager (ex: Zenit), mas elas estão salvas na Biblioteca.
+    const libPages = getLibrary().pages
     try {
-      const pages = await listPages(form.token.trim())
-      if (!pages.length) {
-        setPageStatus({ ok: false, msg: 'Nenhuma página encontrada.' })
+      let pages: { id: string; name: string }[] = []
+      try {
+        pages = await listPages(form.token.trim())
+      } catch {
+        /* sem token / sem permissão: usa só a Biblioteca */
+      }
+      const map = new Map<string, { id: string; name: string }>()
+      for (const p of pages) map.set(p.id, p)
+      for (const lp of libPages) if (!map.has(lp.id)) map.set(lp.id, { id: lp.id, name: lp.name })
+      const merged = [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+      if (!merged.length) {
+        setPageStatus({ ok: false, msg: 'Nenhuma página encontrada (cole o token ou carregue a Biblioteca).' })
         return
       }
-      setPageOpts(pages)
-      setPageStatus({ ok: true, msg: `${pages.length} página(s) encontrada(s)` })
+      setPageOpts(merged)
+      const extra = libPages.length ? ' (inclui Biblioteca)' : ''
+      setPageStatus({ ok: true, msg: `${merged.length} página(s)${extra}` })
     } catch (e: any) {
       setPageStatus({ ok: false, msg: 'Erro: ' + e.message })
     }
