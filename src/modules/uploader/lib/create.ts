@@ -243,10 +243,13 @@ function adsetBody(
     body.bid_strategy = 'LOWEST_COST_WITHOUT_CAP'
   }
   if (endUTC) body.end_time = endUTC
-  // DSA (União Europeia): declara quem é promovido e quem paga.
-  // O Meta usa "dsa_payor" (com o); mandamos as duas grafias por segurança.
+  // DSA (União Europeia): SÓ entra se ESTE lote mira a UE — assim o BR não puxa
+  // DSA e cada país fica independente. O Meta usa "dsa_payor" (com o); mandamos
+  // as duas grafias por segurança.
+  const EU = ['PT', 'IT', 'ES', 'DE', 'FR', 'IE', 'NL', 'BE']
+  const miraUE = paises.some((c) => EU.includes(c))
   const dsa = gv(form, 'dsa_beneficiary')
-  if (dsa) {
+  if (miraUE && dsa) {
     body.dsa_beneficiary = dsa
     body.dsa_payor = dsa
     body.dsa_payer = dsa
