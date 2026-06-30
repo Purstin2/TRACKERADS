@@ -3,6 +3,7 @@ import { Key, IdCard, Eye, Check, Search, Save, Trash2, FolderOpen } from 'lucid
 import { useUploader } from '../UploaderContext'
 import { Card, Select } from '../components/fields'
 import { IdLibraryButton, PickField } from '../components/IdLibrary'
+import { CatalogSetupButton } from '../components/CatalogSetup'
 import { PIXEL_EVENTS } from '../types'
 import {
   verifyToken,
@@ -202,6 +203,7 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
         </button>
         <span className="mx-1 h-4 w-px bg-border/70" />
         <IdLibraryButton />
+        <CatalogSetupButton />
         <span className="ml-auto text-[11px] text-muted2">
           Campos salvos automaticamente neste navegador (exceto o token)
         </span>

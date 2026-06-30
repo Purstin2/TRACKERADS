@@ -34,6 +34,10 @@ export interface FormState {
   'pais-nome-custom': string
   search_titulo: string
   search_url: string
+  // ── catálogo (esconder anúncio na biblioteca) ──
+  tipo_anuncio: string // 'video' (atual) | 'catalogo'
+  catalog_id: string
+  product_set_id: string
 }
 
 export interface ContaExtra {
@@ -103,6 +107,9 @@ export const DEFAULTS: FormState = {
   'pais-nome-custom': '',
   search_titulo: '',
   search_url: '',
+  tipo_anuncio: 'video',
+  catalog_id: '',
+  product_set_id: '',
 }
 
 export const UTM_XCOD =

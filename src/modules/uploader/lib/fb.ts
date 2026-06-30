@@ -122,6 +122,50 @@ export function uploadVideo(
   })
 }
 
+/* ── Catálogo (para anúncios de catálogo/coleção — "esconder" na biblioteca) ── */
+
+/** Negócios (Business Manager) do token — pra saber onde criar o catálogo. */
+export async function listBusinesses(token: string) {
+  const d = await fbGet(`${fbBase}/me/businesses?fields=id,name&limit=50&access_token=${token}`)
+  return (d.data || []) as { id: string; name: string }[]
+}
+/** Catálogos de um negócio. */
+export async function listCatalogs(token: string, businessId: string) {
+  const d = await fbGet(`${fbBase}/${businessId}/owned_product_catalogs?fields=id,name,product_count&limit=100&access_token=${token}`)
+  return (d.data || []) as { id: string; name: string; product_count?: number }[]
+}
+/** Cria um catálogo de produtos no negócio. */
+export async function createCatalog(token: string, businessId: string, name: string): Promise<{ id: string }> {
+  return fbPost(token, `${businessId}/owned_product_catalogs`, { name })
+}
+/** Conjuntos de produtos de um catálogo (o adset de catálogo aponta pra um deles). */
+export async function listProductSets(token: string, catalogId: string) {
+  const d = await fbGet(`${fbBase}/${catalogId}/product_sets?fields=id,name,product_count&limit=100&access_token=${token}`)
+  return (d.data || []) as { id: string; name: string; product_count?: number }[]
+}
+/** Vincula o catálogo à conta de anúncio (necessário pra rodar anúncio de catálogo nela). */
+export async function linkCatalogToAccount(token: string, catalogId: string, adAccount: string) {
+  const accId = adAccount.replace(/^act_/, '')
+  return fbPost(token, `${catalogId}/agencies`, { business: accId }).catch(() => null)
+}
+
+export interface NewProduct { retailer_id: string; name: string; url: string; image_url: string; price: number; currency: string; description?: string }
+/** Cria um produto no catálogo. price em unidade da moeda (ex.: 97.00). */
+export async function createProduct(token: string, catalogId: string, p: NewProduct): Promise<{ id: string }> {
+  return fbPost(token, `${catalogId}/products`, {
+    retailer_id: p.retailer_id,
+    name: p.name,
+    url: p.url,
+    image_url: p.image_url,
+    price: Math.round((p.price || 0) * 100), // centavos
+    currency: p.currency || 'BRL',
+    availability: 'in stock',
+    condition: 'new',
+    brand: p.name.slice(0, 70) || 'Loja',
+    description: p.description || p.name,
+  })
+}
+
 /** Busca todos os advideos da conta (paginado) → { raw, unicos } */
 export async function fetchVideos(token: string, adAccount: string) {
   let todos: any[] = []
