@@ -1,4 +1,4 @@
-import { DollarSign, Layers, Tag, Calendar, Check, X } from 'lucide-react'
+import { DollarSign, Layers, Tag, Calendar, Check, X, Boxes } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
 import { Card, Input, Select } from '../components/fields'
 import {
@@ -48,6 +48,38 @@ export default function StepEstrutura({
       <div className="mb-6 text-[13px] text-muted2">
         Como organizar campanhas, conjuntos e anúncios
       </div>
+
+      {/* tipo de anúncio: vídeo x catálogo */}
+      <Card title="Tipo de Anúncio" icon={<Boxes className="h-3.5 w-3.5" />}>
+        <div className="flex gap-2.5">
+          {([
+            { id: 'video', t: 'Vídeo', d: 'Anúncio normal de vídeo (atual)' },
+            { id: 'catalogo', t: 'Catálogo', d: 'Roda o vídeo como anúncio de catálogo — esconde na biblioteca' },
+          ] as const).map((o) => (
+            <button
+              key={o.id}
+              onClick={() => ctx.setField('tipo_anuncio', o.id)}
+              className={`flex-1 rounded-xl border p-3.5 text-center transition-all ${
+                (form.tipo_anuncio || 'video') === o.id
+                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(99,102,241,.2)]'
+                  : 'border-border bg-surface2 hover:border-brand'
+              }`}
+            >
+              <strong className="block text-[14px] font-extrabold text-brand-2">{o.t}</strong>
+              <span className="text-[11px] text-muted2">{o.d}</span>
+            </button>
+          ))}
+        </div>
+        {form.tipo_anuncio === 'catalogo' && (
+          <div className={`mt-3 rounded-[9px] border px-3.5 py-2.5 text-[12px] ${form.catalog_id && form.product_set_id ? 'border-ok/30 bg-ok/[0.07] text-ok' : 'border-warn/30 bg-warn/[0.07] text-warn'}`}>
+            {form.catalog_id
+              ? form.product_set_id
+                ? <>✓ Catálogo <b>{form.catalog_id}</b> · conjunto <b>{form.product_set_id}</b> — pronto.</>
+                : <>⚠ Catálogo <b>{form.catalog_id}</b> sem conjunto de produtos. Volte na aba <b>Conta › Catálogo</b>, adicione um produto, escolha o conjunto e clique <b>"Usar este catálogo"</b>.</>
+              : <>⚠ Nenhum catálogo selecionado. Vá na aba <b>Conta › Catálogo</b>, crie o catálogo + produto e clique <b>"Usar este catálogo"</b>.</>}
+          </div>
+        )}
+      </Card>
 
       {/* budget type */}
       <Card title="Tipo de Orçamento" icon={<DollarSign className="h-3.5 w-3.5" />}>

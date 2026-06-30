@@ -48,6 +48,9 @@ function buildCreativeBody(
   nomeCriativo: string,
 ): Record<string, unknown> {
   const { form } = ctx
+  // catálogo tem prioridade (esconde na biblioteca); precisa do product_set
+  if (gv(form, 'tipo_anuncio') === 'catalogo' && gv(form, 'product_set_id'))
+    return buildCreativeBodyCatalogo(ctx, conta, v, urlBase, nomeCriativo)
   if (ctx.searchPlacementActive && ctx.searchVideoSel)
     return buildCreativeBodyPesquisa(ctx, conta, v, urlBase, nomeCriativo)
 
@@ -152,6 +155,41 @@ function buildCreativeBodyPesquisa(
     name: nomeCriativo,
     object_story_spec: spec,
     asset_feed_spec: afs,
+  }
+  const utms = buildUTMString(form)
+  if (utms) body.url_tags = utms
+  return body
+}
+
+/** Criativo de CATÁLOGO/COLEÇÃO: seu vídeo como capa + um product_set do
+ *  catálogo. Na biblioteca aparece como anúncio de catálogo (template), não
+ *  com o vídeo cru — é o que "esconde". O product_set fica no nível do criativo;
+ *  o conjunto segue otimizando conversão normal (não vira DPA dinâmico). */
+function buildCreativeBodyCatalogo(
+  ctx: CreateCtx,
+  conta: ContaExtra,
+  v: CreateItem,
+  urlBase: string,
+  nomeCriativo: string,
+): Record<string, unknown> {
+  const { form } = ctx
+  const vd: Record<string, unknown> = {
+    video_id: v.id,
+    message: eff(conta, form, 'copy'),
+    title: gv(form, 'titulo'),
+    call_to_action: {
+      type: gv(form, 'cta'),
+      value: { link: urlBase, link_caption: gv(form, 'url_exibicao') },
+    },
+  }
+  if (v.thumbUrl) vd.image_url = v.thumbUrl
+  const spec: Record<string, unknown> = { page_id: eff(conta, form, 'page_id'), video_data: vd }
+  const ig = eff(conta, form, 'instagram_id')
+  if (ig) spec.instagram_user_id = ig
+  const body: Record<string, unknown> = {
+    name: nomeCriativo,
+    object_story_spec: spec,
+    product_set_id: gv(form, 'product_set_id'),
   }
   const utms = buildUTMString(form)
   if (utms) body.url_tags = utms
