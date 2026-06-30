@@ -29,6 +29,7 @@ export interface CreateCtx {
   onResult: (nome: string, ok: boolean, det: string) => void
   onProgress: (cur: number, total: number) => void
   onContaHeader: (label: string) => void
+  shouldCancel?: () => boolean
 }
 
 /** Valor efetivo: override da conta extra > valor do form */
@@ -250,6 +251,7 @@ async function criarN11(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
   const acc = eff(conta, form, 'ad_account')
   const token = eff(conta, form, 'token')
   for (let i = 0; i < lista.length; i++) {
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário — parou aqui.', 'warn'); return }
     const v = lista[i]
     const nome = buildNome(form, paises, budgetType, v.nome)
     ctx.onLog(`━━━ [${i + 1}/${lista.length}] ${v.nome}`, 'warn')
@@ -311,6 +313,7 @@ async function criar1N1(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
     return
   }
   for (let i = 0; i < lista.length; i++) {
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário — parou aqui.', 'warn'); return }
     const v = lista[i]
     const nome = buildNome(form, paises, budgetType, v.nome)
     ctx.onLog(`━━━ [${i + 1}/${total}] ${v.nome}`, 'warn')
@@ -378,6 +381,7 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
     return
   }
   for (let i = 0; i < lista.length; i++) {
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário — parou aqui.', 'warn'); return }
     const v = lista[i]
     const nome = buildNome(form, paises, budgetType, v.nome)
     ctx.onLog(`━━━ [${i + 1}/${total}] ${v.nome}`, 'warn')
@@ -406,6 +410,7 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
 export async function runCreation(ctx: CreateCtx) {
   const urlFinal = gv(ctx.form, 'url_destino')
   for (let ci = 0; ci < ctx.contas.length; ci++) {
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário.', 'warn'); break }
     const conta = ctx.contas[ci]
     const nomeConta = eff(conta, ctx.form, 'ad_account')
     if (ctx.contas.length > 1) {

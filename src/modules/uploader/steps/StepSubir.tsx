@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ClipboardList, Copy, Send, Terminal, Trash2, Plus, Save, FolderOpen } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ClipboardList, Copy, Send, Terminal, Trash2, Plus, Save, FolderOpen, Ban } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
 import { Card } from '../components/fields'
 import { toast } from '@/components/ui/toast'
@@ -30,10 +30,18 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
   const ctx = useUploader()
   const { form } = ctx
   const [running, setRunning] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const cancelRef = useRef(false)
   const [log, setLog] = useState<LogLine[]>([])
   const [results, setResults] = useState<ResultLine[]>([])
   const [progress, setProgress] = useState({ cur: 0, total: 0 })
   const [showLog, setShowLog] = useState(false)
+
+  function cancelar() {
+    cancelRef.current = true
+    setCancelling(true)
+    toast('Cancelando — para após o item atual. O que já subiu permanece.', 'warn')
+  }
 
   function contasParaUpload(): ContaExtra[] {
     const contas: ContaExtra[] = [
@@ -78,6 +86,8 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
       return
     }
 
+    cancelRef.current = false
+    setCancelling(false)
     setRunning(true)
     setShowLog(true)
     setLog([])
@@ -112,11 +122,14 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
         if (cur === baseTotal) contaOffset += baseTotal
       },
       onContaHeader: (header) => setResults((r) => [...r, { header }]),
+      shouldCancel: () => cancelRef.current,
     })
 
-    setProgress({ cur: nVideos * contas.length, total: nVideos * contas.length })
+    const wasCancelled = cancelRef.current
+    if (!wasCancelled) setProgress({ cur: nVideos * contas.length, total: nVideos * contas.length })
     setRunning(false)
-    toast('Processamento concluído.', 'ok')
+    setCancelling(false)
+    toast(wasCancelled ? 'Upload cancelado. O que já subiu permanece na conta.' : 'Processamento concluído.', wasCancelled ? 'warn' : 'ok')
   }
 
   const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
@@ -310,8 +323,17 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
         <button className="btn btn-ghost" onClick={onBack} disabled={running}>
           ← Voltar
         </button>
+        {running && (
+          <button
+            className="btn ml-auto border border-danger/50 bg-danger/10 px-6 py-3 text-[14px] font-bold text-danger hover:bg-danger/20 disabled:opacity-50"
+            onClick={cancelar}
+            disabled={cancelling}
+          >
+            <Ban className="h-4 w-4" /> {cancelling ? 'Cancelando…' : 'Cancelar upload'}
+          </button>
+        )}
         <button
-          className="btn ml-auto bg-gradient-to-br from-ok to-emerald-600 px-7 py-3 text-[14px] font-bold text-white shadow-[0_6px_22px_rgba(16,185,129,.3)] disabled:opacity-50"
+          className={`btn bg-gradient-to-br from-ok to-emerald-600 px-7 py-3 text-[14px] font-bold text-white shadow-[0_6px_22px_rgba(16,185,129,.3)] disabled:opacity-50 ${running ? '' : 'ml-auto'}`}
           onClick={iniciar}
           disabled={running}
         >
