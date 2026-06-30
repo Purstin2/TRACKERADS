@@ -1111,11 +1111,10 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                         )
                       })}
                       <td className="py-1.5 pl-2">
-                        <div className="flex flex-wrap items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Badge a={action} />
                           <ScaleBadge campId={cid} />
-                          <BudgetBtn accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
-                          <LogBtn accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
+                          <ActionsMenu accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
                         </div>
                       </td>
                     </tr>
