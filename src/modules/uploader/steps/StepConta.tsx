@@ -358,6 +358,17 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
             </div>
           </div>
           <Select field="pixel_event" label="Evento do Pixel" options={PIXEL_EVENTS} />
+          <div className="field sm:col-span-2">
+            <label>Beneficiário (DSA — obrigatório p/ União Europeia)</label>
+            <input
+              value={form.dsa_beneficiary}
+              placeholder="Quem é promovido (sua marca/empresa). Ex: Caneca Brasil"
+              onChange={(e) => setField('dsa_beneficiary', e.target.value)}
+            />
+            <div className="text-[11px] text-muted2">
+              Vira o beneficiário e o pagador do anúncio. Só é exigido se você mira países da UE (PT, IT, ES, DE, FR, IE, NL, BE).
+            </div>
+          </div>
         </div>
       </Card>
 

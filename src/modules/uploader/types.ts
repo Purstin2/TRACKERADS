@@ -38,6 +38,8 @@ export interface FormState {
   tipo_anuncio: string // 'video' (atual) | 'catalogo'
   catalog_id: string
   product_set_id: string
+  // ── DSA (obrigatório p/ anúncios na União Europeia) ──
+  dsa_beneficiary: string // pessoa/organização promovida (vira beneficiário e pagador)
 }
 
 export interface ContaExtra {
@@ -110,6 +112,7 @@ export const DEFAULTS: FormState = {
   tipo_anuncio: 'video',
   catalog_id: '',
   product_set_id: '',
+  dsa_beneficiary: '',
 }
 
 export const UTM_XCOD =

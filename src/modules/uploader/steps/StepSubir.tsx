@@ -87,6 +87,13 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
       toast('Selecione o vídeo do posicionamento de pesquisa.', 'err')
       return
     }
+    // DSA: targeting na União Europeia exige o beneficiário
+    const EU = new Set(['PT', 'IT', 'ES', 'DE', 'FR', 'IE', 'NL', 'BE'])
+    const miraUE = paisBatches.some((b) => b.some((c) => EU.has(c)))
+    if (miraUE && !form.dsa_beneficiary?.trim()) {
+      toast('Você mira a União Europeia: preencha o "Beneficiário (DSA)" na aba Conta.', 'err')
+      return
+    }
 
     cancelRef.current = false
     setCancelling(false)

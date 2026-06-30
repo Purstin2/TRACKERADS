@@ -243,6 +243,12 @@ function adsetBody(
     body.bid_strategy = 'LOWEST_COST_WITHOUT_CAP'
   }
   if (endUTC) body.end_time = endUTC
+  // DSA (União Europeia): declara quem é promovido e quem paga
+  const dsa = gv(form, 'dsa_beneficiary')
+  if (dsa) {
+    body.dsa_beneficiary = dsa
+    body.dsa_payer = dsa
+  }
   return body
 }
 
