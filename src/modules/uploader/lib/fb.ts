@@ -86,6 +86,42 @@ export async function lookupInstagram(token: string, pageId: string): Promise<st
   return d.instagram_business_account?.id || ''
 }
 
+/** Sobe um arquivo de vídeo direto pra biblioteca da conta de anúncio
+ *  (POST /act_X/advideos, multipart). Usa XHR pra reportar progresso do upload.
+ *  Retorna o video_id criado. O Facebook ainda leva ~1min processando depois. */
+export function uploadVideo(
+  token: string,
+  adAccount: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<{ id: string; title: string }> {
+  return new Promise((resolve, reject) => {
+    const title = file.name.replace(/\.[^.]+$/, '').trim() || file.name
+    const fd = new FormData()
+    fd.append('access_token', token)
+    fd.append('source', file)
+    fd.append('title', title)
+    fd.append('name', title)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${fbBase}/${adAccount}/advideos`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
+    }
+    xhr.onload = () => {
+      try {
+        const j = JSON.parse(xhr.responseText)
+        if (j.error) reject(new Error(fmtErr(j.error)))
+        else if (!j.id) reject(new Error('Facebook não retornou o ID do vídeo'))
+        else resolve({ id: j.id, title })
+      } catch {
+        reject(new Error('resposta inválida do Facebook (HTTP ' + xhr.status + ')'))
+      }
+    }
+    xhr.onerror = () => reject(new Error('falha de rede no upload'))
+    xhr.send(fd)
+  })
+}
+
 /** Busca todos os advideos da conta (paginado) → { raw, unicos } */
 export async function fetchVideos(token: string, adAccount: string) {
   let todos: any[] = []

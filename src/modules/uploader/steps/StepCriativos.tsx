@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Search, Film, Check, X } from 'lucide-react'
+import { Search, Film, Check, X, Upload, ExternalLink } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
 import { Card, Input } from '../components/fields'
-import { fetchVideos } from '../lib/fb'
+import { fetchVideos, uploadVideo } from '../lib/fb'
 import { toast } from '@/components/ui/toast'
 import type { VideoItem } from '../types'
+
+interface UpItem { name: string; pct: number; status: 'up' | 'ok' | 'err'; msg?: string }
 
 function fmtData(iso?: string): string {
   if (!iso) return ''
@@ -86,6 +88,43 @@ export default function StepCriativos({
   const [filtroData, setFiltroData] = useState('')
   const [filtroNome, setFiltroNome] = useState('')
   const [searchFilter, setSearchFilter] = useState('')
+  const [uploads, setUploads] = useState<UpItem[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+
+  const accNum = ctx.form.ad_account.trim().replace(/^act_/, '')
+  const adsManagerUrl = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${accNum}`
+
+  async function onFiles(files: FileList | null) {
+    const arr = files ? Array.from(files).filter((f) => f.type.startsWith('video/')) : []
+    if (!arr.length) return
+    const token = ctx.form.token.trim()
+    const acc = ctx.form.ad_account.trim()
+    if (!token || !acc) {
+      toast('Preencha o token e o Ad Account na aba Conta primeiro.', 'warn')
+      return
+    }
+    setUploading(true)
+    setUploads(arr.map((f) => ({ name: f.name, pct: 0, status: 'up' as const })))
+    const novos: VideoItem[] = []
+    for (let i = 0; i < arr.length; i++) {
+      try {
+        const { id, title } = await uploadVideo(token, acc, arr[i], (pct) =>
+          setUploads((u) => u.map((x, idx) => (idx === i ? { ...x, pct } : x))),
+        )
+        setUploads((u) => u.map((x, idx) => (idx === i ? { ...x, pct: 100, status: 'ok' } : x)))
+        novos.push({ id, title, nomeClean: title, isDup: false, thumbUrl: '', created_time: new Date().toISOString() })
+      } catch (e: any) {
+        setUploads((u) => u.map((x, idx) => (idx === i ? { ...x, status: 'err', msg: e.message } : x)))
+      }
+    }
+    if (novos.length) {
+      ctx.setVideos([...novos, ...ctx.videos])
+      novos.forEach((n) => ctx.toggleVideo(n.id)) // já deixa selecionado pra subir
+      toast(`${novos.length} vídeo(s) enviado(s) para a conta. O FB leva ~1 min processando.`, 'ok')
+    }
+    setUploading(false)
+  }
 
   async function buscar() {
     if (!ctx.form.token.trim()) {
@@ -140,11 +179,49 @@ export default function StepCriativos({
       </div>
 
       <div className="card mb-4">
-        <div className="card-body flex flex-wrap items-center gap-2.5">
-          <button className="btn btn-primary" onClick={buscar} disabled={loading}>
-            <Search className="h-3.5 w-3.5" /> {loading ? 'Buscando...' : 'Buscar Vídeos'}
-          </button>
-          <span className="text-[13px] text-muted">{status}</span>
+        <div className="card-body flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button className="btn btn-primary" onClick={buscar} disabled={loading}>
+              <Search className="h-3.5 w-3.5" /> {loading ? 'Buscando...' : 'Buscar Vídeos'}
+            </button>
+            <label className={`btn btn-ghost cursor-pointer ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
+              <Upload className="h-3.5 w-3.5" /> {uploading ? 'Enviando...' : 'Enviar vídeos'}
+              <input type="file" accept="video/*" multiple hidden onChange={(e) => { onFiles(e.target.files); e.currentTarget.value = '' }} />
+            </label>
+            <a className="btn btn-ghost btn-sm" href={adsManagerUrl} target="_blank" rel="noreferrer" title="Abrir o Gerenciador já nesta conta">
+              <ExternalLink className="h-3 w-3" /> Abrir conta no FB
+            </a>
+            <span className="text-[13px] text-muted">{status}</span>
+          </div>
+
+          {/* zona de arrastar */}
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); onFiles(e.dataTransfer.files) }}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl2 border-2 border-dashed px-4 py-5 text-center transition-colors ${dragOver ? 'border-brand bg-brand/[0.06]' : 'border-border hover:border-brand/50'}`}
+          >
+            <Upload className="h-5 w-5 text-muted2" />
+            <span className="text-[12px] text-muted">Arraste vídeos aqui ou clique pra enviar pra <b>{ctx.form.ad_account || 'conta'}</b></span>
+            <span className="text-[10.5px] text-muted2">Sobem pro Facebook e já entram selecionados na lista abaixo</span>
+            <input type="file" accept="video/*" multiple hidden onChange={(e) => { onFiles(e.target.files); e.currentTarget.value = '' }} />
+          </label>
+
+          {uploads.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {uploads.map((u, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px]" title={u.msg}>
+                  <span className="w-44 truncate text-muted">{u.name}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded bg-surface2">
+                    <div className={`h-full transition-all ${u.status === 'err' ? 'bg-danger' : u.status === 'ok' ? 'bg-ok' : 'bg-brand'}`} style={{ width: `${u.status === 'err' ? 100 : u.pct}%` }} />
+                  </div>
+                  <span className={`w-14 text-right font-semibold ${u.status === 'err' ? 'text-danger' : u.status === 'ok' ? 'text-ok' : 'text-muted2'}`}>
+                    {u.status === 'err' ? 'erro' : u.status === 'ok' ? '✓ ok' : `${u.pct}%`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
