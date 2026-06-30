@@ -71,6 +71,7 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
       const d = await verifyPage(token, pageId)
       setPageStatus({ ok: true, msg: `✓ ${d.name} (${d.id})` })
       ctx.setPageVerified(true)
+      if (d.name) setField('dsa_beneficiary', d.name) // beneficiário DSA = a página
       doLookupInstagram()
     } catch (e: any) {
       setPageStatus({ ok: false, msg: `✗ Não acessível — ${e.message}` })
@@ -295,7 +296,7 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
               <button className="btn btn-ghost btn-sm" onClick={searchPages} title="Buscar páginas">
                 <Search className="h-3 w-3" />
               </button>
-              <PickField kind="pages" onPick={(en) => { setField('page_id', en.id); ctx.setPageVerified(false); setPageStatus(null) }} />
+              <PickField kind="pages" onPick={(en) => { setField('page_id', en.id); if (en.name) setField('dsa_beneficiary', en.name); ctx.setPageVerified(false); setPageStatus(null) }} />
             </div>
             {pageStatus && (
               <div
@@ -310,6 +311,8 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
                 onChange={(e) => {
                   if (e.target.value) {
                     setField('page_id', e.target.value)
+                    const nome = pageOpts.find((p) => p.id === e.target.value)?.name
+                    if (nome) setField('dsa_beneficiary', nome)
                     testPage()
                   }
                 }}
@@ -359,14 +362,14 @@ export default function StepConta({ onNext }: { onNext: () => void }) {
           </div>
           <Select field="pixel_event" label="Evento do Pixel" options={PIXEL_EVENTS} />
           <div className="field sm:col-span-2">
-            <label>Beneficiário (DSA — obrigatório p/ União Europeia)</label>
+            <label>Beneficiário (DSA — União Europeia)</label>
             <input
               value={form.dsa_beneficiary}
-              placeholder="Quem é promovido (sua marca/empresa). Ex: Caneca Brasil"
+              placeholder="Preenche sozinho com o nome da página ao verificar"
               onChange={(e) => setField('dsa_beneficiary', e.target.value)}
             />
             <div className="text-[11px] text-muted2">
-              Vira o beneficiário e o pagador do anúncio. Só é exigido se você mira países da UE (PT, IT, ES, DE, FR, IE, NL, BE).
+              Preenchido <strong>automático com a página</strong> (é o beneficiário e o pagador). Só exigido se mira a UE (PT, IT, ES, DE, FR, IE, NL, BE). Pode editar se precisar.
             </div>
           </div>
         </div>
