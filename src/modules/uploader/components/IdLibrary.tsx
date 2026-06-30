@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { Library, X, Plus, Trash2, RefreshCw, BookMarked, Check } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Library, X, Plus, Trash2, RefreshCw, BookMarked, Check, Lock } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
 import {
   useLibrary, upsertEntry, removeEntry, syncFromFb,
   KIND_LABEL, KIND_PLACEHOLDER, type IdKind, type IdEntry,
 } from '../lib/idLibrary'
+import { loadVaultToLibrary, savedPass } from '../lib/assetsVault'
 import { toast } from '@/components/ui/toast'
 
 const KINDS: IdKind[] = ['accounts', 'pages', 'pixels', 'instagrams']
@@ -29,6 +30,25 @@ function IdLibraryModal({ onClose }: { onClose: () => void }) {
   const [nName, setNName] = useState('')
   const [nId, setNId] = useState('')
   const [syncing, setSyncing] = useState('')
+  const [vaultPass, setVaultPass] = useState(savedPass())
+  const [vaultMsg, setVaultMsg] = useState('')
+
+  // auto-carrega o cofre se a senha já estiver lembrada
+  useEffect(() => {
+    if (savedPass()) loadVaultToLibrary(savedPass()).then((n) => setVaultMsg(`✓ ${n} IDs do cofre carregados`)).catch(() => {})
+  }, [])
+
+  async function openVault() {
+    if (!vaultPass.trim()) return toast('Digite a senha do cofre.', 'warn')
+    try {
+      const n = await loadVaultToLibrary(vaultPass.trim())
+      setVaultMsg(`✓ ${n} IDs carregados do projeto`)
+      toast(`Cofre aberto: ${n} IDs carregados.`, 'ok')
+    } catch {
+      setVaultMsg('')
+      toast('Senha incorreta.', 'err')
+    }
+  }
 
   const list = lib[tab]
 
@@ -64,6 +84,24 @@ function IdLibraryModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="card-body flex flex-col gap-3">
+          {/* cofre do projeto (IDs salvos criptografados) */}
+          <div className="rounded-[8px] border border-ok/30 bg-ok/[0.06] px-3 py-2">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-ok"><Lock className="h-3.5 w-3.5" /> Cofre do projeto — seus IDs salvos (criptografados)</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="password"
+                value={vaultPass}
+                onChange={(e) => setVaultPass(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && openVault()}
+                placeholder="senha do cofre"
+                className="flex-1 min-w-[160px] rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink"
+              />
+              <button className="btn btn-primary btn-sm" onClick={openVault}><Lock className="h-3 w-3" /> Carregar do projeto</button>
+              {vaultMsg && <span className="text-[11px] font-semibold text-ok">{vaultMsg}</span>}
+            </div>
+            <div className="mt-1 text-[10.5px] text-muted2">Digite a senha 1 vez — fica lembrada neste navegador e carrega sozinho nas próximas. Sem a senha, ninguém lê.</div>
+          </div>
+
           <div className="flex items-center justify-between gap-2 rounded-[8px] border border-brand/30 bg-brand/[0.06] px-3 py-2">
             <span className="text-[11.5px] text-muted">Puxa tudo do Facebook de uma vez (com os nomes) usando seu token.</span>
             <button className="btn btn-primary btn-sm shrink-0" onClick={sync} disabled={!!syncing}>

@@ -21,6 +21,7 @@ import {
   buildURL as buildURLFn,
   getPaisNome as getPaisNomeFn,
 } from './lib/naming'
+import { autoLoadVault } from './lib/assetsVault'
 
 const AUTOSAVE_KEY = 'purstin_uploader_autosave_v1'
 const PRESET_KEY = 'purstin_uploader_presets'
@@ -123,6 +124,9 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
   const [multiContaAtivo, setMultiContaAtivo] = useState(false)
   const [pageVerified, setPageVerified] = useState(false)
   const [presetNames, setPresetNames] = useState<string[]>(() => Object.keys(getPresets()))
+
+  // carrega o cofre de IDs (se a senha já estiver lembrada neste navegador)
+  useEffect(() => { autoLoadVault() }, [])
 
   // ── autosave (debounced) ──
   const firstRun = useRef(true)
