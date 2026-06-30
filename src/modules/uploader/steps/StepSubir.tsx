@@ -57,6 +57,8 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
 
   const nVideos = ctx.videosSel.size
   const contas = contasParaUpload()
+  const paisBatches = ctx.getPaisBatches()
+  const totalUnidades = nVideos * contas.length * paisBatches.length
   const totalItensTxt =
     ctx.estrutura === 'N11'
       ? `${nVideos} campanhas + ${nVideos} conjuntos + ${nVideos} anúncios`
@@ -92,7 +94,7 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
     setShowLog(true)
     setLog([])
     setResults([])
-    setProgress({ cur: 0, total: nVideos * contas.length })
+    setProgress({ cur: 0, total: totalUnidades })
 
     const lista: CreateItem[] = Array.from(ctx.videosSel).map((id) => {
       const vo = ctx.videos.find((v) => v.id === id)
@@ -106,6 +108,7 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
     await runCreation({
       form,
       paises: ctx.paises,
+      paisBatches,
       budgetType: ctx.budgetType,
       estrutura: ctx.estrutura,
       lista,
@@ -118,7 +121,7 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
       onResult: (nome, ok, det) => setResults((r) => [...r, { nome, ok, det }]),
       onProgress: (cur) => {
         processed = contaOffset + cur
-        setProgress({ cur: processed, total: nVideos * contas.length })
+        setProgress({ cur: processed, total: totalUnidades })
         if (cur === baseTotal) contaOffset += baseTotal
       },
       onContaHeader: (header) => setResults((r) => [...r, { header }]),
@@ -126,7 +129,7 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
     })
 
     const wasCancelled = cancelRef.current
-    if (!wasCancelled) setProgress({ cur: nVideos * contas.length, total: nVideos * contas.length })
+    if (!wasCancelled) setProgress({ cur: totalUnidades, total: totalUnidades })
     setRunning(false)
     setCancelling(false)
     toast(wasCancelled ? 'Upload cancelado. O que já subiu permanece na conta.' : 'Processamento concluído.', wasCancelled ? 'warn' : 'ok')
@@ -183,9 +186,23 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
                 v={<strong className="text-ok">{contas.length} contas selecionadas</strong>}
               />
             )}
+            {ctx.multiPaisAtivo && paisBatches.length > 1 && (
+              <Row
+                k="Países (estruturas separadas)"
+                v={
+                  <strong className="text-ok">
+                    {paisBatches.map((b) => b.join('/') || '—').join(' · ')} ({paisBatches.length} estruturas)
+                  </strong>
+                }
+              />
+            )}
             <Row
               k="Total a criar"
-              v={totalItensTxt + (contas.length > 1 ? ` × ${contas.length} contas` : '')}
+              v={
+                totalItensTxt +
+                (paisBatches.length > 1 ? ` × ${paisBatches.length} países` : '') +
+                (contas.length > 1 ? ` × ${contas.length} contas` : '')
+              }
             />
           </tbody>
         </table>

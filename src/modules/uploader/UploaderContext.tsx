@@ -33,6 +33,8 @@ interface Snapshot {
   estrutura: Estrutura
   utmPreset: string
   paises: string[]
+  multiPaisAtivo?: boolean
+  paisBatchesExtras?: string[][]
 }
 
 interface Ctx {
@@ -47,6 +49,14 @@ interface Ctx {
   setBudgetType: (t: BudgetType) => void
   estrutura: Estrutura
   setEstrutura: (e: Estrutura) => void
+  // multi-país: cada lote vira uma estrutura própria
+  multiPaisAtivo: boolean
+  setMultiPaisAtivo: (b: boolean) => void
+  paisBatchesExtras: string[][]
+  addPaisBatch: () => void
+  removePaisBatch: (i: number) => void
+  togglePaisInBatch: (i: number, code: string) => void
+  getPaisBatches: () => string[][]
   utmPreset: string
   setUtmPreset: (p: string) => void
   videos: VideoItem[]
@@ -114,6 +124,8 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
   const [budgetType, setBudgetType] = useState<BudgetType>(saved?.budgetType || 'ABO')
   const [estrutura, setEstrutura] = useState<Estrutura>(saved?.estrutura || 'N11')
   const [utmPreset, setUtmPresetState] = useState<string>(saved?.utmPreset || 'padrao')
+  const [multiPaisAtivo, setMultiPaisAtivo] = useState<boolean>(saved?.multiPaisAtivo || false)
+  const [paisBatchesExtras, setPaisBatchesExtras] = useState<string[][]>(saved?.paisBatchesExtras || [])
 
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [videosSel, setVideosSel] = useState<Set<string>>(new Set())
@@ -136,13 +148,13 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
       return
     }
     const t = setTimeout(() => {
-      const snap: Snapshot = { form, budgetType, estrutura, utmPreset, paises }
+      const snap: Snapshot = { form, budgetType, estrutura, utmPreset, paises, multiPaisAtivo, paisBatchesExtras }
       try {
         localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap))
       } catch {}
     }, 400)
     return () => clearTimeout(t)
-  }, [form, budgetType, estrutura, utmPreset, paises])
+  }, [form, budgetType, estrutura, utmPreset, paises, multiPaisAtivo, paisBatchesExtras])
 
   const setField = (key: keyof FormState, value: string) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -163,6 +175,22 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
   const toggleAllCountries = (allCodes: string[]) =>
     setPaises((p) => (allCodes.every((c) => p.includes(c)) ? [] : [...allCodes]))
   const clearCountries = () => setPaises([])
+
+  // ── multi-país (lotes extras) ──
+  const addPaisBatch = () => setPaisBatchesExtras((b) => [...b, []])
+  const removePaisBatch = (i: number) =>
+    setPaisBatchesExtras((b) => b.filter((_, idx) => idx !== i))
+  const togglePaisInBatch = (i: number, code: string) =>
+    setPaisBatchesExtras((b) =>
+      b.map((batch, idx) =>
+        idx !== i ? batch : batch.includes(code) ? batch.filter((c) => c !== code) : [...batch, code],
+      ),
+    )
+  /** Lotes efetivos: principal (paises) + extras com pelo menos 1 país, quando ligado. */
+  const getPaisBatches = (): string[][] => {
+    if (!multiPaisAtivo) return [paises]
+    return [paises, ...paisBatchesExtras.filter((b) => b.length > 0)]
+  }
 
   // ── vídeos ──
   const toggleVideo = (id: string) =>
@@ -206,10 +234,12 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
     if (snap.estrutura) setEstrutura(snap.estrutura)
     if (snap.utmPreset) setUtmPresetState(snap.utmPreset)
     if (snap.paises) setPaises(snap.paises)
+    if (snap.multiPaisAtivo !== undefined) setMultiPaisAtivo(snap.multiPaisAtivo)
+    if (snap.paisBatchesExtras) setPaisBatchesExtras(snap.paisBatchesExtras)
   }
   const savePreset = (name: string) => {
     const presets = getPresets()
-    presets[name] = { form, budgetType, estrutura, utmPreset, paises }
+    presets[name] = { form, budgetType, estrutura, utmPreset, paises, multiPaisAtivo, paisBatchesExtras }
     localStorage.setItem(PRESET_KEY, JSON.stringify(presets))
     setPresetNames(Object.keys(presets))
   }
@@ -236,6 +266,13 @@ export function UploaderProvider({ children }: { children: ReactNode }) {
     setBudgetType,
     estrutura,
     setEstrutura,
+    multiPaisAtivo,
+    setMultiPaisAtivo,
+    paisBatchesExtras,
+    addPaisBatch,
+    removePaisBatch,
+    togglePaisInBatch,
+    getPaisBatches,
     utmPreset,
     setUtmPreset,
     videos,

@@ -17,6 +17,7 @@ export interface CreateItem {
 export interface CreateCtx {
   form: FormState
   paises: string[]
+  paisBatches?: string[][] // multi-país: cada lote vira uma estrutura própria
   budgetType: BudgetType
   estrutura: Estrutura
   lista: CreateItem[]
@@ -407,10 +408,10 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
   }
 }
 
-export async function runCreation(ctx: CreateCtx) {
-  const urlFinal = gv(ctx.form, 'url_destino')
+/** Roda a estrutura em todas as contas (para um conjunto de países já fixado no ctx). */
+async function runContas(ctx: CreateCtx, urlFinal: string) {
   for (let ci = 0; ci < ctx.contas.length; ci++) {
-    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário.', 'warn'); break }
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário.', 'warn'); return }
     const conta = ctx.contas[ci]
     const nomeConta = eff(conta, ctx.form, 'ad_account')
     if (ctx.contas.length > 1) {
@@ -431,6 +432,24 @@ export async function runCreation(ctx: CreateCtx) {
     if (ctx.estrutura === '11N') await criar11N(ctx, conta, urlFinal)
     else if (ctx.estrutura === '1N1') await criar1N1(ctx, conta, urlFinal)
     else await criarN11(ctx, conta, urlFinal)
+  }
+}
+
+export async function runCreation(ctx: CreateCtx) {
+  const urlFinal = gv(ctx.form, 'url_destino')
+  const batches = ctx.paisBatches && ctx.paisBatches.length ? ctx.paisBatches : [ctx.paises]
+  for (let bi = 0; bi < batches.length; bi++) {
+    if (ctx.shouldCancel?.()) { ctx.onLog('⛔ Cancelado pelo usuário.', 'warn'); break }
+    const paises = batches[bi]
+    const bctx: CreateCtx = { ...ctx, paises }
+    if (batches.length > 1) {
+      bctx.onLog('')
+      bctx.onLog('▣'.repeat(45), 'info')
+      bctx.onLog(`PAÍS ${bi + 1}/${batches.length}: ${paises.join(', ') || '—'}`, 'info')
+      bctx.onLog('▣'.repeat(45), 'info')
+      bctx.onContaHeader(`País ${bi + 1}/${batches.length}: ${paises.join(', ') || '—'}`)
+    }
+    await runContas(bctx, urlFinal)
   }
   ctx.onLog('')
   ctx.onLog('━'.repeat(29), 'info')

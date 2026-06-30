@@ -1,4 +1,4 @@
-import { DollarSign, Layers, Tag, Calendar, Check, X, Boxes } from 'lucide-react'
+import { DollarSign, Layers, Tag, Calendar, Check, X, Boxes, Globe, Plus } from 'lucide-react'
 import { useUploader } from '../UploaderContext'
 import { Card, Input, Select } from '../components/fields'
 import {
@@ -8,6 +8,7 @@ import {
 } from '../types'
 
 const ALL_CODES = COUNTRY_GROUPS.flatMap((g) => g.countries.map((c) => c.code))
+const ALL_COUNTRIES = COUNTRY_GROUPS.flatMap((g) => g.countries)
 
 const EST_CARDS: { id: Estrutura; title: string; viz: string[]; desc: string }[] = [
   {
@@ -175,6 +176,70 @@ export default function StepEstrutura({
           </div>
         </div>
       </Card>
+
+      {/* multi-país: cada país = uma estrutura própria */}
+      <div className="card mb-4">
+        <div
+          className="card-header cursor-pointer select-none"
+          onClick={() => ctx.setMultiPaisAtivo(!ctx.multiPaisAtivo)}
+        >
+          <h3 className="flex items-center gap-2.5 text-[13px] font-bold">
+            <span className="flex h-[27px] w-[27px] items-center justify-center rounded-lg bg-brand/12 text-brand-2">
+              <Globe className="h-3.5 w-3.5" />
+            </span>
+            Vários países (estruturas separadas)
+          </h3>
+          <span className={`text-[12px] font-semibold ${ctx.multiPaisAtivo ? 'text-ok' : 'text-muted2'}`}>
+            {ctx.multiPaisAtivo ? `Ativado — ${ctx.getPaisBatches().length} estrutura(s)` : 'Desativado'}
+          </span>
+        </div>
+        {ctx.multiPaisAtivo && (
+          <div className="card-body">
+            <div className="mb-3 rounded-[9px] border border-brand/16 border-l-[3px] border-l-brand bg-brand/[0.07] px-3.5 py-2.5 text-[12px] text-ink">
+              Cada país vira uma <strong>estrutura própria</strong> (campanha/conjunto/anúncio) com o mesmo vídeo e orçamento — tudo num upload só. O <strong>país principal</strong> selecionado acima é a 1ª estrutura.
+            </div>
+            <div className="mb-3 rounded-lg border border-border bg-surface2 px-3.5 py-2.5 text-[12px]">
+              <span className="text-muted2">Estrutura 1 (principal):</span>{' '}
+              <strong className="text-ink">{paises.join(', ') || '—'}</strong>{' '}
+              <span className="text-muted2">— no nome: <strong className="text-brand-2">{ctx.getPaisNome()}</strong></span>
+            </div>
+            {ctx.paisBatchesExtras.map((batch, i) => (
+              <div key={i} className="mb-2.5 rounded-xl2 border border-border bg-surface2 p-3.5">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <strong className="text-[13px] text-brand-2">Estrutura {i + 2}</strong>
+                  <button className="btn btn-ghost btn-sm text-danger" onClick={() => ctx.removePaisBatch(i)}>
+                    ✗ Remover
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_COUNTRIES.map((c) => {
+                    const on = batch.includes(c.code)
+                    return (
+                      <button
+                        key={c.code}
+                        onClick={() => ctx.togglePaisInBatch(i, c.code)}
+                        className={`rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-all ${
+                          on
+                            ? 'border-transparent bg-brand text-white shadow-glow'
+                            : 'border-border bg-surface2 text-muted2 hover:border-brand hover:text-brand-2'
+                        }`}
+                      >
+                        {c.flag} {c.code}
+                      </button>
+                    )
+                  })}
+                </div>
+                {batch.length === 0 && (
+                  <div className="mt-2 text-[11px] text-warn">⚠ Selecione ao menos 1 país (lotes vazios são ignorados).</div>
+                )}
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm mt-1" onClick={ctx.addPaisBatch}>
+              <Plus className="h-3 w-3" /> Adicionar país
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* estrutura */}
       <Card
