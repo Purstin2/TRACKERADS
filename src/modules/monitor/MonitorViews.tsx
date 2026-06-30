@@ -34,8 +34,11 @@ import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
-import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay } from './actionLog'
-import { ImpactBtn } from './BudgetImpact'
+import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay, duplicationsFor, budgetIncreases, impactDays } from './actionLog'
+import { ImpactBtn, ImpactModal } from './BudgetImpact'
+import { DuplicateModal, DupProofModal } from './Duplicate'
+import { BudgetPaceModal } from './BudgetPace'
+import { MoreHorizontal, Layers } from 'lucide-react'
 import { toast } from '@/components/ui/toast'
 import {
   ICONS,
@@ -277,6 +280,77 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
         </div>
       </div>
     </div>
+  )
+}
+
+/** Menu consolidado de ações da campanha — um único gatilho "Ações" abre um
+ *  dropdown limpo. Os modais vivem AQUI (fora do dropdown) pra não fecharem
+ *  junto com o menu. Itens contextuais (prova/ritmo/impacto) só aparecem quando
+ *  há registro pra eles. */
+function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
+  useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'pace' | 'impact'>(null)
+
+  const dups = duplicationsFor(campId)
+  const incs = budgetIncreases(campId)
+  const impDays = impactDays(campId)
+
+  const items: { key: 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
+    { key: 'budget', icon: '💰', label: 'Ajustar orçamento', desc: 'aumentar ou diminuir', show: true, accent: 'text-ok' },
+    { key: 'dup', icon: '📋', label: 'Duplicar campanha', desc: 'cópia idêntica + prova 7d', show: true, accent: 'text-warn' },
+    { key: 'proof', icon: '🔗', label: 'Prova da duplicação', desc: 'cópia × original', show: dups.length > 0, accent: 'text-warn' },
+    { key: 'pace', icon: '📈', label: 'Ritmo 3h', desc: 'ROAS desde o aumento', show: incs.length > 0, accent: 'text-brand-2' },
+    { key: 'impact', icon: '📊', label: 'Impacto do aumento', desc: 'antes × depois', show: impDays.length > 0, accent: 'text-brand-2' },
+    { key: 'log', icon: '✎', label: 'Registrar ação', desc: 'anotar no log', show: true, accent: 'text-muted' },
+  ]
+
+  function pick(k: (typeof items)[number]['key']) {
+    setOpen(false)
+    if (k === 'log') { openLog({ accId, name, campId, kind: 'escala', roasAtTime: roas, cur, spendAtTime: spend ?? null, salesAtTime: sales ?? null, dateBR: todayBR() }); return }
+    setModal(k)
+  }
+
+  return (
+    <>
+      <button
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          const W = 248
+          setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - W, window.innerWidth - W - 8)) })
+          setOpen(true)
+        }}
+        title="Ações da campanha"
+        className={`inline-flex items-center gap-1 rounded-[7px] border px-2 py-0.5 text-[10.5px] font-bold ${open ? 'border-brand bg-brand/10 text-brand-2' : 'border-border text-muted hover:border-brand hover:text-brand-2'}`}
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" /> Ações
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed z-50 w-[248px] overflow-hidden rounded-xl2 border border-border bg-[#0d1220] shadow-2xl shadow-black/40" style={{ top: pos.top, left: pos.left }}>
+            <div className="border-b border-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted2">Ações da campanha</div>
+            {items.filter((it) => it.show).map((it) => (
+              <button key={it.key} onClick={() => pick(it.key)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-surface2">
+                <span className={`text-[14px] leading-none ${it.accent}`}>{it.icon}</span>
+                <span className="min-w-0">
+                  <span className="block text-[12px] font-semibold text-ink">{it.label}</span>
+                  <span className="block text-[10px] text-muted2">{it.desc}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
+      {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
+      {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
+      {modal === 'pace' && <BudgetPaceModal accId={accId} name={name} campId={campId} cur={cur} incs={incs} onClose={() => setModal(null)} />}
+      {modal === 'impact' && <ImpactModal accId={accId} name={name} campId={campId} cur={cur} days={impDays} onClose={() => setModal(null)} />}
+    </>
   )
 }
 
@@ -883,22 +957,22 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
             {m.level === 'campaign' && (
               <>
                 <ScaleBadge campId={r.id} />
-                <BudgetBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-                <LogBtn accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-                <ImpactBtn accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} />
                 <button
                   onClick={() => setScaleOpen((v) => !v)}
                   title="Lucro de hoje + últimos dias (pra decidir escalar)"
-                  className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-ok/40 bg-ok/5 px-2 py-0.5 text-[10.5px] font-bold text-ok hover:bg-ok/15"
+                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] border px-2 py-0.5 text-[10.5px] font-semibold ${scaleOpen ? 'border-ok bg-ok/10 text-ok' : 'border-border text-muted hover:border-ok/50 hover:text-ok'}`}
                 >
-                  <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                  <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 </button>
                 <button
                   onClick={toggle}
-                  className="whitespace-nowrap rounded border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:border-brand hover:text-brand-2"
+                  title="Ver criativos/anúncios desta campanha"
+                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] border px-2 py-0.5 text-[10.5px] font-semibold ${open ? 'border-brand bg-brand/10 text-brand-2' : 'border-border text-muted hover:border-brand hover:text-brand-2'}`}
                 >
-                  criativos {open ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
+                  <Layers className="h-3 w-3" /> criativos {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 </button>
+                <span className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
+                <ActionsMenu accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
               </>
             )}
           </div>

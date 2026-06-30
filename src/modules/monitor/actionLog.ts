@@ -108,6 +108,33 @@ export function increasesForDay(campId: string, dateBR: string): ActionEntry[] {
     .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
 }
 
+/** Duplicações ligadas a esta campanha — seja como CÓPIA (e.campId) ou como
+ *  ORIGINAL (e.linkedTo). Usado pra mostrar o botão "prova" nas duas pontas. */
+export function duplicationsFor(campId?: string): ActionEntry[] {
+  if (!campId) return []
+  return getLog()
+    .filter((e) => e.kind === 'duplicacao' && !e.sim && (e.campId === campId || e.linkedTo === campId))
+    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+}
+
+/** Todos os aumentos/escalas reais de orçamento de uma campanha (com novo orçamento),
+ *  em ordem cronológica, dentro da janela. Cada um marca um "nível de orçamento" pro
+ *  tracker de ritmo (ROAS a cada 3h). */
+export function budgetIncreases(campId?: string, maxDays = 14): ActionEntry[] {
+  if (!campId) return []
+  const cut = Date.now() - maxDays * 86400000
+  return getLog()
+    .filter(
+      (e) =>
+        e.campId === campId &&
+        (e.kind === 'orcamento' || e.kind === 'escala') &&
+        !e.sim &&
+        e.budgetAfter != null &&
+        new Date(e.ts).getTime() >= cut,
+    )
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+}
+
 /** Datas (dias BR) em que a campanha teve aumento com foto — pra listar quais têm impacto. */
 export function impactDays(campId: string): string[] {
   const set = new Set<string>()

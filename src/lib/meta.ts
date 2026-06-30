@@ -216,6 +216,21 @@ export function fetchCampDaily(accId: string, campId: string, t: string, days = 
   })
   return paginate(`${BASE}/act_${accId}/insights?${p}`)
 }
+/** Insights de UM dia quebrados por HORA (breakdown hourly do fuso da conta).
+ *  Cada linha traz `hourly_stats_aggregated_by_advertiser_time_zone` ("HH:00:00 - HH:59:59").
+ *  Usado pelo tracker de ritmo do orçamento (ROAS a cada 3h). */
+export function fetchCampHourly(accId: string, campId: string, t: string, day: string) {
+  const p = new URLSearchParams({
+    level: 'campaign',
+    fields: 'spend,action_values,actions,date_start',
+    breakdowns: 'hourly_stats_aggregated_by_advertiser_time_zone',
+    time_range: JSON.stringify({ since: day, until: day }),
+    filtering: JSON.stringify([{ field: 'campaign.id', operator: 'EQUAL', value: campId }]),
+    access_token: t,
+    limit: '200',
+  })
+  return paginate(`${BASE}/act_${accId}/insights?${p}`)
+}
 export function fetchOffer(accId: string, preset: string, t: string, statuses: string[]) {
   const p = new URLSearchParams({
     level: 'campaign',
@@ -338,6 +353,41 @@ export async function pauseCampaign(campId: string, t: string) {
   const j = await r.json()
   if (j.error) throw new Error(j.error.message)
   return j
+}
+
+export interface CopyCampaignResult {
+  copied_campaign_id: string
+  ad_object_ids?: { ad_object_type: string; source_id: string; copied_id: string }[]
+}
+/** Duplica uma campanha na Meta. deep_copy=true copia adsets + ads junto
+ *  (cópia idêntica à anterior). status_option PAUSED faz a cópia nascer pausada
+ *  (segurança); 'ACTIVE' já bota pra rodar. renameSuffix vira o sufixo do nome. */
+export async function copyCampaign(
+  campId: string,
+  t: string,
+  opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renameSuffix?: string } = {},
+): Promise<CopyCampaignResult> {
+  const body: Record<string, string> = {
+    deep_copy: String(opts.deepCopy ?? true),
+    status_option: opts.status || 'PAUSED',
+    access_token: t,
+  }
+  if (opts.renameSuffix) body.rename_options = JSON.stringify({ rename_suffix: opts.renameSuffix })
+  const r = await fetch(`${BASE}/${campId}/copies`, {
+    method: 'POST',
+    body: new URLSearchParams(body),
+  })
+  const j = await r.json()
+  if (j.error) throw new Error(j.error.message)
+  return j
+}
+
+/** Lê só o nome de uma campanha (pra confirmar o nome da cópia recém-criada). */
+export async function fetchCampaignName(campId: string, t: string): Promise<string> {
+  const p = new URLSearchParams({ fields: 'name', access_token: t })
+  const j = await (await fetch(`${BASE}/${campId}?${p}`)).json()
+  if (j.error) throw new Error(j.error.message)
+  return j.name || ''
 }
 
 export const campUrl = (accId: string, campId: string) =>

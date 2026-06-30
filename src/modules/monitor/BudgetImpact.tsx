@@ -39,7 +39,7 @@ export function ImpactBtn({ accId, name, campId, cur }: { accId: string; name: s
   )
 }
 
-function ImpactModal({ accId, name, campId, cur, days, onClose }: { accId: string; name: string; campId: string; cur: string; days: string[]; onClose: () => void }) {
+export function ImpactModal({ accId, name, campId, cur, days, onClose }: { accId: string; name: string; campId: string; cur: string; days: string[]; onClose: () => void }) {
   const m = useMonitor()
   const sym = curSym(cur)
   const [day, setDay] = useState(days[0])
