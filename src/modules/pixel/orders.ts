@@ -73,11 +73,12 @@ export function waNumber(phone?: string | null): string {
   return d
 }
 
-export async function fetchOrders(sinceISO?: string): Promise<KirvanoOrder[]> {
+export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
   let q = sb.from('kirvano_orders').select('*').order('created_at', { ascending: false }).limit(2000)
   if (sinceISO) q = q.gte('created_at', sinceISO)
+  if (untilISO) q = q.lt('created_at', untilISO)
   const { data } = await q
   return (data || []) as KirvanoOrder[]
 }

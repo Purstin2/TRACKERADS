@@ -13,7 +13,8 @@ import {
 } from './orders'
 
 const RANGES = [
-  { v: '1', label: 'Hoje' },
+  { v: '0', label: 'Hoje' },
+  { v: 'yesterday', label: 'Ontem' },
   { v: '7', label: '7 dias' },
   { v: '14', label: '14 dias' },
   { v: '30', label: '30 dias' },
@@ -24,12 +25,20 @@ const RANGES = [
 // ordem dos cards de status no topo
 const ORDER = ['APPROVED', 'ABANDONED', 'PENDING', 'REFUSED', 'CANCELED', 'REFUNDED', 'CHARGEBACK', 'EXPIRED']
 
-function sinceISO(range: string): string | undefined {
-  if (range === 'all') return undefined
+function dateRange(range: string): { since?: string; until?: string } {
+  if (range === 'all') return {}
+  if (range === 'yesterday') {
+    const since = new Date()
+    since.setDate(since.getDate() - 1)
+    since.setHours(0, 0, 0, 0)
+    const until = new Date()
+    until.setHours(0, 0, 0, 0)
+    return { since: since.toISOString(), until: until.toISOString() }
+  }
   const d = new Date()
   d.setDate(d.getDate() - parseInt(range))
   d.setHours(0, 0, 0, 0)
-  return d.toISOString()
+  return { since: d.toISOString() }
 }
 
 function StatPill({ k, count, value, active, onClick }: { k: string; count: number; value: number; active: boolean; onClick: () => void }) {
@@ -63,7 +72,8 @@ export default function PedidosView() {
     if (!connected) return
     setLoading(true)
     try {
-      setOrders(await fetchOrders(sinceISO(range)))
+      const { since, until } = dateRange(range)
+      setOrders(await fetchOrders(since, until))
     } catch (e: any) {
       toast('Erro ao carregar pedidos: ' + e.message, 'err')
     }

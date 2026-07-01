@@ -359,26 +359,36 @@ export interface CopyCampaignResult {
   copied_campaign_id: string
   ad_object_ids?: { ad_object_type: string; source_id: string; copied_id: string }[]
 }
-/** Duplica uma campanha na Meta. deep_copy=true copia adsets + ads junto
- *  (cópia idêntica à anterior). status_option PAUSED faz a cópia nascer pausada
- *  (segurança); 'ACTIVE' já bota pra rodar. renameSuffix vira o sufixo do nome. */
+/** Duplica uma campanha na Meta. deep_copy=true copia adsets + ads junto.
+ *  rename_options exige AMBOS rename_prefix e rename_suffix — omitir um causa
+ *  "Invalid parameter" (code 100/1443226). Prefixo/sufixo aplicam a campanha,
+ *  conjuntos e anúncios ao mesmo tempo. */
 export async function copyCampaign(
   campId: string,
   t: string,
-  opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renameSuffix?: string } = {},
+  opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renamePrefix?: string; renameSuffix?: string } = {},
 ): Promise<CopyCampaignResult> {
   const body: Record<string, string> = {
     deep_copy: String(opts.deepCopy ?? true),
     status_option: opts.status || 'PAUSED',
     access_token: t,
   }
-  if (opts.renameSuffix) body.rename_options = JSON.stringify({ rename_suffix: opts.renameSuffix })
+  const prefix = opts.renamePrefix ?? ''
+  const suffix = opts.renameSuffix ?? ''
+  if (prefix || suffix) {
+    body.rename_options = JSON.stringify({ rename_prefix: prefix, rename_suffix: suffix })
+  }
   const r = await fetch(`${BASE}/${campId}/copies`, {
     method: 'POST',
     body: new URLSearchParams(body),
   })
   const j = await r.json()
-  if (j.error) throw new Error(j.error.message)
+  if (j.error) {
+    const e = j.error
+    let msg = `${e.message} (code ${e.code}${e.error_subcode ? '/' + e.error_subcode : ''})`
+    if (e.error_user_msg) msg += ` — ${e.error_user_msg}`
+    throw new Error(msg)
+  }
   return j
 }
 

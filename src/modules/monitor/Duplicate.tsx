@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Copy, X, GitBranch } from 'lucide-react'
 import { useMonitor } from './MonitorContext'
-import { addAction, todayBR, duplicationsFor, type ActionEntry } from './actionLog'
+import { addAction, todayBR, duplicationsFor, useLog, type ActionEntry } from './actionLog'
 import { copyCampaign, fetchCampaignName, fetchCampDaily, getSales, getRevenue } from '@/lib/meta'
 import { toast } from '@/components/ui/toast'
 
@@ -29,18 +29,26 @@ export function DuplicateBtn({ accId, name, campId, roas, cur, spend, sales }: {
 
 export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; onClose: () => void }) {
   const m = useMonitor()
+  const log = useLog()
   const [status, setStatus] = useState<'PAUSED' | 'ACTIVE'>('PAUSED')
+  const [prefix, setPrefix] = useState('')
   const [suffix, setSuffix] = useState(' - cópia')
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState('')
+
+  // duplicações anteriores onde esta campanha foi a ORIGINAL (linkedTo = campId)
+  const prevDups = useMemo(
+    () => log.filter((e) => e.kind === 'duplicacao' && e.linkedTo === campId).sort((a, b) => b.ts.localeCompare(a.ts)),
+    [log, campId],
+  )
 
   async function apply() {
     setApplying(true); setErr('')
     try {
       let newId = `sim-${campId}-${Date.now().toString(36)}`
-      let newName = `${name}${suffix}`
+      let newName = `${prefix}${name}${suffix}`
       if (m.exec) {
-        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, renameSuffix: suffix })
+        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, renamePrefix: prefix, renameSuffix: suffix })
         newId = res.copied_campaign_id
         try { newName = (await fetchCampaignName(newId, m.token.trim())) || newName } catch { /* mantém o construído */ }
       }
@@ -75,7 +83,7 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card w-full max-w-[460px]" onClick={(e) => e.stopPropagation()}>
+      <div className="card w-full max-w-[480px]" onClick={(e) => e.stopPropagation()}>
         <div className="card-header">
           <h3 className="truncate text-[13px] font-bold" title={name}>🔗 Duplicar campanha</h3>
           <button onClick={onClose} className="text-muted2 hover:text-ink"><X className="h-4 w-4" /></button>
@@ -87,6 +95,26 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             Cria uma <b>cópia idêntica</b> na Meta (com adsets e anúncios) e <b>linka</b> as duas no log.
             Aí dá pra abrir a <b>prova</b> e acompanhar 7 dias se a cópia canibalizou a original.
           </p>
+
+          {/* duplicações anteriores desta campanha */}
+          {prevDups.length > 0 && (
+            <div className="rounded-[8px] border border-border bg-surface2 px-3 py-2.5">
+              <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted2">
+                Duplicações anteriores desta campanha
+              </div>
+              <div className="flex flex-col gap-1">
+                {prevDups.map((d) => (
+                  <div key={d.id} className="flex items-center gap-2 text-[11px]">
+                    <span className="font-mono text-muted2">{dmFmt(d.dateBR || todayBR(new Date(d.ts)))}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${d.sim ? 'bg-warn/10 text-warn' : 'bg-ok/10 text-ok'}`}>
+                      {d.sim ? 'simulada' : 'real'}
+                    </span>
+                    <span className="truncate text-muted" title={d.name}>{d.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* status da cópia */}
           <div className="flex flex-col gap-1.5">
@@ -107,10 +135,22 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             </div>
           </div>
 
-          <div className="field">
-            <label>Sufixo do nome</label>
-            <input value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder=" - cópia" />
-            <span className="mt-1 block truncate text-[10.5px] text-muted2">Nome da cópia: <b className="text-muted">{name}{suffix}</b></span>
+          {/* nomenclatura: prefixo + sufixo → aplica a campanha, conjuntos e anúncios */}
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] text-muted2">Nomenclatura (aplica a campanha, conjuntos e anúncios)</span>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="field !mb-0">
+                <label>Prefixo</label>
+                <input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="ex: TEST - " />
+              </div>
+              <div className="field !mb-0">
+                <label>Sufixo</label>
+                <input value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder=" - cópia" />
+              </div>
+            </div>
+            <span className="block truncate text-[10.5px] text-muted2">
+              Prévia: <b className="text-muted">{prefix || ''}{name}{suffix}</b>
+            </span>
           </div>
 
           {status === 'ACTIVE' && m.exec && (

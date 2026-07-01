@@ -5,7 +5,7 @@ import type {
   FormState,
   SearchVideoSel,
 } from '../types'
-import { fbPost, fbDel } from './fb'
+import { fbPost, fbDel, getVideoThumbnail } from './fb'
 import { buildNome, buildUTMString, getCampNome } from './naming'
 
 export interface CreateItem {
@@ -278,6 +278,9 @@ async function criarN11(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       ctx.onLog(`  ✓ Conjunto: ${adset.id}`, 'ok')
 
       ctx.onLog('  [3/4] Criativo...')
+      if (!v.thumbUrl) {
+        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
+      }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
@@ -336,6 +339,9 @@ async function criar1N1(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       ctx.onLog(`  ✓ Conjunto: ${adset.id}`, 'ok')
 
       ctx.onLog('  [3/3] Criativo + Anúncio...')
+      if (!v.thumbUrl) {
+        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
+      }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
@@ -398,6 +404,9 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
     const nome = buildNome(form, paises, budgetType, v.nome)
     ctx.onLog(`━━━ [${i + 1}/${total}] ${v.nome}`, 'warn')
     try {
+      if (!v.thumbUrl) {
+        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
+      }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,

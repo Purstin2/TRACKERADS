@@ -166,6 +166,16 @@ export async function createProduct(token: string, catalogId: string, p: NewProd
   })
 }
 
+/** Busca a thumbnail de um vídeo específico — usado como fallback quando thumbUrl está vazio */
+export async function getVideoThumbnail(token: string, videoId: string): Promise<string> {
+  try {
+    const d = await fbGet(`${fbBase}/${videoId}?fields=thumbnails&access_token=${token}`)
+    return d.thumbnails?.data?.[0]?.uri || ''
+  } catch {
+    return ''
+  }
+}
+
 /** Busca todos os advideos da conta (paginado) → { raw, unicos } */
 export async function fetchVideos(token: string, adAccount: string) {
   let todos: any[] = []
