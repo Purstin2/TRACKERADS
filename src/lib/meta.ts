@@ -360,8 +360,8 @@ export interface CopyCampaignResult {
   ad_object_ids?: { ad_object_type: string; source_id: string; copied_id: string }[]
 }
 
-/** Polling do job criado pelo Async Batch API do Meta.
- *  j.result é uma string JSON com array de respostas batch. */
+/** Polling do job assíncrono do /copies?async=true.
+ *  Quando completo, result pode ser objeto direto ou JSON string (batch format). */
 async function pollCopyJob(jobId: string, t: string): Promise<CopyCampaignResult> {
   const p = new URLSearchParams({ fields: 'id,completion_status,result,error_message', access_token: t })
   for (let i = 0; i < 40; i++) {
@@ -370,51 +370,48 @@ async function pollCopyJob(jobId: string, t: string): Promise<CopyCampaignResult
     if (j.error) throw new Error(`${j.error.message} (code ${j.error.code})`)
     if (j.completion_status === 'Job Failed') throw new Error(j.error_message || 'Cópia falhou no Meta')
     if (j.completion_status === 'Job Completed') {
-      // result = JSON string de array de respostas batch
-      const results: { code: number; body: string }[] = JSON.parse(j.result || '[]')
-      const first = results[0]
-      if (!first) throw new Error('Meta retornou resultado vazio')
-      if (first.code !== 200) {
-        const errBody = JSON.parse(first.body || '{}')
-        const e = errBody.error || {}
-        throw new Error(`${e.message || 'Erro'} (code ${e.code || first.code})`)
+      const res = j.result
+      // formato direto (objeto)
+      if (res && typeof res === 'object' && res.copied_campaign_id) return res as CopyCampaignResult
+      // formato batch (string JSON de array)
+      if (typeof res === 'string') {
+        const arr: { code: number; body: string }[] = JSON.parse(res)
+        const first = arr[0]
+        if (!first) throw new Error('Meta retornou resultado vazio')
+        if (first.code !== 200) {
+          const eb = JSON.parse(first.body || '{}'); const e = eb.error || {}
+          throw new Error(`${e.message || 'Erro'} (code ${e.code || first.code})`)
+        }
+        return JSON.parse(first.body) as CopyCampaignResult
       }
-      return JSON.parse(first.body) as CopyCampaignResult
+      // formato inline (resultado direto no próprio job)
+      if (j.copied_campaign_id) return j as CopyCampaignResult
+      throw new Error(`Resultado inesperado: ${JSON.stringify(j).slice(0, 200)}`)
     }
   }
   throw new Error('Timeout aguardando cópia (>120s) — verifique o Gerenciador de Anúncios')
 }
 
-/** Duplica uma campanha na Meta via Async Batch API — suporta campanhas com
- *  qualquer número de conjuntos/anúncios (a API síncrona falha com >3 objetos). */
+/** Duplica uma campanha na Meta. Usa async=true como query param do /copies
+ *  (suporta campanhas grandes; a API síncrona falha com >3 objetos). */
 export async function copyCampaign(
   campId: string,
   t: string,
   opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renamePrefix?: string; renameSuffix?: string } = {},
   onStatus?: (msg: string) => void,
 ): Promise<CopyCampaignResult> {
-  // monta o body da chamada interna de copies
-  const innerBody = new URLSearchParams()
-  innerBody.set('deep_copy', String(opts.deepCopy ?? true))
-  innerBody.set('status_option', opts.status || 'PAUSED')
+  const body = new URLSearchParams()
+  body.set('deep_copy', String(opts.deepCopy ?? true))
+  body.set('status_option', opts.status || 'PAUSED')
+  body.set('access_token', t)
   const prefix = opts.renamePrefix ?? ''
   const suffix = opts.renameSuffix ?? ''
   if (prefix || suffix) {
-    innerBody.set('rename_options', JSON.stringify({ rename_prefix: prefix, rename_suffix: suffix }))
+    body.set('rename_options', JSON.stringify({ rename_prefix: prefix, rename_suffix: suffix }))
   }
 
-  // Async Batch API: POST https://graph.facebook.com/ com batch+async=true
-  const batchBody = new URLSearchParams()
-  batchBody.set('access_token', t)
-  batchBody.set('async', 'true')
-  batchBody.set('include_headers', 'false')
-  batchBody.set('batch', JSON.stringify([{
-    method: 'POST',
-    relative_url: `${META_API}/${campId}/copies`,
-    body: innerBody.toString(),
-  }]))
-
-  const r = await fetch('https://graph.facebook.com/', { method: 'POST', body: batchBody })
+  // async=true como query param — suportado pelo endpoint /copies
+  const r = await fetch(`${BASE}/${campId}/copies?async=true`, { method: 'POST', body })
   const j = await r.json()
   if (j.error) {
     const e = j.error
@@ -422,8 +419,11 @@ export async function copyCampaign(
     if (e.error_user_msg) msg += ` — ${e.error_user_msg}`
     throw new Error(msg)
   }
-  const jobId = j.id
-  if (!jobId) throw new Error('Meta não retornou ID do job — tente novamente')
+  // resposta síncrona (campanha pequena ou Meta ignorou async) — retorna direto
+  if (j.copied_campaign_id) return j as CopyCampaignResult
+  // resposta assíncrona — jobId em async_session_id ou id
+  const jobId = j.async_session_id || j.id
+  if (!jobId) throw new Error(`Meta não retornou job ID. Resposta: ${JSON.stringify(j).slice(0, 300)}`)
   onStatus?.('Aguardando o Meta processar a cópia…')
   return pollCopyJob(jobId, t)
 }
