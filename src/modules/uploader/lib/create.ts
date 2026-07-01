@@ -278,13 +278,11 @@ async function criarN11(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       ctx.onLog(`  ✓ Conjunto: ${adset.id}`, 'ok')
 
       ctx.onLog('  [3/4] Criativo...')
-      if (!v.thumbUrl) {
-        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
-      }
+      const vr1 = v.thumbUrl ? v : { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, v, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr1, urlFinal, nome),
       )
       ctx.onLog(`  ✓ Criativo: ${creative.id}`, 'ok')
 
@@ -339,13 +337,11 @@ async function criar1N1(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       ctx.onLog(`  ✓ Conjunto: ${adset.id}`, 'ok')
 
       ctx.onLog('  [3/3] Criativo + Anúncio...')
-      if (!v.thumbUrl) {
-        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
-      }
+      const vr2 = v.thumbUrl ? v : { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, v, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr2, urlFinal, nome),
       )
       const ad = await fbPost(token, `${acc}/ads`, {
         name: nome,
@@ -404,13 +400,11 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
     const nome = buildNome(form, paises, budgetType, v.nome)
     ctx.onLog(`━━━ [${i + 1}/${total}] ${v.nome}`, 'warn')
     try {
-      if (!v.thumbUrl) {
-        v = { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
-      }
+      const vr3 = v.thumbUrl ? v : { ...v, thumbUrl: await getVideoThumbnail(token, v.id) }
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, v, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr3, urlFinal, nome),
       )
       const ad = await fbPost(token, `${acc}/ads`, {
         name: nome,
