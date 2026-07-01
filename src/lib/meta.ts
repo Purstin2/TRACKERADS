@@ -359,18 +359,36 @@ export interface CopyCampaignResult {
   copied_campaign_id: string
   ad_object_ids?: { ad_object_type: string; source_id: string; copied_id: string }[]
 }
-/** Duplica uma campanha na Meta. deep_copy=true copia adsets + ads junto.
- *  rename_options exige AMBOS rename_prefix e rename_suffix — omitir um causa
- *  "Invalid parameter" (code 100/1443226). Prefixo/sufixo aplicam a campanha,
- *  conjuntos e anúncios ao mesmo tempo. */
+
+/** Polling do job assíncrono do Meta — aguarda até 120s.
+ *  A cópia síncrona falha com code 1885194 quando a campanha tem >3 objetos. */
+async function pollCopyJob(jobId: string, t: string): Promise<CopyCampaignResult> {
+  const p = new URLSearchParams({ fields: 'id,completion_status,status,result,error_message', access_token: t })
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 3000))
+    const j = await (await fetch(`${BASE}/${jobId}?${p}`)).json()
+    if (j.error) throw new Error(`${j.error.message} (code ${j.error.code})`)
+    const done = j.completion_status === 'Job Completed' || j.status === 'Job Completed'
+    const failed = j.completion_status === 'Job Failed' || j.status === 'Job Failed'
+    if (failed) throw new Error(j.error_message || 'Cópia assíncrona falhou no Meta')
+    if (done && j.result) return j.result as CopyCampaignResult
+    if (done && j.copied_campaign_id) return j as CopyCampaignResult
+  }
+  throw new Error('Timeout aguardando cópia assíncrona (>120s) — verifique o Gerenciador de Anúncios')
+}
+
+/** Duplica uma campanha na Meta (sempre via modo assíncrono — suporta qualquer
+ *  tamanho de campanha). rename_options exige AMBOS prefix e suffix juntos. */
 export async function copyCampaign(
   campId: string,
   t: string,
   opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renamePrefix?: string; renameSuffix?: string } = {},
+  onStatus?: (msg: string) => void,
 ): Promise<CopyCampaignResult> {
   const body: Record<string, string> = {
     deep_copy: String(opts.deepCopy ?? true),
     status_option: opts.status || 'PAUSED',
+    async: 'true',
     access_token: t,
   }
   const prefix = opts.renamePrefix ?? ''
@@ -389,7 +407,11 @@ export async function copyCampaign(
     if (e.error_user_msg) msg += ` — ${e.error_user_msg}`
     throw new Error(msg)
   }
-  return j
+  // resposta assíncrona — aguarda o job terminar
+  const jobId = j.async_session_id || j.id
+  if (!jobId) return j as CopyCampaignResult // fallback: Meta respondeu síncrono mesmo assim
+  onStatus?.('Aguardando o Meta processar a cópia…')
+  return pollCopyJob(jobId, t)
 }
 
 /** Lê só o nome de uma campanha (pra confirmar o nome da cópia recém-criada). */

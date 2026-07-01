@@ -34,6 +34,7 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
   const [nomeCopia, setNomeCopia] = useState(`${name} - cópia`)
   const [orcamento, setOrcamento] = useState('')
   const [applying, setApplying] = useState(false)
+  const [applyingMsg, setApplyingMsg] = useState('')
   const [err, setErr] = useState('')
 
   // duplicações anteriores onde esta campanha foi a ORIGINAL (linkedTo = campId)
@@ -53,12 +54,12 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
   const nomeECustom = !nomeCopia.startsWith(name) && !nomeCopia.endsWith(name)
 
   async function apply() {
-    setApplying(true); setErr('')
+    setApplying(true); setApplyingMsg('Enviando…'); setErr('')
     try {
       let newId = `sim-${campId}-${Date.now().toString(36)}`
       let newName = nomeCopia
       if (m.exec) {
-        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, ...renameParts })
+        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, ...renameParts }, setApplyingMsg)
         newId = res.copied_campaign_id
         // se nome é completamente custom, renomeia a campanha após a cópia
         if (nomeECustom) await renameEntity(newId, nomeCopia, m.token.trim())
@@ -187,7 +188,7 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
           <div className="flex justify-end gap-2">
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={apply} disabled={applying}>
-              <Copy className="h-3.5 w-3.5" /> {applying ? 'Duplicando…' : m.exec ? 'Duplicar na Meta' : 'Registrar link (simulado)'}
+              <Copy className="h-3.5 w-3.5" /> {applying ? applyingMsg || 'Duplicando…' : m.exec ? 'Duplicar na Meta' : 'Registrar link (simulado)'}
             </button>
           </div>
         </div>
