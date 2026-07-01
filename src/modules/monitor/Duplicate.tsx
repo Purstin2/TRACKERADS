@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Copy, X, GitBranch } from 'lucide-react'
 import { useMonitor } from './MonitorContext'
 import { addAction, todayBR, duplicationsFor, useLog, type ActionEntry } from './actionLog'
-import { copyCampaign, fetchCampaignName, fetchCampDaily, getSales, getRevenue } from '@/lib/meta'
+import { copyCampaign, fetchCampaignName, renameEntity, updateBudget, fetchCampDaily, getSales, getRevenue } from '@/lib/meta'
 import { toast } from '@/components/ui/toast'
 
 const curSym = (c: string) => (c === 'USD' ? '$' : c === 'EUR' ? '€' : 'R$')
@@ -31,8 +31,8 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
   const m = useMonitor()
   const log = useLog()
   const [status, setStatus] = useState<'PAUSED' | 'ACTIVE'>('PAUSED')
-  const [prefix, setPrefix] = useState('')
-  const [suffix, setSuffix] = useState(' - cópia')
+  const [nomeCopia, setNomeCopia] = useState(`${name} - cópia`)
+  const [orcamento, setOrcamento] = useState('')
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState('')
 
@@ -42,15 +42,34 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
     [log, campId],
   )
 
+  // calcula prefix/suffix pra rename_options do Meta (aplica a campanha + conjuntos + anúncios)
+  const renameParts = useMemo(() => {
+    if (nomeCopia.startsWith(name)) return { renamePrefix: '', renameSuffix: nomeCopia.slice(name.length) }
+    if (nomeCopia.endsWith(name)) return { renamePrefix: nomeCopia.slice(0, -name.length), renameSuffix: '' }
+    // nome completamente diferente: copia com sufixo genérico e renomeia depois via API
+    return { renamePrefix: '', renameSuffix: ' - cópia' }
+  }, [nomeCopia, name])
+
+  const nomeECustom = !nomeCopia.startsWith(name) && !nomeCopia.endsWith(name)
+
   async function apply() {
     setApplying(true); setErr('')
     try {
       let newId = `sim-${campId}-${Date.now().toString(36)}`
-      let newName = `${prefix}${name}${suffix}`
+      let newName = nomeCopia
       if (m.exec) {
-        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, renamePrefix: prefix, renameSuffix: suffix })
+        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, ...renameParts })
         newId = res.copied_campaign_id
-        try { newName = (await fetchCampaignName(newId, m.token.trim())) || newName } catch { /* mantém o construído */ }
+        // se nome é completamente custom, renomeia a campanha após a cópia
+        if (nomeECustom) await renameEntity(newId, nomeCopia, m.token.trim())
+        try { newName = (await fetchCampaignName(newId, m.token.trim())) || nomeCopia } catch { /* mantém */ }
+        // orçamento: tenta nos dois níveis — CBO (campanha) e ABO (cada conjunto)
+        const orc = parseInt(orcamento.trim() || '0')
+        if (orc > 0) {
+          await updateBudget(newId, orc, m.token.trim())
+          const adsetIds = (res.ad_object_ids || []).filter((o) => o.ad_object_type === 'AD_SET').map((o) => o.copied_id)
+          await Promise.all(adsetIds.map((id) => updateBudget(id, orc, m.token.trim())))
+        }
       }
       addAction({
         accId,
@@ -135,23 +154,23 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             </div>
           </div>
 
-          {/* nomenclatura: prefixo + sufixo → aplica a campanha, conjuntos e anúncios */}
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] text-muted2">Nomenclatura (aplica a campanha, conjuntos e anúncios)</span>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="field !mb-0">
-                <label>Prefixo</label>
-                <input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="ex: TEST - " />
-              </div>
-              <div className="field !mb-0">
-                <label>Sufixo</label>
-                <input value={suffix} onChange={(e) => setSuffix(e.target.value)} placeholder=" - cópia" />
-              </div>
+          {/* nome da cópia + orçamento */}
+          <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+            <div className="field !mb-0">
+              <label>Nome da cópia</label>
+              <input value={nomeCopia} onChange={(e) => setNomeCopia(e.target.value)} placeholder={`${name} - cópia`} />
+              {nomeECustom && (
+                <span className="mt-0.5 block text-[10px] text-warn">⚠ Nome diferente do original — campanha será renomeada após a cópia</span>
+              )}
             </div>
-            <span className="block truncate text-[10.5px] text-muted2">
-              Prévia: <b className="text-muted">{prefix || ''}{name}{suffix}</b>
-            </span>
+            <div className="field !mb-0 w-[110px]">
+              <label>Orçamento R$/dia</label>
+              <input value={orcamento} onChange={(e) => setOrcamento(e.target.value)} placeholder="igual original" type="number" min="1" />
+            </div>
           </div>
+          <span className="block truncate text-[10.5px] text-muted2">
+            O sufixo <b className="text-muted">{renameParts.renameSuffix || '(nenhum)'}</b> é aplicado a campanha, conjuntos e anúncios
+          </span>
 
           {status === 'ACTIVE' && m.exec && (
             <div className="rounded-[8px] border border-ok/30 bg-ok/[0.07] px-3 py-2 text-[11.5px] text-ok">

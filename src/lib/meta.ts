@@ -400,5 +400,19 @@ export async function fetchCampaignName(campId: string, t: string): Promise<stri
   return j.name || ''
 }
 
+/** Renomeia uma campanha, conjunto ou anúncio via PATCH. Silencia erros (usado como
+ *  pós-processamento após copies — não bloqueia o fluxo se falhar). */
+export async function renameEntity(id: string, name: string, t: string): Promise<void> {
+  const p = new URLSearchParams({ name, access_token: t })
+  await fetch(`${BASE}/${id}`, { method: 'POST', body: p }).catch(() => {})
+}
+
+/** Atualiza o daily_budget de uma campanha (CBO) ou conjunto (ABO).
+ *  Silencia erro — chamado nos dois níveis, só um vai ter efeito. */
+export async function updateBudget(id: string, dailyBudget: number, t: string): Promise<void> {
+  const p = new URLSearchParams({ daily_budget: String(Math.round(dailyBudget)), access_token: t })
+  await fetch(`${BASE}/${id}`, { method: 'POST', body: p }).catch(() => {})
+}
+
 export const campUrl = (accId: string, campId: string) =>
   `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${accId}&selected_campaign_ids=${campId}`
