@@ -10,7 +10,7 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts'
-import { ExternalLink, ChevronDown, ChevronUp, Search, X, TrendingUp } from 'lucide-react'
+import { ExternalLink, ChevronDown, ChevronUp, Search, X, TrendingUp, Check as CheckIcon } from 'lucide-react'
 import {
   fetchAds,
   fetchCampDaily,
@@ -34,7 +34,7 @@ import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
-import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay, duplicationsFor, budgetIncreases, impactDays } from './actionLog'
+import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
 import { ImpactBtn, ImpactModal } from './BudgetImpact'
 import { DuplicateModal, DupProofModal } from './Duplicate'
 import { BudgetPaceModal } from './BudgetPace'
@@ -44,7 +44,6 @@ import {
   ICONS,
   ORDER,
   PALETTE,
-  BADGE_CLS,
   ROW_BG,
   VAL_CLS,
   classify,
@@ -62,14 +61,58 @@ import { fmtDate } from '@/lib/meta'
 export type Counts = Record<string, number>
 const EMPTY_COUNTS: Counts = { escalar: 0, matar: 0, atencao: 0, perto: 0, monitorar: 0 }
 
-export function Badge({ a }: { a: ActionResult }) {
-  if (a.code === 'ok' && !a.label.trim()) return null
+/* ── Sistema visual compartilhado (checkbox, status, bolinha) ──
+ * Um padrão único pra tudo: mesmo checkbox, mesmo chip de status, mesma bolinha.
+ * É o que tira a "cara de amador" — nada de emoji/pill de tamanhos diferentes. */
+
+/** Checkbox do tema (substitui o nativo do browser). onChange recebe o novo estado. */
+export function Checkbox({ checked, onChange, title }: { checked: boolean; onChange: (next: boolean) => void; title?: string }) {
   return (
-    <span
-      className={`inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold ${BADGE_CLS[a.code] || BADGE_CLS.ok}`}
-      title={a.detail}
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onChange(!checked) }}
+      className={`inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
+        checked ? 'border-brand bg-brand text-white' : 'border-border bg-surface2/50 hover:border-brand/60'
+      }`}
     >
-      {a.label}
+      {checked && <CheckIcon className="h-2.5 w-2.5" strokeWidth={3.5} />}
+    </button>
+  )
+}
+
+/** Borda "neon" da cópia recém-comparada (destaque da duplicação filtrada).
+ *  outline (não box-shadow) pra renderizar tanto na tabela separate quanto na collapse. */
+const NEON_STYLE = { outline: '2px solid #f7b955', outlineOffset: '-2px', boxShadow: '0 0 14px rgba(247,185,85,.5)' } as const
+
+/** Cor da bolinha por classe (good/bad/warn/none) — usada nas células de data e no marcador da linha. */
+const CLS_DOT: Record<string, string> = { good: 'bg-ok', bad: 'bg-danger', warn: 'bg-warn', none: 'bg-muted2/40' }
+const CLS_TXT: Record<string, string> = { good: 'text-ok', bad: 'text-danger', warn: 'text-warn', none: 'text-muted2' }
+export function ClsDot({ cls }: { cls: string }) {
+  return <span className={`inline-block h-[7px] w-[7px] rounded-full ${CLS_DOT[cls] || 'bg-muted2/40'}`} />
+}
+
+/** Aparência única do status: bolinha + label limpo (sem emoji), largura consistente. */
+const STATUS_UI: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+  escalar:   { label: 'Escalar',   dot: 'bg-ok',     text: 'text-ok',      bg: 'bg-ok/10' },
+  matar:     { label: 'Matar',     dot: 'bg-danger', text: 'text-danger',  bg: 'bg-danger/10' },
+  atencao:   { label: 'Atenção',   dot: 'bg-warn',   text: 'text-warn',    bg: 'bg-warn/10' },
+  perto:     { label: 'Perto',     dot: 'bg-brand',  text: 'text-brand-2', bg: 'bg-brand/10' },
+  monitorar: { label: 'Monitorar', dot: 'bg-muted2', text: 'text-muted',   bg: 'bg-surface2' },
+  aguardar:  { label: 'Aguardar',  dot: 'bg-muted2', text: 'text-muted2',  bg: 'bg-surface2' },
+  ok:        { label: 'OK',        dot: 'bg-ok',     text: 'text-ok',      bg: 'bg-ok/10' },
+}
+
+export function Badge({ a }: { a: ActionResult }) {
+  if (a.code === 'sem') return <span className="text-[11px] text-muted2">—</span>
+  if (a.code === 'ok' && !a.label.trim()) return null
+  const ui = STATUS_UI[a.code] || STATUS_UI.ok
+  return (
+    <span title={a.detail} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${ui.bg} ${ui.text}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${ui.dot}`} />
+      {ui.label}
     </span>
   )
 }
@@ -86,8 +129,8 @@ export function ScaleBadge({ campId }: { campId?: string }) {
       ? `${last.budgetBefore} → ${last.budgetAfter}`
       : 'registro de escala')
   return (
-    <span className="rounded-full bg-ok/10 px-1.5 py-0.5 text-[9px] font-bold text-ok" title={`${det} · ${new Date(last.ts).toLocaleString('pt-BR')}`}>
-      ↑ {days === 0 ? 'hoje' : days + 'd'}
+    <span className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface2/60 px-1.5 py-0.5 text-[10px] font-medium text-muted2" title={`${det} · ${new Date(last.ts).toLocaleString('pt-BR')}`}>
+      ↑{days === 0 ? 'hoje' : days + 'd'}
     </span>
   )
 }
@@ -283,6 +326,116 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
   )
 }
 
+/* ── Histórico de modificações da campanha (o que foi salvo nas Ações) ──
+ * Mostra a linha do tempo do que você fez nesta campanha (orçamento, escala,
+ * duplicação, nota). Se foi duplicada, mostra ONDE está a cópia e o botão
+ * "comparar as duas" — filtra só as duas e marca a cópia com borda neon. */
+const histDateFmt = (iso: string) => {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+const dmFmt = (d: string) => d.slice(8) + '/' + d.slice(5, 7)
+
+function CampHistoryModal({ accId, name, campId, cur, onClose }: { accId: string; name: string; campId: string; cur: string; onClose: () => void }) {
+  const m = useMonitor()
+  const log = useLog()
+  const sym = curSym(cur)
+
+  // tudo que aconteceu NESTA campanha (orçamento, escala, nota, e — se for cópia — sua criação)
+  const mine = useMemo(
+    () => log.filter((e) => e.campId === campId).sort((a, b) => b.ts.localeCompare(a.ts)),
+    [log, campId],
+  )
+  // cópias feitas A PARTIR desta campanha (aqui ela é a ORIGINAL)
+  const copies = useMemo(
+    () => log.filter((e) => e.kind === 'duplicacao' && e.linkedTo === campId).sort((a, b) => b.ts.localeCompare(a.ts)),
+    [log, campId],
+  )
+  // esta campanha É uma cópia de outra?
+  const iAmCopyOf = useMemo(() => mine.find((e) => e.kind === 'duplicacao' && e.linkedTo), [mine])
+
+  function compare(origId: string, copyId: string) {
+    m.compareDuplication(accId, origId, copyId)
+    toast('Filtrando original + cópia. Se a cópia não aparecer, troque o filtro de status pra incluir pausadas.', 'ok')
+    onClose()
+  }
+
+  const budgetEntry = (e: ActionEntry) =>
+    e.budgetBefore != null && e.budgetAfter != null ? (
+      <span className="font-mono text-[11px] text-ink">{sym}{e.budgetBefore.toFixed(0)}<span className="text-ok"> → </span>{sym}{e.budgetAfter.toFixed(0)}</span>
+    ) : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="card w-full max-w-[540px] max-h-[86vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="card-header sticky top-0 z-10 bg-[#0d1220]">
+          <h3 className="truncate text-[13px] font-bold" title={name}>🕐 Histórico da campanha</h3>
+          <button onClick={onClose} className="text-muted2 hover:text-ink"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="card-body flex flex-col gap-3">
+          <div className="truncate text-[12px] text-muted" title={name}>{name}</div>
+
+          {/* relações de duplicação */}
+          {(copies.length > 0 || iAmCopyOf) && (
+            <div className="flex flex-col gap-2 rounded-[10px] border border-warn/30 bg-warn/[0.06] px-3 py-2.5">
+              {copies.length > 0 && (
+                <>
+                  <div className="text-[10.5px] font-semibold uppercase tracking-wide text-warn">Esta campanha foi duplicada</div>
+                  {copies.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2 text-[12px]">
+                      <span className="shrink-0 font-mono text-[10.5px] text-muted2">{dmFmt(c.dateBR || todayBR(new Date(c.ts)))}</span>
+                      <span className="min-w-0 flex-1 truncate text-ink" title={c.name}>↳ {c.name}</span>
+                      <button onClick={() => compare(campId, c.campId!)} className="shrink-0 rounded-[7px] border border-warn/50 bg-warn/10 px-2 py-1 text-[10.5px] font-bold text-warn hover:bg-warn/20">
+                        comparar as duas
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {iAmCopyOf && (
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="shrink-0 text-[10.5px] font-semibold uppercase tracking-wide text-warn">É cópia de</span>
+                  <span className="min-w-0 flex-1 truncate text-ink" title={iAmCopyOf.linkedName || ''}>{iAmCopyOf.linkedName || '—'}</span>
+                  <button onClick={() => compare(iAmCopyOf.linkedTo!, campId)} className="shrink-0 rounded-[7px] border border-warn/50 bg-warn/10 px-2 py-1 text-[10.5px] font-bold text-warn hover:bg-warn/20">
+                    comparar as duas
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* linha do tempo */}
+          {mine.length === 0 ? (
+            <div className="rounded-[8px] border border-border bg-surface2/40 px-3 py-6 text-center text-[12px] text-muted2">
+              Nenhuma modificação registrada nesta campanha ainda.<br />
+              <span className="text-[11px]">Ajuste orçamento, duplique ou registre uma ação — vai aparecer aqui.</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10.5px] font-semibold uppercase tracking-wide text-muted2">Linha do tempo</div>
+              {mine.map((e) => (
+                <div key={e.id} className="flex items-start gap-2.5 rounded-[9px] border border-border bg-surface2/40 px-3 py-2">
+                  <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${KIND_CLS[e.kind]}`}>{KIND_LABEL[e.kind]}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10.5px] text-muted2">{histDateFmt(e.ts)}</span>
+                      {e.sim && <span className="rounded bg-warn/10 px-1 text-[9px] font-bold text-warn">simulado</span>}
+                      {budgetEntry(e)}
+                    </div>
+                    {e.detail && <div className="mt-0.5 text-[11.5px] leading-snug text-muted">{e.detail}</div>}
+                    {e.roasAtTime != null && <div className="mt-0.5 text-[10.5px] text-muted2">ROAS no momento: <b className="text-ink">{e.roasAtTime.toFixed(2)}</b></div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Menu consolidado de ações da campanha — um único gatilho "Ações" abre um
  *  dropdown limpo. Os modais vivem AQUI (fora do dropdown) pra não fecharem
  *  junto com o menu. Itens contextuais (prova/ritmo/impacto) só aparecem quando
@@ -291,15 +444,16 @@ function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: 
   useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
-  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'pace' | 'impact'>(null)
+  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'hist'>(null)
 
   const dups = duplicationsFor(campId)
   const incs = budgetIncreases(campId)
   const impDays = impactDays(campId)
 
-  const items: { key: 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
+  const items: { key: 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'hist' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
     { key: 'budget', icon: '💰', label: 'Ajustar orçamento', desc: 'aumentar ou diminuir', show: true, accent: 'text-ok' },
     { key: 'dup', icon: '📋', label: 'Duplicar campanha', desc: 'cópia idêntica + prova 7d', show: true, accent: 'text-warn' },
+    { key: 'hist', icon: '🕐', label: 'Histórico da campanha', desc: 'o que já fiz nela + cópias', show: true, accent: 'text-brand-2' },
     { key: 'proof', icon: '🔗', label: 'Prova da duplicação', desc: 'cópia × original', show: dups.length > 0, accent: 'text-warn' },
     { key: 'pace', icon: '📈', label: 'Ritmo 3h', desc: 'ROAS desde o aumento', show: incs.length > 0, accent: 'text-brand-2' },
     { key: 'impact', icon: '📊', label: 'Impacto do aumento', desc: 'antes × depois', show: impDays.length > 0, accent: 'text-brand-2' },
@@ -346,6 +500,7 @@ function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: 
       )}
 
       {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
+      {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
       {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'pace' && <BudgetPaceModal accId={accId} name={name} campId={campId} cur={cur} incs={incs} onClose={() => setModal(null)} />}
@@ -761,10 +916,10 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <table className="w-full border-collapse text-[12px] [&_td]:border-border/20 [&_th]:border-border/20 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
                 <thead>
                   <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
-                    <th className="w-8 py-2.5 text-center">
-                      <input type="checkbox" checked={allSel} onChange={(e) => m.selectMany(rowKeys, e.target.checked)} className="cursor-pointer accent-[#6366f1]" title="Selecionar todas visíveis" />
+                    <th className="w-9 py-2.5 text-center">
+                      <Checkbox checked={allSel} onChange={(next) => m.selectMany(rowKeys, next)} title="Selecionar todas visíveis" />
                     </th>
-                    <th className="w-8 py-2.5 text-center">●</th>
+                    <th className="w-8 py-2.5 text-center" />
                     <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" />
                     <th className="px-2 py-2.5 text-center">Status</th>
                     <th className="px-2 py-2.5 text-center text-[10.5px]" title="Antes → depois do aumento de orçamento de hoje">📈 Aumento</th>
@@ -930,14 +1085,15 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
 
   const money = (v: number | null) => (v == null ? '—' : sym + v.toFixed(2))
   const key = `${acc.id}::${r.id}`
+  const neon = m.neonKeys.has(key)
 
   return (
     <>
-      <tr className={`border-b border-border align-middle ${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}>
+      <tr style={neon ? NEON_STYLE : undefined} className={`border-b border-border align-middle ${neon ? 'bg-warn/[0.08]' : `${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}`}>
         <td className="py-2 text-center">
-          <input type="checkbox" checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} className="cursor-pointer accent-[#6366f1]" />
+          <Checkbox checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} />
         </td>
-        <td className="py-2 text-center">{ICONS[r.cls]}</td>
+        <td className="py-2 text-center"><ClsDot cls={r.cls} /></td>
         <td className="py-2 pl-3 pr-2">
           <div className="flex items-center gap-1">
             <span className="inline-block max-w-[230px] truncate align-middle" title={r.name}>
@@ -1018,26 +1174,142 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
   )
 }
 
+/* ── Célula "Histórico" (resumo do que já foi feito na campanha) ──
+ * Chips compactos: última mexida de orçamento, se foi duplicada / é cópia.
+ * Clicar em qualquer lugar abre a timeline completa (CampHistoryModal). */
+function HistCell({ accId, campId, name, cur }: { accId: string; campId: string; name: string; cur: string }) {
+  useLog()
+  const [open, setOpen] = useState(false)
+  const last = lastScale(campId)
+  const incs = budgetIncreases(campId, 90)
+  const dups = duplicationsFor(campId)
+  const copias = dups.filter((e) => e.linkedTo === campId) // aqui é a original
+  const ehCopia = dups.find((e) => e.campId === campId)    // aqui é a cópia
+  const days = last ? Math.floor((Date.now() - new Date(last.ts).getTime()) / 86400000) : 0
+  const kindShort = last?.kind === 'orcamento' ? 'orçam.' : last?.kind === 'escala' ? 'escala' : 'mexida'
+  const vazio = !last && copias.length === 0 && !ehCopia
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Ver histórico completo desta campanha"
+        className="flex min-w-[130px] flex-col items-start gap-1.5 text-left text-[12px] leading-tight hover:opacity-70"
+      >
+        {vazio && <span className="text-muted2">— <span className="text-[11px] text-muted2/70">sem mexidas</span></span>}
+        {last && (
+          <span className="text-muted">↑ {kindShort} {days === 0 ? 'hoje' : days + 'd'}{incs.length > 1 ? ` · ${incs.length}×` : ''}</span>
+        )}
+        {copias.length > 0 && (
+          <span className="font-medium text-warn">duplicada {dmFmt(copias[0].dateBR || todayBR(new Date(copias[0].ts)))}{copias.length > 1 ? ` (${copias.length})` : ''}</span>
+        )}
+        {ehCopia && <span className="font-medium text-warn">é cópia</span>}
+      </button>
+      {open && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+/* Sequência de dias COM VENDA terminando numa data-âncora, contando pra trás.
+ * Ex.: âncora 22/06 → conta 22, 21, 20… enquanto teve venda; para no primeiro
+ * dia sem venda (ou sem dados). len = tamanho da sequência; roas = ROAS acumulado
+ * da sequência (desempate: quem vende consistente E lucra fica no topo);
+ * days = datas que formam a sequência (pra destacar as células). */
+function salesStreak(
+  dates: Record<string, { roas: number | null; sales: number; spend: number }>,
+  allDates: string[],
+  anchor: string,
+): { len: number; roas: number | null; days: Set<string> } {
+  const idx = allDates.indexOf(anchor)
+  const days = new Set<string>()
+  if (idx < 0) return { len: 0, roas: null, days }
+  let len = 0, spend = 0, rev = 0
+  for (let i = idx; i >= 0; i--) {
+    const d = allDates[i]
+    const day = dates[d]
+    if (day && day.sales > 0) {
+      len++; days.add(d); spend += day.spend; rev += (day.roas ?? 0) * day.spend
+    } else break
+  }
+  return { len, roas: spend > 0 ? rev / spend : null, days }
+}
+
+/* Colunas configuráveis do Histórico (o usuário liga/desliga e escolhe o lado).
+ * Status vem DESLIGADO por padrão (fica só a cor dos dias); Histórico LIGADO. */
+const HISTCOLS_KEY = 'monitor_histcols_v1'
+interface HistCols { status: boolean; hist: boolean; pos: 'left' | 'right' }
+const DEF_HISTCOLS: HistCols = { status: false, hist: true, pos: 'right' }
+function readHistCols(): HistCols {
+  try { return { ...DEF_HISTCOLS, ...JSON.parse(localStorage.getItem(HISTCOLS_KEY) || '{}') } }
+  catch { return { ...DEF_HISTCOLS } }
+}
+
 /* ── Histórico ── */
 export function HistoricoView({ items }: { items: CacheItem[] }) {
   const m = useMonitor()
   const s = m.settings
   const [q, setQ] = useState('')
   const ql = q.trim().toLowerCase()
+  const [cols, setCols] = useState<HistCols>(readHistCols)
+  useEffect(() => { localStorage.setItem(HISTCOLS_KEY, JSON.stringify(cols)) }, [cols])
+  const toggleCol = (k: 'status' | 'hist') => setCols((c) => ({ ...c, [k]: !c[k] }))
+  // data-âncora do ordenamento por sequência de vendas (clique no cabeçalho da data)
+  const [streakAnchor, setStreakAnchor] = useState<string | null>(null)
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative w-full max-w-[420px]">
-        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar campanha por nome/nomenclatura..."
-          className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-8 text-[12px] text-ink"
-        />
-        {q && (
-          <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted2 hover:text-ink">
-            <X className="h-3.5 w-3.5" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-[420px]">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar campanha por nome/nomenclatura..."
+            className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-8 text-[12px] text-ink"
+          />
+          {q && (
+            <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted2 hover:text-ink">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* controle de colunas: liga/desliga Histórico e Status + escolhe o lado */}
+        <div className="flex flex-wrap items-center gap-1.5 rounded-[9px] border border-border bg-[#0a0c19] px-2 py-1">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted2">Colunas</span>
+          <button
+            onClick={() => toggleCol('hist')}
+            title="Mostrar/ocultar a coluna Histórico (o que já fiz na campanha)"
+            className={`rounded-[6px] border px-2 py-0.5 text-[11px] font-semibold transition-colors ${cols.hist ? 'border-brand bg-brand/15 text-brand-2' : 'border-border text-muted2 hover:text-ink'}`}
+          >
+            {cols.hist ? '✓ ' : ''}Histórico
           </button>
+          <button
+            onClick={() => toggleCol('status')}
+            title="Mostrar/ocultar a coluna Status (recomendação automática)"
+            className={`rounded-[6px] border px-2 py-0.5 text-[11px] font-semibold transition-colors ${cols.status ? 'border-brand bg-brand/15 text-brand-2' : 'border-border text-muted2 hover:text-ink'}`}
+          >
+            {cols.status ? '✓ ' : ''}Status
+          </button>
+          {(cols.hist || cols.status) && (
+            <>
+              <span className="mx-0.5 h-4 w-px bg-border" />
+              <button
+                onClick={() => setCols((c) => ({ ...c, pos: c.pos === 'left' ? 'right' : 'left' }))}
+                title="De que lado das datas essas colunas ficam"
+                className="rounded-[6px] border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:text-ink"
+              >
+                {cols.pos === 'left' ? '⟵ antes das datas' : 'depois das datas ⟶'}
+              </button>
+            </>
+          )}
+        </div>
+
+        {streakAnchor ? (
+          <button onClick={() => setStreakAnchor(null)} className="rounded-[6px] border border-brand/40 bg-brand/10 px-2 py-1 text-[11px] font-semibold text-brand-2 hover:bg-brand/20">
+            🔥 ordenado por vendas seguidas até {dmFmt(streakAnchor)} · ✕ limpar
+          </button>
+        ) : (
+          <span className="text-[11px] text-muted2">💡 clique numa <b className="text-muted">data</b> pra ordenar pelas campanhas com mais vendas seguidas até aquele dia</span>
         )}
       </div>
       {items.map((item, idx) => {
@@ -1048,77 +1320,123 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
             </div>
           )
         if (!item.campMap || !item.dates) return null
+        // âncora do streak só vale se a data existe nesta conta
+        const anchor = streakAnchor && item.dates.includes(streakAnchor) ? streakAnchor : null
         const camps = Object.entries(item.campMap)
-          .map(([cid, camp]) => ({ cid, camp, action: analyzeAction(camp.dates, item.dates!, s) }))
+          .map(([cid, camp]) => ({
+            cid,
+            camp,
+            action: analyzeAction(camp.dates, item.dates!, s),
+            st: anchor ? salesStreak(camp.dates, item.dates!, anchor) : null,
+          }))
           .filter(
             (x) =>
               (!m.actionFilter || x.action.code === m.actionFilter) &&
               (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${x.cid}`)) &&
               (!ql || (x.camp.name || '').toLowerCase().includes(ql)),
           )
+        if (anchor)
+          camps.sort((a, b) => (b.st!.len - a.st!.len) || ((b.st!.roas ?? -1) - (a.st!.roas ?? -1)))
         if (!camps.length) return null
+        const rowKeys = camps.map((x) => `${item.acc.id}::${x.cid}`)
+        const allSel = rowKeys.length > 0 && rowKeys.every((k) => m.campSel.has(k))
         return (
           <div key={idx}>
             <div className="mb-2 flex items-center gap-2 text-[12px]">
               <span className="h-2 w-2 rounded-full bg-brand" />
               <span className="font-bold">{item.acc.name}</span>
             </div>
-            <div className="card overflow-x-auto">
+            <div className="card overflow-x-auto p-0">
               <table className="w-full text-[12px]">
                 <thead>
-                  <tr className="border-b border-border text-[11px] text-muted2">
-                    <th className="py-2 pl-3 text-left">Campanha</th>
-                    {item.dates!.map((d) => (
-                      <th key={d} className="px-1 py-2 text-center" title={d}>
-                        {fmtDate(d)}
-                      </th>
-                    ))}
-                    <th className="py-2 pl-2 text-left">Ação</th>
+                  <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-wide text-muted2">
+                    <th className="w-9 py-3 text-center">
+                      <Checkbox checked={allSel} onChange={(next) => m.selectMany(rowKeys, next)} title="Selecionar todas visíveis" />
+                    </th>
+                    <th className="py-3 pl-1 text-left">Campanha</th>
+                    {cols.pos === 'left' && cols.status && <th className="px-3 py-3 text-left">Status</th>}
+                    {cols.pos === 'left' && cols.hist && <th className="px-3 py-3 text-left">Histórico</th>}
+                    {item.dates!.map((d) => {
+                      const active = streakAnchor === d
+                      return (
+                        <th
+                          key={d}
+                          onClick={() => setStreakAnchor((a) => (a === d ? null : d))}
+                          title={`Ordenar pelas campanhas com mais vendas seguidas até ${d}`}
+                          className={`cursor-pointer select-none px-1.5 py-3 text-center font-medium transition-colors hover:text-ink ${active ? 'bg-brand/10 text-brand-2' : ''}`}
+                        >
+                          {fmtDate(d)}{active ? ' 🔥' : ''}
+                        </th>
+                      )
+                    })}
+                    {cols.pos === 'right' && cols.status && <th className="px-3 py-3 text-left">Status</th>}
+                    {cols.pos === 'right' && cols.hist && <th className="px-3 py-3 text-left">Histórico</th>}
+                    <th className="w-16 py-3 pr-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {camps.map(({ cid, camp, action }) => (
-                    <tr key={cid} className="border-b border-border/50">
-                      <td className="py-1.5 pl-3 pr-2">
-                        <div className="flex items-start gap-1">
-                          <span className="min-w-[200px] max-w-[340px] whitespace-normal break-words leading-tight" title={camp.name}>
+                  {camps.map(({ cid, camp, action, st }) => {
+                    const key = `${item.acc.id}::${cid}`
+                    const sel = m.campSel.has(key)
+                    const neon = m.neonKeys.has(key)
+                    return (
+                    <tr key={cid} style={neon ? NEON_STYLE : undefined} className={`border-b border-border/40 transition-colors ${neon ? 'relative bg-warn/[0.08]' : sel ? 'bg-brand/[0.07]' : 'hover:bg-surface2/25'}`}>
+                      <td className="py-3.5 text-center">
+                        <Checkbox checked={sel} onChange={() => m.toggleCamp(key)} />
+                      </td>
+                      <td className="py-3.5 pl-1 pr-2">
+                        <div className="flex items-start gap-1.5">
+                          {st && st.len > 0 && (
+                            <span className="mt-px shrink-0 rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-bold text-brand-2" title={`${st.len} dia(s) seguidos com venda até ${streakAnchor}${st.roas != null ? ` · ROAS ${st.roas.toFixed(2)} na sequência` : ''}`}>
+                              🔥{st.len}
+                            </span>
+                          )}
+                          <span className="min-w-[190px] max-w-[340px] whitespace-normal break-words leading-snug text-ink" title={camp.name}>
                             {camp.name}
                           </span>
-                          <a href={campUrl(item.acc.id, cid)} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2">
+                          <a href={campUrl(item.acc.id, cid)} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </div>
                       </td>
+                      {cols.pos === 'left' && cols.status && <td className="px-3 py-3.5"><Badge a={action} /></td>}
+                      {cols.pos === 'left' && cols.hist && <td className="px-3 py-3.5"><HistCell accId={item.acc.id} campId={cid} name={camp.name} cur={item.acc.cur} /></td>}
                       {item.dates!.map((d) => {
                         const day = camp.dates[d]
                         if (!day)
                           return (
-                            <td key={d} className="px-1 py-1.5 text-center text-muted2">—</td>
+                            <td key={d} className="px-1.5 py-3.5 text-center text-muted2">·</td>
                           )
                         const cls = classify(day.roas, day.cpa, day.sales, s)
-                        const bg = { good: 'bg-ok/10', bad: 'bg-danger/10', warn: 'bg-warn/10', none: '' }[cls]
+                        const bg = { good: 'bg-ok/[0.07]', bad: 'bg-danger/[0.07]', warn: 'bg-warn/[0.06]', none: '' }[cls]
+                        const inStreak = st?.days.has(d)
                         return (
                           <td
                             key={d}
-                            className={`px-1 py-1.5 text-center ${bg}`}
-                            title={`ROAS:${day.roas !== null ? day.roas.toFixed(2) : '—'} | ${day.sales}v | $${day.spend.toFixed(2)}`}
+                            style={inStreak ? { boxShadow: 'inset 0 -2px 0 rgba(139,124,255,.7)' } : undefined}
+                            className={`px-1.5 py-3.5 text-center ${bg} ${inStreak ? 'bg-brand/[0.08]' : ''}`}
+                            title={`ROAS ${day.roas !== null ? day.roas.toFixed(2) : '—'} · ${day.sales} venda(s) · gasto $${day.spend.toFixed(2)}`}
                           >
-                            <div>{ICONS[cls]}</div>
-                            <div className="font-mono text-[10px] text-muted">
-                              {day.roas !== null ? day.roas.toFixed(2) : '—'}
-                            </div>
+                            <span className="inline-flex items-center gap-1">
+                              {cls !== 'none' && <span className={`h-[6px] w-[6px] rounded-full ${CLS_DOT[cls]}`} />}
+                              <span className={`font-mono text-[11px] tabular-nums ${CLS_TXT[cls]}`}>
+                                {day.roas !== null ? day.roas.toFixed(2) : '—'}
+                              </span>
+                            </span>
                           </td>
                         )
                       })}
-                      <td className="py-1.5 pl-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge a={action} />
-                          <ScaleBadge campId={cid} />
+                      {cols.pos === 'right' && cols.status && <td className="px-3 py-3.5"><Badge a={action} /></td>}
+                      {cols.pos === 'right' && cols.hist && <td className="px-3 py-3.5"><HistCell accId={item.acc.id} campId={cid} name={camp.name} cur={item.acc.cur} /></td>}
+                      <td className="py-3.5 pr-4">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!cols.hist && <ScaleBadge campId={cid} />}
                           <ActionsMenu accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

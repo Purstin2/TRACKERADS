@@ -261,8 +261,16 @@ export async function fetchNaoTrackeado(sinceDays = 30): Promise<NaoTrackeadoOrd
     .limit(1000)
   return (data || [])
     .map((o) => {
-      const issue = classifyTracking(o as KirvanoOrder)
-      return issue ? ({ ...(o as KirvanoOrder), issue }) : null
+      const order = o as KirvanoOrder
+      const issue = classifyTracking(order)
+      if (!issue) return null
+      // erro_envio antigo (>7d) não é acionável: re-disparar não reatribui a campanha
+      // (passou da janela de atribuição do Meta). Some da lista pra não virar lixo permanente.
+      if (issue === 'erro_envio' && order.created_at) {
+        const ageDays = (Date.now() - new Date(order.created_at).getTime()) / 86400000
+        if (ageDays > 7) return null
+      }
+      return { ...order, issue }
     })
     .filter(Boolean) as NaoTrackeadoOrder[]
 }

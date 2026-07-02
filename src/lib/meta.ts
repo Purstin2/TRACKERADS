@@ -360,72 +360,86 @@ export interface CopyCampaignResult {
   ad_object_ids?: { ad_object_type: string; source_id: string; copied_id: string }[]
 }
 
-/** Polling do job assíncrono do /copies?async=true.
- *  Quando completo, result pode ser objeto direto ou JSON string (batch format). */
-async function pollCopyJob(jobId: string, t: string): Promise<CopyCampaignResult> {
-  const p = new URLSearchParams({ fields: 'id,completion_status,result,error_message', access_token: t })
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 3000))
-    const j = await (await fetch(`${BASE}/${jobId}?${p}`)).json()
-    if (j.error) throw new Error(`${j.error.message} (code ${j.error.code})`)
-    if (j.completion_status === 'Job Failed') throw new Error(j.error_message || 'Cópia falhou no Meta')
-    if (j.completion_status === 'Job Completed') {
-      const res = j.result
-      // formato direto (objeto)
-      if (res && typeof res === 'object' && res.copied_campaign_id) return res as CopyCampaignResult
-      // formato batch (string JSON de array)
-      if (typeof res === 'string') {
-        const arr: { code: number; body: string }[] = JSON.parse(res)
-        const first = arr[0]
-        if (!first) throw new Error('Meta retornou resultado vazio')
-        if (first.code !== 200) {
-          const eb = JSON.parse(first.body || '{}'); const e = eb.error || {}
-          throw new Error(`${e.message || 'Erro'} (code ${e.code || first.code})`)
-        }
-        return JSON.parse(first.body) as CopyCampaignResult
-      }
-      // formato inline (resultado direto no próprio job)
-      if (j.copied_campaign_id) return j as CopyCampaignResult
-      throw new Error(`Resultado inesperado: ${JSON.stringify(j).slice(0, 200)}`)
-    }
+function fmtCopyErr(e: { message?: string; code?: number; error_subcode?: number; error_user_msg?: string }): string {
+  let msg = `${e.message || 'Erro'} (code ${e.code}${e.error_subcode ? '/' + e.error_subcode : ''})`
+  if (e.error_subcode === 2490392) {
+    msg = 'Posicionamento incompatível: o conjunto tem "Inicial do Explorar do Instagram" sem a seção "Explorar". Corrija o posicionamento no Gerenciador de Anúncios e tente novamente.'
+  } else if (e.error_user_msg) {
+    msg += ` — ${e.error_user_msg}`
   }
-  throw new Error('Timeout aguardando cópia (>120s) — verifique o Gerenciador de Anúncios')
+  return msg
 }
 
-/** Duplica uma campanha na Meta. Usa async=true como query param do /copies
- *  (suporta campanhas grandes; a API síncrona falha com >3 objetos). */
+/** Duplica uma campanha na Meta por partes (1 objeto por chamada — evita o limite de 3 do sync API).
+ *  Fluxo: copia campanha (shell) → busca adsets → copia cada adset → copia cada anúncio. */
 export async function copyCampaign(
   campId: string,
   t: string,
   opts: { deepCopy?: boolean; status?: 'ACTIVE' | 'PAUSED' | 'INHERITED_FROM_SOURCE'; renamePrefix?: string; renameSuffix?: string } = {},
   onStatus?: (msg: string) => void,
 ): Promise<CopyCampaignResult> {
-  const body = new URLSearchParams()
-  body.set('deep_copy', String(opts.deepCopy ?? true))
-  body.set('status_option', opts.status || 'PAUSED')
-  body.set('access_token', t)
-  const prefix = opts.renamePrefix ?? ''
-  const suffix = opts.renameSuffix ?? ''
-  if (prefix || suffix) {
-    body.set('rename_options', JSON.stringify({ rename_prefix: prefix, rename_suffix: suffix }))
+  const statusOption = opts.status || 'PAUSED'
+  const renamePrefix = opts.renamePrefix ?? ''
+  const renameSuffix = opts.renameSuffix ?? ''
+
+  // 1. Copia só a estrutura da campanha (sem adsets/anúncios)
+  onStatus?.('Copiando estrutura da campanha…')
+  const campBody = new URLSearchParams()
+  campBody.set('deep_copy', 'false')
+  campBody.set('status_option', statusOption)
+  campBody.set('access_token', t)
+  if (renamePrefix || renameSuffix) {
+    campBody.set('rename_options', JSON.stringify({ rename_prefix: renamePrefix, rename_suffix: renameSuffix }))
+  }
+  const campJ = await (await fetch(`${BASE}/${campId}/copies`, { method: 'POST', body: campBody })).json()
+  if (campJ.error) throw new Error(fmtCopyErr(campJ.error))
+  const newCampId: string = campJ.copied_campaign_id
+  if (!newCampId) throw new Error(`Meta não retornou ID da campanha. Resposta: ${JSON.stringify(campJ).slice(0, 200)}`)
+
+  // 2. Busca conjuntos da campanha original
+  onStatus?.('Buscando conjuntos de anúncios…')
+  const adsetsP = new URLSearchParams({ fields: 'id', limit: '200', access_token: t })
+  const adsetsJ = await (await fetch(`${BASE}/${campId}/adsets?${adsetsP}`)).json()
+  if (adsetsJ.error) throw new Error(adsetsJ.error.message)
+  const adsets: { id: string }[] = adsetsJ.data || []
+
+  const ad_object_ids: NonNullable<CopyCampaignResult['ad_object_ids']> = []
+
+  // 3. Para cada conjunto: copia o conjunto e depois cada anúncio
+  for (let i = 0; i < adsets.length; i++) {
+    const adsetId = adsets[i].id
+    onStatus?.(`Copiando conjunto ${i + 1}/${adsets.length}…`)
+
+    const adsetBody = new URLSearchParams()
+    adsetBody.set('deep_copy', 'false')
+    adsetBody.set('status_option', statusOption)
+    adsetBody.set('campaign_id', newCampId)
+    adsetBody.set('access_token', t)
+    const adsetJ = await (await fetch(`${BASE}/${adsetId}/copies`, { method: 'POST', body: adsetBody })).json()
+    if (adsetJ.error) throw new Error(fmtCopyErr(adsetJ.error))
+    const newAdsetId: string = adsetJ.copied_adset_id || adsetJ.id
+    if (!newAdsetId) throw new Error(`Meta não retornou ID do conjunto ${i + 1}. Resposta: ${JSON.stringify(adsetJ).slice(0, 200)}`)
+    ad_object_ids.push({ ad_object_type: 'AD_SET', source_id: adsetId, copied_id: newAdsetId })
+
+    // Busca anúncios do conjunto original
+    const adsP = new URLSearchParams({ fields: 'id', limit: '200', access_token: t })
+    const adsJ = await (await fetch(`${BASE}/${adsetId}/ads?${adsP}`)).json()
+    if (adsJ.error) throw new Error(adsJ.error.message)
+    const ads: { id: string }[] = adsJ.data || []
+
+    for (let j = 0; j < ads.length; j++) {
+      onStatus?.(`Conjunto ${i + 1}/${adsets.length} · anúncio ${j + 1}/${ads.length}…`)
+      const adBody = new URLSearchParams()
+      adBody.set('deep_copy', 'false')
+      adBody.set('status_option', statusOption)
+      adBody.set('adset_id', newAdsetId)
+      adBody.set('access_token', t)
+      const adJ = await (await fetch(`${BASE}/${ads[j].id}/copies`, { method: 'POST', body: adBody })).json()
+      if (adJ.error) throw new Error(fmtCopyErr(adJ.error))
+    }
   }
 
-  // async=true como query param — suportado pelo endpoint /copies
-  const r = await fetch(`${BASE}/${campId}/copies?async=true`, { method: 'POST', body })
-  const j = await r.json()
-  if (j.error) {
-    const e = j.error
-    let msg = `${e.message} (code ${e.code}${e.error_subcode ? '/' + e.error_subcode : ''})`
-    if (e.error_user_msg) msg += ` — ${e.error_user_msg}`
-    throw new Error(msg)
-  }
-  // resposta síncrona (campanha pequena ou Meta ignorou async) — retorna direto
-  if (j.copied_campaign_id) return j as CopyCampaignResult
-  // resposta assíncrona — jobId em async_session_id ou id
-  const jobId = j.async_session_id || j.id
-  if (!jobId) throw new Error(`Meta não retornou job ID. Resposta: ${JSON.stringify(j).slice(0, 300)}`)
-  onStatus?.('Aguardando o Meta processar a cópia…')
-  return pollCopyJob(jobId, t)
+  return { copied_campaign_id: newCampId, ad_object_ids }
 }
 
 /** Lê só o nome de uma campanha (pra confirmar o nome da cópia recém-criada). */

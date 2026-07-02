@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Copy, X, GitBranch } from 'lucide-react'
 import { useMonitor } from './MonitorContext'
 import { addAction, todayBR, duplicationsFor, useLog, type ActionEntry } from './actionLog'
-import { copyCampaign, fetchCampaignName, renameEntity, updateBudget, fetchCampDaily, getSales, getRevenue } from '@/lib/meta'
+import { copyCampaign, fetchCampaignName, renameEntity, getBudget, setBudget, fetchCampDaily, fetchCampaignMeta, getSales, getRevenue } from '@/lib/meta'
 import { toast } from '@/components/ui/toast'
 
 const curSym = (c: string) => (c === 'USD' ? '$' : c === 'EUR' ? '€' : 'R$')
@@ -30,18 +30,88 @@ export function DuplicateBtn({ accId, name, campId, roas, cur, spend, sales }: {
 export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; onClose: () => void }) {
   const m = useMonitor()
   const log = useLog()
+  const [mode, setMode] = useState<'auto' | 'link'>('auto')
   const [status, setStatus] = useState<'PAUSED' | 'ACTIVE'>('PAUSED')
   const [nomeCopia, setNomeCopia] = useState(`${name} - cópia`)
   const [orcamento, setOrcamento] = useState('')
+  const [qtd, setQtd] = useState(1)
+  const [budgetLevel, setBudgetLevel] = useState<'campaign' | 'adset'>('adset')
+  const [origInfo, setOrigInfo] = useState<{ level: 'campaign' | 'adset'; total: number; count: number } | null>(null)
   const [applying, setApplying] = useState(false)
   const [applyingMsg, setApplyingMsg] = useState('')
   const [err, setErr] = useState('')
+
+  // detecta a estrutura da original (CBO/ABO) pra usar como padrão do seletor
+  useEffect(() => {
+    getBudget(campId, m.token.trim())
+      .then((b) => { setOrigInfo({ level: b.level, total: b.total, count: b.items.length }); setBudgetLevel(b.level) })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campId])
+
+  // modo "linkar": lista de campanhas da conta pra escolher qual é a cópia feita no Face
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; status?: string; updatedTime?: string }[]>([])
+  const [loadingCamps, setLoadingCamps] = useState(false)
+  const [campErr, setCampErr] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedCopyId, setSelectedCopyId] = useState('')
 
   // duplicações anteriores onde esta campanha foi a ORIGINAL (linkedTo = campId)
   const prevDups = useMemo(
     () => log.filter((e) => e.kind === 'duplicacao' && e.linkedTo === campId).sort((a, b) => b.ts.localeCompare(a.ts)),
     [log, campId],
   )
+
+  // busca as campanhas da conta ao entrar no modo "linkar" (lazy, 1×)
+  useEffect(() => {
+    if (mode !== 'link' || campaigns.length || loadingCamps) return
+    setLoadingCamps(true); setCampErr('')
+    fetchCampaignMeta(accId, m.token.trim())
+      .then((list) =>
+        setCampaigns(
+          (list || [])
+            .map((c: any) => ({ id: c.id, name: c.name || c.id, status: c.effective_status || c.status, updatedTime: c.updated_time }))
+            .sort((a: any, b: any) => new Date(b.updatedTime || 0).getTime() - new Date(a.updatedTime || 0).getTime()),
+        ),
+      )
+      .catch((e) => setCampErr(e.message || 'falha ao buscar campanhas'))
+      .finally(() => setLoadingCamps(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  // opções: exclui a própria original e as já linkadas como cópia dela; aplica busca
+  const copyOptions = useMemo(() => {
+    const linked = new Set(prevDups.map((d) => d.campId))
+    const q = search.trim().toLowerCase()
+    return campaigns
+      .filter((c) => c.id !== campId && !linked.has(c.id))
+      .filter((c) => !q || c.name.toLowerCase().includes(q))
+  }, [campaigns, prevDups, campId, search])
+
+  // linka uma cópia já criada manualmente no Facebook à campanha original
+  function applyLink() {
+    const copy = campaigns.find((c) => c.id === selectedCopyId)
+    if (!copy) { setErr('Selecione qual campanha é a cópia.'); return }
+    setApplying(true); setErr('')
+    addAction({
+      accId,
+      campId: copy.id,
+      name: copy.name,
+      kind: 'duplicacao',
+      sim: false,
+      cur,
+      linkedTo: campId,
+      linkedName: name,
+      roasAtTime: roas,
+      spendAtTime: spend ?? null,
+      salesAtTime: sales ?? null,
+      dateBR: todayBR(),
+      verifyBy: plus7(),
+      detail: `Duplicada MANUALMENTE no Facebook de "${name}" · linkada pela lista`,
+    })
+    toast(`Linkado: "${copy.name}" registrada como cópia de "${name}"`, 'ok')
+    onClose()
+  }
 
   // calcula prefix/suffix pra rename_options do Meta (aplica a campanha + conjuntos + anúncios)
   const renameParts = useMemo(() => {
@@ -54,49 +124,64 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
   const nomeECustom = !nomeCopia.startsWith(name) && !nomeCopia.endsWith(name)
 
   async function apply() {
+    const N = Math.max(1, Math.min(20, Math.round(qtd) || 1))
+    const orc = parseInt(orcamento.trim() || '0')       // R$/dia digitado
+    const cents = orc > 0 ? Math.round(orc * 100) : 0    // Meta usa centavos
+    const estr = budgetLevel === 'campaign' ? 'CBO' : 'ABO'
     setApplying(true); setApplyingMsg('Enviando…'); setErr('')
+    let feitas = 0, budgetWarn = 0
     try {
-      let newId = `sim-${campId}-${Date.now().toString(36)}`
-      let newName = nomeCopia
-      if (m.exec) {
-        const res = await copyCampaign(campId, m.token.trim(), { deepCopy: true, status, ...renameParts }, setApplyingMsg)
-        newId = res.copied_campaign_id
-        // se nome é completamente custom, renomeia a campanha após a cópia
-        if (nomeECustom) await renameEntity(newId, nomeCopia, m.token.trim())
-        try { newName = (await fetchCampaignName(newId, m.token.trim())) || nomeCopia } catch { /* mantém */ }
-        // orçamento: tenta nos dois níveis — CBO (campanha) e ABO (cada conjunto)
-        const orc = parseInt(orcamento.trim() || '0')
-        if (orc > 0) {
-          await updateBudget(newId, orc, m.token.trim())
-          const adsetIds = (res.ad_object_ids || []).filter((o) => o.ad_object_type === 'AD_SET').map((o) => o.copied_id)
-          await Promise.all(adsetIds.map((id) => updateBudget(id, orc, m.token.trim())))
+      for (let i = 1; i <= N; i++) {
+        const sfx = N > 1 ? ` ${i}` : ''
+        setApplyingMsg(N > 1 ? `Cópia ${i}/${N}…` : 'Enviando…')
+        let newId = `sim-${campId}-${Date.now().toString(36)}-${i}`
+        let newName = `${nomeCopia}${sfx}`
+        if (m.exec) {
+          const rp = { renamePrefix: renameParts.renamePrefix, renameSuffix: `${renameParts.renameSuffix}${sfx}` }
+          const res = await copyCampaign(
+            campId, m.token.trim(), { deepCopy: true, status, ...rp },
+            (msg) => setApplyingMsg(N > 1 ? `Cópia ${i}/${N} · ${msg}` : msg),
+          )
+          newId = res.copied_campaign_id
+          if (nomeECustom) await renameEntity(newId, `${nomeCopia}${sfx}`, m.token.trim())
+          try { newName = (await fetchCampaignName(newId, m.token.trim())) || newName } catch { /* mantém */ }
+          // orçamento no nível escolhido (CBO = campanha; ABO = cada conjunto). Best-effort.
+          if (cents > 0) {
+            try {
+              if (budgetLevel === 'campaign') {
+                await setBudget(newId, cents, m.token.trim())
+              } else {
+                const adsetIds = (res.ad_object_ids || []).filter((o) => o.ad_object_type === 'AD_SET').map((o) => o.copied_id)
+                for (const aid of adsetIds) await setBudget(aid, cents, m.token.trim())
+              }
+            } catch { budgetWarn++ }
+          }
         }
+        addAction({
+          accId,
+          campId: newId,
+          name: newName,
+          kind: 'duplicacao',
+          sim: !m.exec,
+          cur,
+          linkedTo: campId,
+          linkedName: name,
+          roasAtTime: roas,
+          spendAtTime: spend ?? null,
+          salesAtTime: sales ?? null,
+          dateBR: todayBR(),
+          verifyBy: plus7(),
+          detail: `Duplicada de "${name}"${N > 1 ? ` (${i}/${N})` : ''} · ${estr} · ${status === 'ACTIVE' ? 'ativa' : 'pausada'}${m.exec ? '' : ' [simulado]'}`,
+        })
+        feitas++
       }
-      addAction({
-        accId,
-        campId: newId,
-        name: newName,
-        kind: 'duplicacao',
-        sim: !m.exec,
-        cur,
-        linkedTo: campId,
-        linkedName: name,
-        roasAtTime: roas,
-        spendAtTime: spend ?? null,
-        salesAtTime: sales ?? null,
-        dateBR: todayBR(),
-        verifyBy: plus7(),
-        detail: `Duplicada de "${name}" · ${status === 'ACTIVE' ? 'ativa' : 'pausada'}${m.exec ? '' : ' [simulado]'}`,
-      })
-      toast(
-        m.exec
-          ? `Campanha duplicada (${status === 'ACTIVE' ? 'ativa' : 'pausada'}) e linkada no log`
-          : `Simulado (Execução OFF): registrado link sem criar na Meta`,
-        'ok',
-      )
+      const base = m.exec
+        ? `${feitas} cópia(s) ${estr} criada(s) (${status === 'ACTIVE' ? 'ativas' : 'pausadas'}) e linkada(s)`
+        : `Simulado (Execução OFF): ${feitas} link(s) registrado(s) sem criar na Meta`
+      toast(budgetWarn ? `${base} · ⚠ orçamento não aplicado em ${budgetWarn} (ajuste manual)` : base, budgetWarn ? 'warn' : 'ok')
       onClose()
     } catch (e: any) {
-      setErr(e.message || 'falha ao duplicar')
+      setErr(`${feitas > 0 ? `${feitas} cópia(s) feita(s). ` : ''}${e.message || 'falha ao duplicar'}`)
       setApplying(false)
     }
   }
@@ -111,9 +196,28 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
         <div className="card-body flex flex-col gap-3">
           <div className="truncate text-[12px] text-muted" title={name}>{name}</div>
 
+          {/* modo: duplicar automático na Meta × linkar cópia feita à mão no Face */}
+          <div className="flex gap-1 rounded-[9px] border border-border bg-[#0a0c19] p-0.5">
+            <button
+              onClick={() => { setMode('auto'); setErr('') }}
+              className={`flex-1 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold transition-colors ${mode === 'auto' ? 'bg-brand text-white' : 'text-muted2 hover:text-ink'}`}
+            >
+              ⚙️ Automático (Meta)
+            </button>
+            <button
+              onClick={() => { setMode('link'); setErr('') }}
+              className={`flex-1 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold transition-colors ${mode === 'link' ? 'bg-brand text-white' : 'text-muted2 hover:text-ink'}`}
+            >
+              🔗 Já dupliquei no Face
+            </button>
+          </div>
+
           <p className="text-[11.5px] text-muted2">
-            Cria uma <b>cópia idêntica</b> na Meta (com adsets e anúncios) e <b>linka</b> as duas no log.
-            Aí dá pra abrir a <b>prova</b> e acompanhar 7 dias se a cópia canibalizou a original.
+            {mode === 'auto' ? (
+              <>Cria uma <b>cópia idêntica</b> na Meta (com adsets e anúncios) e <b>linka</b> as duas no log. Aí dá pra abrir a <b>prova</b> e acompanhar 7 dias se a cópia canibalizou a original.</>
+            ) : (
+              <>Use quando a cópia automática <b>der erro</b> (ex.: posicionamento do Explorar). Duplique no Gerenciador de Anúncios e <b>selecione aqui</b> qual campanha é a cópia — o painel linka as duas (prova 7d + comparar com neon funcionam igual).</>
+            )}
           </p>
 
           {/* duplicações anteriores desta campanha */}
@@ -136,6 +240,9 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             </div>
           )}
 
+          {/* ── MODO AUTOMÁTICO ── */}
+          {mode === 'auto' && (
+          <>
           {/* status da cópia */}
           <div className="flex flex-col gap-1.5">
             <span className="text-[11px] text-muted2">A cópia nasce:</span>
@@ -155,6 +262,53 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             </div>
           </div>
 
+          {/* quantas cópias */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] text-muted2">Quantas cópias:</span>
+            <div className="flex items-center gap-1.5">
+              {[1, 2, 3, 5, 10].map((q) => (
+                <button
+                  key={q}
+                  onClick={() => setQtd(q)}
+                  className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${qtd === q ? 'border-brand bg-brand/15 text-brand-2' : 'border-border text-muted hover:border-brand/50'}`}
+                >
+                  {q}×
+                </button>
+              ))}
+              <input
+                type="number" min="1" max="20" value={qtd}
+                onChange={(e) => setQtd(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                className="w-[56px] rounded-[7px] border border-border bg-[#0a0c19] px-2 py-1.5 text-center text-[12px] text-ink"
+                title="quantidade personalizada (máx 20)"
+              />
+            </div>
+            {qtd > 1 && <span className="text-[10px] text-muted2">Vão sair {qtd} cópias numeradas (…{renameParts.renameSuffix || ' - cópia'} 1, 2, 3…)</span>}
+          </div>
+
+          {/* estrutura de orçamento: CBO × ABO */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] text-muted2">
+              Estrutura de orçamento{origInfo && <span className="text-muted2"> · original é <b className="text-muted">{origInfo.level === 'campaign' ? 'CBO' : `ABO (${origInfo.count} conj.)`}</b></span>}:
+            </span>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setBudgetLevel('campaign')}
+                className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${budgetLevel === 'campaign' ? 'border-brand bg-brand/15 text-brand-2' : 'border-border text-muted hover:border-brand/50'}`}
+              >
+                CBO <span className="font-normal text-[10px] text-muted2">(orç. na campanha)</span>
+              </button>
+              <button
+                onClick={() => setBudgetLevel('adset')}
+                className={`flex-1 rounded-[7px] border px-2 py-1.5 text-[12px] font-bold ${budgetLevel === 'adset' ? 'border-brand bg-brand/15 text-brand-2' : 'border-border text-muted hover:border-brand/50'}`}
+              >
+                ABO <span className="font-normal text-[10px] text-muted2">(orç. por conjunto)</span>
+              </button>
+            </div>
+            {origInfo && budgetLevel !== origInfo.level && (
+              <span className="text-[10px] text-warn">⚠ Diferente da original — se a Meta recusar a conversão, a cópia é criada mesmo assim e você ajusta o orçamento no Gerenciador.</span>
+            )}
+          </div>
+
           {/* nome da cópia + orçamento */}
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <div className="field !mb-0">
@@ -164,8 +318,8 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
                 <span className="mt-0.5 block text-[10px] text-warn">⚠ Nome diferente do original — campanha será renomeada após a cópia</span>
               )}
             </div>
-            <div className="field !mb-0 w-[110px]">
-              <label>Orçamento R$/dia</label>
+            <div className="field !mb-0 w-[120px]">
+              <label>{budgetLevel === 'campaign' ? 'Orç. R$/dia' : 'R$/dia p/ conj.'}</label>
               <input value={orcamento} onChange={(e) => setOrcamento(e.target.value)} placeholder="igual original" type="number" min="1" />
             </div>
           </div>
@@ -183,13 +337,62 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
               ⚠ <b>Execução OFF</b> — só registra o link no log (simulado), sem criar na Meta. Ligue o switch <b>Execução</b> no topo pra duplicar de verdade.
             </div>
           )}
+          </>
+          )}
+
+          {/* ── MODO LINKAR (cópia feita à mão no Face) ── */}
+          {mode === 'link' && (
+          <div className="flex flex-col gap-2">
+            <div className="relative">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="🔎 buscar a campanha cópia por nome..."
+                className="w-full rounded-[7px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink"
+              />
+            </div>
+            {loadingCamps && <div className="py-4 text-center text-[12px] text-muted2 animate-pulse">Buscando campanhas da conta…</div>}
+            {campErr && <div className="rounded-lg border border-danger/30 bg-danger/[0.07] px-3 py-2 text-[12px] text-danger">❌ {campErr}</div>}
+            {!loadingCamps && !campErr && (
+              <div className="max-h-[240px] overflow-y-auto rounded-[8px] border border-border">
+                {copyOptions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-[12px] text-muted2">Nenhuma campanha encontrada{search ? ' pra essa busca' : ''}.</div>
+                ) : (
+                  copyOptions.map((c) => {
+                    const active = c.id === selectedCopyId
+                    const on = c.status === 'ACTIVE'
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setSelectedCopyId(c.id)}
+                        className={`flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left last:border-0 transition-colors ${active ? 'bg-brand/15' : 'hover:bg-surface2/50'}`}
+                      >
+                        <span className={`h-3.5 w-3.5 shrink-0 rounded-full border ${active ? 'border-brand bg-brand' : 'border-border'}`} />
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-ink" title={c.name}>{c.name}</span>
+                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${on ? 'bg-ok/15 text-ok' : 'bg-surface2 text-muted2'}`}>{on ? 'ativa' : 'pausada'}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )}
+            <span className="text-[10.5px] text-muted2">Dica: a mais recente aparece no topo. Registro entra como duplicação <b>real</b> (não simulada), independente do switch Execução.</span>
+          </div>
+          )}
+
           {err && <div className="rounded-lg border border-danger/30 bg-danger/[0.07] px-3 py-2 text-[12px] text-danger">❌ {err}</div>}
 
           <div className="flex justify-end gap-2">
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
-            <button className="btn btn-primary btn-sm" onClick={apply} disabled={applying}>
-              <Copy className="h-3.5 w-3.5" /> {applying ? applyingMsg || 'Duplicando…' : m.exec ? 'Duplicar na Meta' : 'Registrar link (simulado)'}
-            </button>
+            {mode === 'auto' ? (
+              <button className="btn btn-primary btn-sm" onClick={apply} disabled={applying}>
+                <Copy className="h-3.5 w-3.5" /> {applying ? applyingMsg || 'Duplicando…' : m.exec ? (qtd > 1 ? `Duplicar ${qtd}× na Meta` : 'Duplicar na Meta') : (qtd > 1 ? `Registrar ${qtd} links` : 'Registrar link (simulado)')}
+              </button>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={applyLink} disabled={applying || !selectedCopyId}>
+                <Copy className="h-3.5 w-3.5" /> Linkar cópia selecionada
+              </button>
+            )}
           </div>
         </div>
       </div>

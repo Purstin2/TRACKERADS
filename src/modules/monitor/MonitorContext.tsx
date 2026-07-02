@@ -107,6 +107,8 @@ interface Ctx {
   selectMany: (keys: string[], on: boolean) => void
   onlySelected: boolean
   setOnlySelected: (b: boolean) => void
+  neonKeys: Set<string>
+  compareDuplication: (accId: string, origId: string, copyId: string) => void
   loadMonitor: () => Promise<void>
 }
 
@@ -129,6 +131,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [actionFilter, setActionFilter] = useState<string | null>(null)
   const [campSel, setCampSel] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
+  const [neonKeys, setNeonKeys] = useState<Set<string>>(new Set())
   const toggleCamp = (key: string) =>
     setCampSel((s) => {
       const n = new Set(s)
@@ -138,6 +141,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const clearCampSel = () => {
     setCampSel(new Set())
     setOnlySelected(false)
+    setNeonKeys(new Set())
   }
   const selectMany = (keys: string[], on: boolean) =>
     setCampSel((s) => {
@@ -145,6 +149,15 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
       keys.forEach((k) => (on ? n.add(k) : n.delete(k)))
       return n
     })
+  // "Comparar as duas": seleciona original + cópia, filtra só elas e destaca a
+  // cópia com borda neon. Original e cópia vivem na mesma conta de anúncio.
+  const compareDuplication = (accId: string, origId: string, copyId: string) => {
+    const oKey = `${accId}::${origId}`
+    const cKey = `${accId}::${copyId}`
+    setCampSel(new Set([oKey, cKey]))
+    setNeonKeys(new Set([cKey]))
+    setOnlySelected(true)
+  }
 
   const setToken = (t: string) => {
     setTokenState(t)
@@ -292,6 +305,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     selectMany,
     onlySelected,
     setOnlySelected,
+    neonKeys,
+    compareDuplication,
     loadMonitor,
   }
   return <MonitorCtx.Provider value={value}>{children}</MonitorCtx.Provider>
