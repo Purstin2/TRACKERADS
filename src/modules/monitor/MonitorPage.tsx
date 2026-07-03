@@ -21,6 +21,7 @@ import CriativosView from './CriativosView'
 import FunilMetaView from './FunilMetaView'
 import PublicosView from './PublicosView'
 import LogActionHost from './LogActionModal'
+import BriefingCard from './Briefing'
 import type { Settings } from './config'
 
 const TAB_LABELS: Record<string, string> = {
@@ -107,6 +108,7 @@ function MonitorInner() {
 
       {tab === 'monitor' ? (
         <>
+          <BriefingCard />
           <ContextBar />
           {hasData && <SummaryStrip counts={counts} />}
           {!hasData && !m.loading && (

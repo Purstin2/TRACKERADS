@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { remoteGet, remoteSet } from '@/lib/appState'
 import { accName } from './config'
 
 export type ActionKind = 'escala' | 'orcamento' | 'pause' | 'duplicacao' | 'nota'
@@ -54,10 +55,49 @@ export function getLog(): ActionEntry[] {
   if (!cache) cache = read()
   return cache
 }
+
+/* ── Supabase: o banco é a verdade; localStorage é só cache de render.
+ * Merge por id no hydrate (multi-dispositivo) e push com debounce no commit.
+ * Limpar cookies / trocar de máquina não perde mais nada. ── */
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleRemoteSync(entries: ActionEntry[]) {
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => { remoteSet(KEY, entries.slice(0, 1000)) }, 800)
+}
+
+let hydrated = false
+export async function hydrateLog() {
+  if (hydrated) return
+  hydrated = true
+  try {
+    const remote = await remoteGet<ActionEntry[]>(KEY)
+    if (!Array.isArray(remote)) {
+      // 1ª vez (ou sem Supabase): sobe o que existe localmente
+      const local = getLog()
+      if (local.length) remoteSet(KEY, local)
+      return
+    }
+    const byId = new Map<string, ActionEntry>()
+    remote.forEach((e) => e?.id && byId.set(e.id, e))
+    let localOnly = 0
+    getLog().forEach((e) => {
+      if (e?.id && !byId.has(e.id)) { byId.set(e.id, e); localOnly++ }
+    })
+    const merged = [...byId.values()]
+      .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
+      .slice(0, 1000)
+    cache = merged
+    localStorage.setItem(KEY, JSON.stringify(merged))
+    subs.forEach((f) => f())
+    if (localOnly > 0) remoteSet(KEY, merged) // devolve entradas que só existiam aqui
+  } catch { /* offline/sem banco: segue no cache local */ }
+}
+
 function commit(next: ActionEntry[]) {
   cache = next
   localStorage.setItem(KEY, JSON.stringify(next.slice(0, 1000)))
   subs.forEach((f) => f())
+  scheduleRemoteSync(next)
 }
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -149,6 +189,7 @@ export function impactDays(campId: string): string[] {
 /* ── store reativo ── */
 function subscribe(fn: () => void) {
   subs.add(fn)
+  hydrateLog() // 1º assinante puxa o log do Supabase (no-op nas seguintes)
   return () => {
     subs.delete(fn)
   }

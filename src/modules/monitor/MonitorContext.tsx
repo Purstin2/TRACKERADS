@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
+import { cacheGet, cacheSet, remoteGet, remoteSet, loadState } from '@/lib/appState'
 import {
   fetchAggregate,
   fetchTimeSeries,
@@ -27,6 +27,7 @@ import {
   type DayData,
   type Settings,
 } from './config'
+import { fetchRealByCampaign, type RealAgg } from './realRoas'
 
 export type MonitorView = 'lista' | 'historico' | 'grafico'
 
@@ -109,6 +110,7 @@ interface Ctx {
   setOnlySelected: (b: boolean) => void
   neonKeys: Set<string>
   compareDuplication: (accId: string, origId: string, copyId: string) => void
+  realMap: Record<string, RealAgg>
   loadMonitor: () => Promise<void>
 }
 
@@ -132,6 +134,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [campSel, setCampSel] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
   const [neonKeys, setNeonKeys] = useState<Set<string>>(new Set())
+  const [realMap, setRealMap] = useState<Record<string, RealAgg>>({})
   const toggleCamp = (key: string) =>
     setCampSel((s) => {
       const n = new Set(s)
@@ -162,7 +165,27 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const setToken = (t: string) => {
     setTokenState(t)
     localStorage.setItem('meta_tok', t)
+    remoteSet('meta_tok', t) // servidor (briefing) e outros dispositivos leem daqui
   }
+  // token: com local → empurra pro banco (servidor/briefing lê de lá);
+  // sem local → puxa do banco (outro dispositivo já colou)
+  useEffect(() => {
+    if (token.trim()) {
+      remoteSet('meta_tok', token.trim())
+      return
+    }
+    remoteGet<string>('meta_tok').then((t) => {
+      if (t && typeof t === 'string') {
+        setTokenState(t)
+        localStorage.setItem('meta_tok', t)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // contas monitoradas visíveis pro servidor (briefing itera nelas)
+  useEffect(() => {
+    if (accounts.length) remoteSet(ACCOUNTS_KEY, accounts)
+  }, [accounts])
   const toggleAccount = (id: string) =>
     setSelected((s) => {
       const n = new Set(s)
@@ -244,6 +267,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     const statuses = STATUS_FILTERS[status]?.values || ['ACTIVE']
     const accs = accounts.filter((a) => selected.has(a.id))
     const tok = token.trim()
+    // vendas reais do gateway por campanha (mesma janela do Meta) — em paralelo
+    fetchRealByCampaign(datePreset).then(setRealMap).catch(() => setRealMap({}))
     // PARALELO: todas as contas de uma vez (antes era conta por conta em fila).
     // Promise.all preserva a ordem das contas no resultado.
     const out: CacheItem[] = await Promise.all(
@@ -307,6 +332,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setOnlySelected,
     neonKeys,
     compareDuplication,
+    realMap,
     loadMonitor,
   }
   return <MonitorCtx.Provider value={value}>{children}</MonitorCtx.Provider>

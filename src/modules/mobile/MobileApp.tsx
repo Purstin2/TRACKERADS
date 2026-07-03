@@ -58,7 +58,7 @@ async function subscribePush() {
     const sub =
       (await reg.pushManager.getSubscription()) ||
       (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(vapid) as unknown as BufferSource }))
-    await fetch('/api/push-subscribe', {
+    await fetch('/api/mobile?fn=push-subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription: sub }),
@@ -137,7 +137,7 @@ export default function MobileApp() {
         .gte('created_at', brtTodayStartISO())
         .order('created_at', { ascending: false })
         .limit(120),
-      fetch('/api/meta-today').then((r) => r.json()).catch(() => null),
+      fetch('/api/mobile?fn=meta-today').then((r) => r.json()).catch(() => null),
     ])
     const approved = ((data || []) as Order[]).filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
     if (!firstLoad.current) {

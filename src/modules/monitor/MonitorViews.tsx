@@ -34,6 +34,7 @@ import { loadFinParams, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
+import type { RealAgg } from './realRoas'
 import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
 import { ImpactBtn, ImpactModal } from './BudgetImpact'
 import { DuplicateModal, DupProofModal } from './Duplicate'
@@ -531,6 +532,11 @@ interface ListaRow {
   status?: string
   cls: string
   action: ActionResult
+  // vendas REAIS do gateway casadas por ID de campanha (null = sem dado real)
+  realSales: number | null
+  realRevenue: number | null
+  realRoas: number | null
+  lucroReal: number | null
 }
 
 /** Lucro/margem de uma linha pelo modelo financeiro (mesmas taxas do Financeiro). */
@@ -541,7 +547,7 @@ function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
   const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
   return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
 }
-export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign'): ListaRow[] {
+export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign', realMap?: Record<string, RealAgg>, cur?: string): ListaRow[] {
   const FIN = loadFinParams()
   return rows
     .map((r) => {
@@ -554,6 +560,13 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
       const id = (level === 'ad' ? r.ad_id : level === 'adset' ? r.adset_id : r.campaign_id) || ''
       const name = (level === 'ad' ? r.ad_name : level === 'adset' ? r.adset_name : r.campaign_name) || ''
       const md = level === 'campaign' ? meta?.[r.campaign_id!] : undefined
+      // real: faturamento do gateway em BRL × gasto convertido (contas USD usam o fx)
+      const real = level === 'campaign' ? realMap?.[id] : undefined
+      const spendBRL = spend * (cur === 'USD' ? s.fx || 1 : 1)
+      const realRoas = real && spendBRL > 0 ? real.revenue / spendBRL : null
+      const lucroReal = real
+        ? real.revenue * (1 - (FIN.gateway + FIN.imposto) / 100) - spendBRL - real.sales * FIN.custoUn
+        : null
       return {
         id,
         name,
@@ -575,6 +588,10 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
         status: md?.status,
         cls: classify(roas, cpa, sales, s),
         action: analyzeAggregate(roas, cpa, sales, s),
+        realSales: real ? real.sales : null,
+        realRevenue: real ? real.revenue : null,
+        realRoas,
+        lucroReal,
       }
     })
     .sort((a, b) => ORDER[a.cls] - ORDER[b.cls])
@@ -631,7 +648,7 @@ export function SummaryStrip({ counts }: { counts: Counts }) {
 }
 
 /* ── Lista (gerenciador estilo Facebook) ── */
-interface TotAgg { spend: number; sales: number; revenue: number; lucro: number; budget: number }
+interface TotAgg { spend: number; sales: number; revenue: number; lucro: number; budget: number; realSales: number; realRevenue: number; lucroReal: number; spendBRL: number }
 const m2 = (v: number | null, sym: string) => (v == null ? '—' : sym + v.toFixed(2))
 
 interface MetCol {
@@ -649,6 +666,10 @@ const MET_COLS: MetCol[] = [
   { key: 'spend', label: 'Gasto', render: (r, sym) => sym + r.spend.toFixed(2), total: (T, sym) => sym + T.spend.toFixed(2) },
   { key: 'lucro', label: 'Lucro', render: (r, sym) => (r.spend <= 0 ? '—' : (r.lucro >= 0 ? '' : '-') + sym + Math.abs(r.lucro).toFixed(2)), cls: (r) => (r.spend <= 0 ? 'text-muted2' : r.lucro >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T, sym) => (T.lucro >= 0 ? '' : '-') + sym + Math.abs(T.lucro).toFixed(2), totalCls: (T) => (T.lucro >= 0 ? 'text-ok' : 'text-danger') },
   { key: 'roas', label: 'ROAS', render: (r) => (r.roas != null ? r.roas.toFixed(2) : '—'), cls: (r, s) => 'font-bold ' + VAL_CLS[roasCls(r.roas, s)], total: (T) => { const v = T.spend > 0 ? T.revenue / T.spend : null; return v != null ? v.toFixed(2) : '—' }, totalCls: (T, s) => VAL_CLS[roasCls(T.spend > 0 ? T.revenue / T.spend : null, s)] },
+  // colunas REAIS: faturamento do gateway casado por ID de campanha (o que o Meta não vê)
+  { key: 'realRoas', label: 'ROAS real', render: (r) => (r.realRoas != null ? r.realRoas.toFixed(2) : '—'), cls: (r, s) => (r.realRoas == null ? 'text-muted2' : 'font-bold ' + VAL_CLS[roasCls(r.realRoas, s)]), total: (T) => { const v = T.spendBRL > 0 && T.realRevenue > 0 ? T.realRevenue / T.spendBRL : null; return v != null ? v.toFixed(2) : '—' }, totalCls: (T, s) => VAL_CLS[roasCls(T.spendBRL > 0 && T.realRevenue > 0 ? T.realRevenue / T.spendBRL : null, s)] },
+  { key: 'realSales', label: 'V. reais', render: (r) => r.realSales ?? '—', cls: (r) => (r.realSales != null && r.realSales !== r.sales ? 'text-brand-2 font-semibold' : ''), total: (T) => T.realSales || '—' },
+  { key: 'lucroReal', label: 'Lucro real', render: (r) => (r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '-') + 'R$' + Math.abs(r.lucroReal).toFixed(2)), cls: (r) => (r.lucroReal == null ? 'text-muted2' : r.lucroReal >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T) => (T.lucroReal >= 0 ? '' : '-') + 'R$' + Math.abs(T.lucroReal).toFixed(2), totalCls: (T) => (T.lucroReal >= 0 ? 'text-ok' : 'text-danger') },
   { key: 'cpaIC', label: 'CPI', render: (r, sym) => m2(r.cpaIC, sym), cls: () => 'text-muted2' },
   { key: 'cpc', label: 'CPC', render: (r, sym) => (r.cpc ? m2(r.cpc, sym) : '—'), cls: () => 'text-muted2' },
   { key: 'ctr', label: 'CTR', render: (r) => (r.ctr ? r.ctr.toFixed(2) + '%' : '—'), cls: () => 'text-muted2' },
@@ -881,7 +902,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
           )
         if (item.kind !== 'lista' || !item.rows) return null
         const sym = curSym(item.acc.cur)
-        const all = analyzeListaRows(item.rows, s, item.meta, m.level)
+        const all = analyzeListaRows(item.rows, s, item.meta, m.level, m.realMap, item.acc.cur)
         let rows = all.filter(
           (r) =>
             (!m.actionFilter || r.action.code === m.actionFilter) &&
@@ -898,8 +919,12 @@ export function ListaView({ items }: { items: CacheItem[] }) {
         const bc = all.filter((r) => r.cls === 'bad').length
         // total da tabela (linha de baixo, estilo UTMify) — sobre as linhas visíveis
         const T = rows.reduce(
-          (a, r) => ({ spend: a.spend + r.spend, sales: a.sales + r.sales, revenue: a.revenue + r.revenue, lucro: a.lucro + r.lucro, budget: a.budget + (r.budget || 0) }),
-          { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0 },
+          (a, r) => ({
+            spend: a.spend + r.spend, sales: a.sales + r.sales, revenue: a.revenue + r.revenue, lucro: a.lucro + r.lucro, budget: a.budget + (r.budget || 0),
+            realSales: a.realSales + (r.realSales || 0), realRevenue: a.realRevenue + (r.realRevenue || 0), lucroReal: a.lucroReal + (r.lucroReal || 0),
+            spendBRL: a.spendBRL + r.spend * (item.acc.cur === 'USD' ? s.fx || 1 : 1),
+          }),
+          { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0, realSales: 0, realRevenue: 0, lucroReal: 0, spendBRL: 0 },
         )
         return (
           <div key={idx}>

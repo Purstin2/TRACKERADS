@@ -1,6 +1,33 @@
+import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useMonitor, type MonitorView } from '../MonitorContext'
 import { DATE_OPTIONS } from '../config'
+import { debugToken } from '@/modules/uploader/lib/fb'
+
+/** Vigia a validade do token do Meta e avisa ANTES de quebrar (checa 1×/sessão). */
+function TokenHealth() {
+  const m = useMonitor()
+  const [info, setInfo] = useState<{ valid: boolean; days: number | null } | null>(null)
+  useEffect(() => {
+    const t = m.token.trim()
+    if (!t) { setInfo(null); return }
+    let alive = true
+    debugToken(t)
+      .then((d) => {
+        if (!alive) return
+        const days = d.expiresAt > 0 ? Math.floor((d.expiresAt * 1000 - Date.now()) / 86400000) : null
+        setInfo({ valid: d.valid, days })
+      })
+      .catch(() => alive && setInfo(null))
+    return () => { alive = false }
+  }, [m.token])
+  if (!info) return null
+  if (!info.valid)
+    return <span className="rounded-full border border-danger/40 bg-danger/10 px-3 py-1.5 text-[11px] font-bold text-danger">⛔ token do Meta VENCIDO — cole um novo</span>
+  if (info.days != null && info.days <= 7)
+    return <span className="rounded-full border border-warn/40 bg-warn/10 px-3 py-1.5 text-[11px] font-bold text-warn">⚠ token vence em {info.days === 0 ? 'HOJE' : info.days + ' dia' + (info.days > 1 ? 's' : '')}</span>
+  return null
+}
 
 const VIEWS: { value: MonitorView; label: string }[] = [
   { value: 'lista', label: 'Lista' },
@@ -39,6 +66,8 @@ export default function ContextBar() {
           </button>
         ))}
       </div>
+
+      <TokenHealth />
 
       <button className="btn btn-primary btn-sm ml-auto" onClick={m.loadMonitor} disabled={m.loading}>
         <RefreshCw className={`h-3.5 w-3.5 ${m.loading ? 'animate-spin' : ''}`} />
