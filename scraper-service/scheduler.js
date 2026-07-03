@@ -3,7 +3,7 @@ import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, cr
 import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName, getRecentAdCounts, archiveOffer } from './supabaseService.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
-import { loadSettings, sanitizeSettings, getJobState, jobStart, jobLog, jobKeywordStart, jobKeywordDone, jobFinish, isRunning, shouldStop } from './jobState.js';
+import { loadSettingsAsync, sanitizeSettings, getJobState, jobStart, jobLog, jobKeywordStart, jobKeywordDone, jobFinish, isRunning, shouldStop } from './jobState.js';
 
 /**
  * REGRA AUTOMÁTICA: arquiva ofertas que ficaram com ≤N anúncios ativos durante
@@ -176,8 +176,8 @@ export async function runDiscoveryJob(overrides = {}) {
         return { processed: 0, found: 0, skipped: 'já rodando' };
     }
 
-    // filtros: arquivo de settings (editável pela UI) + overrides do request
-    const cfg = sanitizeSettings({ ...loadSettings(), ...overrides });
+    // filtros: settings do app_state/arquivo (editáveis pela UI) + overrides do request
+    const cfg = sanitizeSettings({ ...(await loadSettingsAsync()), ...overrides });
 
     try {
         const keywords = await getActiveDiscoveryKeywords();

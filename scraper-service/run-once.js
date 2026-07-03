@@ -33,10 +33,10 @@ async function step(name, fn) {
 async function main() {
     if (job === 'all' || job === 'scraping')   await step('Scraping (ad counts)', runScrapingJob);
     if (job === 'all' || job === 'names')       await step('Nomes reais', runNamesJob);
-    // Discovery FORA do "all": o FB escondeu o id real do anunciante na busca, então
-    // a contagem dá 0 — não vale rodar 2x/dia à toa. Descoberta = GGSPY + add na mão.
-    // Ainda dá pra rodar manualmente com job=discovery se um dia houver fix.
-    if (job === 'discovery')                    await step('Discovery (keywords)', runDiscoveryJob);
+    // Discovery v2 (GraphQL): o FB removeu os links do DOM, mas agora extraímos
+    // page_id/nome/datas do JSON da própria Ad Library → voltou a funcionar. Roda
+    // no "all" e sob demanda (job=discovery). Estado/logs/filtros no app_state.
+    if (job === 'all' || job === 'discovery')   await step('Discovery (keywords)', runDiscoveryJob);
 }
 
 main()

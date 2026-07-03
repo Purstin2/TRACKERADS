@@ -9,7 +9,7 @@ import { scrapeFacebookAdsCount, scrapePageName, scrapePageNames } from './scrap
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
-import { getJobState, requestStop, isRunning, loadSettings, saveSettings } from './jobState.js';
+import { getJobState, requestStop, isRunning, loadSettings, loadSettingsAsync, saveSettingsRemote } from './jobState.js';
 
 dotenv.config();
 
@@ -256,14 +256,14 @@ app.post('/api/discovery/stop', (req, res) => {
     res.json({ success: ok, message: ok ? 'Parada solicitada — o job encerra no próximo passo' : 'Nenhum job rodando' });
 });
 
-// Filtros da descoberta (minAdCount etc.) — GET lê, POST salva (persiste em disco;
-// vale pro botão Buscar Agora E pras rodadas automáticas do cron)
-app.get('/api/discovery/settings', (req, res) => {
-    res.json({ success: true, settings: loadSettings() });
+// Filtros da descoberta (minAdCount etc.) — GET lê, POST salva (Supabase app_state
+// + arquivo local; vale pro botão, pro cron local E pro robô na nuvem/Actions)
+app.get('/api/discovery/settings', async (req, res) => {
+    res.json({ success: true, settings: await loadSettingsAsync() });
 });
-app.post('/api/discovery/settings', (req, res) => {
+app.post('/api/discovery/settings', async (req, res) => {
     try {
-        const settings = saveSettings(req.body || {});
+        const settings = await saveSettingsRemote(req.body || {});
         res.json({ success: true, settings });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
