@@ -124,6 +124,64 @@ export async function updateOfferAdCount(offerId, adCount, meta = {}) {
     }
 }
 
+/**
+ * Atualiza SÓ o nome de uma oferta (renomear com o nome real da Página).
+ * Não toca em mais nada.
+ */
+export async function updateOfferName(offerId, name) {
+    try {
+        if (!name || !String(name).trim()) return false;
+        const { error } = await supabase
+            .from('offers')
+            .update({ name: String(name).trim(), updated_at: new Date().toISOString() })
+            .eq('id', offerId);
+        if (error) throw error;
+        console.log(`[SUPABASE] ✓ Oferta ${offerId} renomeada: "${name}"`);
+        return true;
+    } catch (error) {
+        console.error(`[SUPABASE] Erro ao renomear ${offerId}:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Busca os ad_counts dos últimos N dias para várias ofertas (1 query).
+ * Retorna um mapa offer_id -> [{count, timestamp}].
+ */
+export async function getRecentAdCounts(offerIds, days = 7) {
+    try {
+        if (!offerIds || offerIds.length === 0) return {};
+        const since = new Date(Date.now() - days * 86400000).toISOString();
+        const { data, error } = await supabase
+            .from('ad_counts')
+            .select('offer_id, count, timestamp')
+            .in('offer_id', offerIds)
+            .gte('timestamp', since);
+        if (error) throw error;
+        const map = {};
+        (data || []).forEach((r) => { (map[r.offer_id] = map[r.offer_id] || []).push(r); });
+        return map;
+    } catch (error) {
+        console.error('[SUPABASE] Erro getRecentAdCounts:', error.message);
+        return {};
+    }
+}
+
+/** Arquiva uma oferta (is_archived=true) — não apaga, fica recuperável. */
+export async function archiveOffer(offerId) {
+    try {
+        const { error } = await supabase
+            .from('offers')
+            .update({ is_archived: true, updated_at: new Date().toISOString() })
+            .eq('id', offerId);
+        if (error) throw error;
+        return true;
+    } catch (error) {
+        console.error(`[SUPABASE] Erro ao arquivar ${offerId}:`, error.message);
+        return false;
+    }
+}
+
 // ─── DISCOVERY FUNCTIONS ─────────────────────────────────────────────────────
 
 /**
@@ -272,19 +330,4 @@ export async function logScrapingResult(offerId, adCount, success, error = null)
     }
 }
 
-/** Renomeia uma oferta com o nome real da Página. */
-export async function updateOfferName(offerId, name) {
-    try {
-        if (!name || !String(name).trim()) return false;
-        const { error } = await supabase
-            .from('offers')
-            .update({ name: String(name).trim(), updated_at: new Date().toISOString() })
-            .eq('id', offerId);
-        if (error) throw error;
-        console.log(`[SUPABASE] Oferta ${offerId} renomeada: "${name}"`);
-        return true;
-    } catch (error) {
-        console.error(`[SUPABASE] Erro ao renomear ${offerId}:`, error.message);
-        return false;
-    }
-}
+// (updateOfferName definido acima — duplicata do merge removida)

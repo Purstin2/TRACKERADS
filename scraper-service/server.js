@@ -5,10 +5,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { startScheduler, startSchedulerWithInitialRun, runScrapingJob, runDiscoveryJob } from './scheduler.js';
-import { scrapeFacebookAdsCount } from './scraper.js';
+import { scrapeFacebookAdsCount, scrapePageName, scrapePageNames } from './scraper.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
-import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
+import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
+import { getJobState, requestStop, isRunning, loadSettings, saveSettings } from './jobState.js';
 
 dotenv.config();
 
@@ -16,6 +17,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middlewares
+// Private Network Access: o Chrome bloqueia requisição de site PÚBLICO (https, ex.
+// trackerads-nine.vercel.app) para localhost a menos que o serviço local devolva este
+// header. SEM isto, os botões "Local"/"Nomes reais" do site deployado dão "scraper não
+// está rodando" mesmo com ele rodando. Tem que vir ANTES do cors (que encerra o OPTIONS).
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    next();
+});
 // CORS configurado para permitir requisições de qualquer origem
 app.use(cors({
     origin: '*',
@@ -165,15 +174,64 @@ app.post('/api/scrape/test', async (req, res) => {
     }
 });
 
+// ── NOME REAL DA PÁGINA ───────────────────────────────────────────────────────
+
+// Lê o nome real de UM link (usado no import / rename individual)
+app.post('/api/scrape/name', async (req, res) => {
+    req.setTimeout(60000); res.setTimeout(60000);
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
+        const result = await scrapePageName(url);
+        res.json({ ...result, timestamp: new Date().toISOString() });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Renomeia EM MASSA todas as ofertas (FB, não arquivadas) com o nome real da Página
+app.post('/api/scrape/names', async (req, res) => {
+    try {
+        const offers = await getOffersWithFacebookLinks(); // já exclui arquivadas
+        // só renomeia links de PÁGINA específica (view_all_page_id); buscas por
+        // palavra-chave têm vários anunciantes → não dá um nome único confiável
+        const items = offers
+            .filter(o => /view_all_page_id=/.test(o.link || ''))
+            .map(o => ({ id: o.id, url: o.link }));
+
+        // responde já; processa em background
+        res.json({
+            success: true,
+            message: `Buscando o nome real de ${items.length} ofertas em background`,
+            count: items.length,
+            timestamp: new Date().toISOString(),
+        });
+
+        // grava cada nome assim que é raspado (incremental → o site reflete ao vivo)
+        scrapePageNames(items, async (id, name) => { await updateOfferName(id, name); })
+            .then((results) => {
+                const ok = results.filter(r => r.name).length;
+                console.log(`✅ [NAMES] concluído: ${ok}/${results.length} ofertas com nome real`);
+            })
+            .catch(err => console.error('❌ [NAMES] erro no job:', err));
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ── DISCOVERY ENDPOINTS ───────────────────────────────────────────────────────
 
-// Dispara o job de discovery para todas as keywords ativas
+// Dispara o job de discovery para todas as keywords ativas.
+// Aceita overrides no body: { minAdCount, minDaysRunning, maxAdvertisers, country }
 app.post('/api/discovery/run', async (req, res) => {
     try {
+        if (isRunning()) {
+            return res.status(409).json({ success: false, error: 'Discovery já está rodando. Use /api/discovery/stop pra parar.' });
+        }
         console.log('🔍 Discovery job disparado manualmente');
 
         // Roda em background para não bloquear a resposta
-        runDiscoveryJob()
+        runDiscoveryJob(req.body || {})
             .then(results => console.log('✅ Discovery manual concluído:', results))
             .catch(error => console.error('❌ Erro no discovery manual:', error));
 
@@ -182,6 +240,31 @@ app.post('/api/discovery/run', async (req, res) => {
             message: 'Job de discovery iniciado em background',
             timestamp: new Date().toISOString()
         });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Estado vivo do job (status/progresso/logs) — o painel consulta isso
+app.get('/api/discovery/status', (req, res) => {
+    res.json({ success: true, job: getJobState(), settings: loadSettings(), timestamp: new Date().toISOString() });
+});
+
+// Pede a parada do job em andamento (para no anunciante atual)
+app.post('/api/discovery/stop', (req, res) => {
+    const ok = requestStop();
+    res.json({ success: ok, message: ok ? 'Parada solicitada — o job encerra no próximo passo' : 'Nenhum job rodando' });
+});
+
+// Filtros da descoberta (minAdCount etc.) — GET lê, POST salva (persiste em disco;
+// vale pro botão Buscar Agora E pras rodadas automáticas do cron)
+app.get('/api/discovery/settings', (req, res) => {
+    res.json({ success: true, settings: loadSettings() });
+});
+app.post('/api/discovery/settings', (req, res) => {
+    try {
+        const settings = saveSettings(req.body || {});
+        res.json({ success: true, settings });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
