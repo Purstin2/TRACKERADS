@@ -9,7 +9,7 @@ import { scrapeFacebookAdsCount, scrapePageName, scrapePageNames } from './scrap
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
-import { getJobState, requestStop, isRunning, loadSettings, loadSettingsAsync, saveSettingsRemote } from './jobState.js';
+import { getJobState, requestStop, isRunning, loadSettings, loadSettingsAsync, saveSettingsRemote, loadBlocklist, saveBlocklist } from './jobState.js';
 
 dotenv.config();
 
@@ -265,6 +265,19 @@ app.post('/api/discovery/settings', async (req, res) => {
     try {
         const settings = await saveSettingsRemote(req.body || {});
         res.json({ success: true, settings });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Blocklist (anunciantes/categorias a pular) — GET lê, POST salva no app_state
+app.get('/api/discovery/blocklist', async (req, res) => {
+    res.json({ success: true, blocklist: await loadBlocklist() });
+});
+app.post('/api/discovery/blocklist', async (req, res) => {
+    try {
+        const blocklist = await saveBlocklist(req.body || {});
+        res.json({ success: true, blocklist });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

@@ -108,6 +108,51 @@ export async function loadSettingsAsync() {
     return remote ? sanitizeSettings({ ...loadSettings(), ...remote }) : loadSettings();
 }
 
+/* ── blocklist (anunciantes/categorias a pular) — vive no app_state ── */
+export async function loadBlocklist() {
+    const v = await stateGet('discovery_blocklist');
+    return {
+        names: Array.isArray(v?.names) ? v.names : [],
+        categories: Array.isArray(v?.categories) ? v.categories : [],
+    };
+}
+export async function saveBlocklist(patch) {
+    const cur = await loadBlocklist();
+    const norm = (arr) => [...new Set((arr || []).map((s) => String(s).trim()).filter(Boolean))].slice(0, 200);
+    const next = {
+        names: norm(patch.names ?? cur.names),
+        categories: norm(patch.categories ?? cur.categories),
+    };
+    await stateUpsert('discovery_blocklist', next);
+    return next;
+}
+
+/* ── meta das ofertas (descrição/título/domínio/categoria) por page_id ──
+ * Sem coluna nova em discovered_offers: guardamos num mapa no app_state e a
+ * tela junta pelo facebook_page_id. Cap de 400 entradas (as mais recentes). */
+export async function mergeDiscoveryMeta(offers) {
+    const entries = (offers || []).filter((o) => o && o.facebook_page_id && (o.description || o.offer_title || o.page_category));
+    if (!entries.length) return;
+    const cur = (await stateGet('discovery_meta')) || {};
+    for (const o of entries) {
+        cur[o.facebook_page_id] = {
+            description: o.description || null,
+            title: o.offer_title || null,
+            domain: o.offer_domain || null,
+            category: o.page_category || null,
+            sampleAd: o.sample_ad_link || null,
+            ts: Date.now(),
+        };
+    }
+    // cap: mantém as 400 mais recentes
+    const keys = Object.keys(cur);
+    if (keys.length > 400) {
+        keys.sort((a, b) => (cur[a].ts || 0) - (cur[b].ts || 0));
+        for (const k of keys.slice(0, keys.length - 400)) delete cur[k];
+    }
+    await stateUpsert('discovery_meta', cur);
+}
+
 /** Salva local + espelha no Supabase (a UI deployada e o Actions leem de lá). */
 export async function saveSettingsRemote(patch) {
     const merged = saveSettings(patch);

@@ -48,16 +48,45 @@ function extractCollatedArrays(text) {
     return out;
 }
 
-/** Normaliza um item de collated_results pro que interessa. */
+/** Limpa placeholders de criativo dinâmico do Meta ({{product.name}} etc.). */
+function cleanTpl(s) {
+    if (!s) return null;
+    const t = String(s).trim();
+    if (!t || /\{\{.*?\}\}/.test(t)) return null; // macro não renderizado → descarta
+    return t;
+}
+
+/** Primeira frase / resumo curto do corpo do anúncio (pra dar ideia da oferta). */
+function adSnippet(snap) {
+    if (!snap) return null;
+    let t = snap.body;
+    if (t && typeof t === 'object') t = t.text || t.markup || '';
+    t = String(t || '').replace(/\{\{.*?\}\}/g, '').replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    // corta na 1ª quebra de frase; senão ~140 chars; tira hashtags do fim
+    const firstSentence = t.split(/(?<=[.!?])\s/)[0];
+    let out = (firstSentence.length >= 25 ? firstSentence : t).slice(0, 160);
+    out = out.replace(/(\s+#\S+)+\s*$/, '').trim();
+    return out || null;
+}
+
+/** Normaliza um item de collated_results pro que interessa (inclui a copy do anúncio). */
 function normalizeAd(item) {
     if (!item || !item.page_id) return null;
+    const snap = item.snapshot || {};
+    const cats = Array.isArray(snap.page_categories) ? snap.page_categories : (snap.page_categories ? [snap.page_categories] : []);
     return {
         pageId: String(item.page_id),
-        pageName: item.page_name || null,
+        pageName: item.page_name || snap.page_name || null,
         adArchiveId: item.ad_archive_id ? String(item.ad_archive_id) : null,
         startDate: typeof item.start_date === 'number' ? item.start_date * 1000 : null,
         isActive: item.is_active !== false,
         collationCount: Math.max(1, parseInt(item.collation_count, 10) || 1),
+        // metadados da criativa (pra resumo + bloqueio)
+        snippet: adSnippet(snap),
+        offerTitle: cleanTpl(snap.title),
+        offerDomain: (snap.caption && String(snap.caption).replace(/^https?:\/\//, '').replace(/\/$/, '')) || null,
+        category: cats.length ? String(cats[0]) : null,
     };
 }
 
@@ -158,6 +187,7 @@ async function domFallbackAdvertisers(context, url) {
  * @param {string} options.country        - país (padrão 'BR')
  * @param {(msg: string) => void} [options.onLog]     - log pro painel (além do console)
  * @param {() => boolean}         [options.shouldStop] - retorna true = usuário pediu Parar
+ * @param {{names?: string[], categories?: string[]}} [options.blocklist] - pula anunciantes/categorias
  * @returns {Promise<{success: boolean, offers: Array, keyword: string, error?: string, stopped?: boolean}>}
  */
 export async function discoverOffersByKeyword(keyword, options = {}) {
@@ -168,8 +198,18 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         country = 'BR',
         onLog,
         shouldStop = () => false,
+        blocklist = {},
     } = options;
     const log = (msg) => { if (onLog) onLog(msg); else console.log(msg); };
+    const blockNames = (blocklist.names || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
+    const blockCats = (blocklist.categories || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
+    const isBlocked = (name, category) => {
+        const n = String(name || '').toLowerCase();
+        const c = String(category || '').toLowerCase();
+        if (blockNames.some((b) => n.includes(b))) return 'nome';
+        if (c && blockCats.some((b) => c.includes(b))) return 'categoria';
+        return null;
+    };
 
     let browser;
     const qualifiedOffers = [];
@@ -191,11 +231,18 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         const byPage = new Map();
         for (const ad of search.ads) {
             if (!ad.isActive) continue;
-            const p = byPage.get(ad.pageId) || { pageId: ad.pageId, name: ad.pageName, matched: 0, minStart: null, bestAd: null, bestCollation: 0 };
+            const p = byPage.get(ad.pageId) || { pageId: ad.pageId, name: ad.pageName, matched: 0, minStart: null, bestAd: null, bestCollation: 0, snippet: null, offerTitle: null, offerDomain: null, category: null };
             p.matched += ad.collationCount;
             if (!p.name && ad.pageName) p.name = ad.pageName;
+            if (!p.category && ad.category) p.category = ad.category;
             if (ad.startDate && (!p.minStart || ad.startDate < p.minStart)) p.minStart = ad.startDate;
-            if (ad.adArchiveId && ad.collationCount >= p.bestCollation) { p.bestAd = ad.adArchiveId; p.bestCollation = ad.collationCount; }
+            // guarda a copy do anúncio mais "colado" (o carro-chefe da keyword)
+            if (ad.adArchiveId && ad.collationCount >= p.bestCollation) {
+                p.bestAd = ad.adArchiveId; p.bestCollation = ad.collationCount;
+                if (ad.snippet) p.snippet = ad.snippet;
+                if (ad.offerTitle) p.offerTitle = ad.offerTitle;
+                if (ad.offerDomain) p.offerDomain = ad.offerDomain;
+            }
             byPage.set(ad.pageId, p);
         }
 
@@ -221,6 +268,9 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             if (shouldStop()) { stopped = true; log(`⏹ "${keyword}": interrompida pelo usuário (${i}/${toProcess.length} verificados)`); break; }
             const cand = toProcess[i];
             const name0 = cand.name || `Anunciante ${cand.pageId}`;
+            // bloqueio: pula anunciante/categoria que você não quer (ex.: fintech tipo InfinitePay)
+            const blk = isBlocked(name0, cand.category);
+            if (blk) { log(`🚫 "${keyword}": ${name0} pulado (bloqueado por ${blk}${cand.category ? ` · ${cand.category}` : ''})`); continue; }
             log(`🔎 "${keyword}" [${i + 1}/${toProcess.length}] ${name0} — ${cand.matched} ads na keyword`);
 
             const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${cand.pageId}`;
@@ -246,11 +296,19 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                     continue;
                 }
 
-                // nome real: JSON da própria página do anunciante é a fonte mais confiável
-                const advertiserName = adv.ads.find((a) => a.pageName)?.pageName || name0;
+                // nome real + copy: preferir o JSON da página do anunciante; cair no da busca
+                const advPageAd = adv.ads.find((a) => a.pageName) || {};
+                const advertiserName = advPageAd.pageName || name0;
+                const category = advPageAd.category || cand.category || null;
+                // segunda chance de bloqueio: a categoria só aparece agora em alguns casos
+                const blk2 = isBlocked(advertiserName, category);
+                if (blk2) { log(`🚫 ${advertiserName} pulado após checagem (bloqueado por ${blk2}${category ? ` · ${category}` : ''})`); await randomDelay(1500, 3000); continue; }
+                const snippet = cand.snippet || adv.ads.find((a) => a.snippet)?.snippet || null;
+                const offerTitle = cand.offerTitle || advPageAd.offerTitle || null;
+                const offerDomain = cand.offerDomain || advPageAd.offerDomain || null;
                 const sampleAd = cand.bestAd || adv.ads.find((a) => a.adArchiveId)?.adArchiveId || null;
 
-                log(`✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias`);
+                log(`✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias${offerTitle ? ` | ${offerTitle}` : ''}`);
                 qualifiedOffers.push({
                     advertiser_name: advertiserName,
                     facebook_page_id: cand.pageId,
@@ -260,7 +318,12 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                     ad_count: adCount,
                     days_running: daysRunning,
                     oldest_ad_date: oldest ? new Date(oldest).toISOString().split('T')[0] : null,
-                    keyword
+                    keyword,
+                    // resumo da oferta (o que o anúncio diz) + categoria (pra você saber do que é)
+                    description: snippet,
+                    offer_title: offerTitle,
+                    offer_domain: offerDomain,
+                    page_category: category,
                 });
             } catch (err) {
                 log(`⚠ Erro ao confirmar ${cand.pageId}: ${err.message}`);

@@ -3,7 +3,7 @@ import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, cr
 import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName, getRecentAdCounts, archiveOffer } from './supabaseService.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
-import { loadSettingsAsync, sanitizeSettings, getJobState, jobStart, jobLog, jobKeywordStart, jobKeywordDone, jobFinish, isRunning, shouldStop } from './jobState.js';
+import { loadSettingsAsync, loadBlocklist, mergeDiscoveryMeta, sanitizeSettings, getJobState, jobStart, jobLog, jobKeywordStart, jobKeywordDone, jobFinish, isRunning, shouldStop } from './jobState.js';
 
 /**
  * REGRA AUTOMÁTICA: arquiva ofertas que ficaram com ≤N anúncios ativos durante
@@ -178,6 +178,7 @@ export async function runDiscoveryJob(overrides = {}) {
 
     // filtros: settings do app_state/arquivo (editáveis pela UI) + overrides do request
     const cfg = sanitizeSettings({ ...(await loadSettingsAsync()), ...overrides });
+    const blocklist = await loadBlocklist();
 
     try {
         const keywords = await getActiveDiscoveryKeywords();
@@ -207,9 +208,11 @@ export async function runDiscoveryJob(overrides = {}) {
                         country: cfg.country,
                         onLog: jobLog,
                         shouldStop,
+                        blocklist,
                     });
                     if (result.success && result.offers.length > 0) {
                         await saveDiscoveredOffers(kw.user_id, result.offers);
+                        await mergeDiscoveryMeta(result.offers); // descrição/título/categoria por page_id
                         found = result.offers.length;
                         jobLog(`💾 "${kw.keyword}": ${found} escalada(s) salvas no banco`);
                     }
