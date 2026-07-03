@@ -21,6 +21,20 @@ function fmtTime(iso) {
     `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}+00:00`
 }
 
+// gclid REAL de clique do Google: alfanumérico longo (Cj0K…, EAIa…, gbraid/wbraid).
+// LIXO comum: valor "1.1.123.456…" (cookie do GA/_gcl que vazou no campo gclid) e
+// vendas de FB/IG cujo gclid não é de clique do Google — o Google Ads rejeita isso,
+// então não faz sentido mandar. Filtra pra importação ficar limpa.
+function isRealGclid(g, utmSource) {
+  const v = String(g || '').trim()
+  if (!v) return false
+  if (/^[\d.]+$/.test(v)) return false            // só números e pontos = formato GA, não gclid
+  if (!/[A-Za-z]/.test(v) || v.length < 20) return false // gclid real é alfanumérico e longo
+  const src = String(utmSource || '').toLowerCase()
+  if (src === 'fb' || src.includes('face') || src === 'ig' || src.includes('insta')) return false // veio de Meta
+  return true
+}
+
 export default async function handler(req, res) {
   if (process.env.WEBHOOK_SECRET && req.query.secret !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'invalid secret' })
@@ -35,7 +49,7 @@ export default async function handler(req, res) {
 
   const q =
     `${url}/rest/v1/kirvano_orders?status=eq.APPROVED&gclid=not.is.null` +
-    `&ordered_at=gte.${since}&select=gclid,value,currency,ordered_at,created_at` +
+    `&ordered_at=gte.${since}&select=gclid,value,currency,ordered_at,created_at,utm_source` +
     `&order=created_at.desc&limit=5000`
 
   let rows = []
@@ -47,8 +61,13 @@ export default async function handler(req, res) {
   }
   if (!Array.isArray(rows)) rows = []
 
+  let skipped = 0
   const conversions = rows
-    .filter((o) => o.gclid)
+    .filter((o) => {
+      const ok = isRealGclid(o.gclid, o.utm_source)
+      if (!ok) skipped++
+      return ok
+    })
     .map((o) => ({
       gclid: o.gclid,
       name: convName,
@@ -57,5 +76,6 @@ export default async function handler(req, res) {
       currency: o.currency || 'BRL',
     }))
 
-  return res.status(200).json({ ok: true, count: conversions.length, conversions })
+  // count = só as válidas; skipped = gclids lixo/FB descartados (transparência)
+  return res.status(200).json({ ok: true, count: conversions.length, skipped, conversions })
 }
