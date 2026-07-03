@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Plus, Play, RefreshCw, ExternalLink, CheckCircle, X, Clock, Zap, Tag, TrendingUp, Square, Terminal, SlidersHorizontal } from 'lucide-react';
+import { Search, Plus, Play, RefreshCw, ExternalLink, CheckCircle, X, Clock, Zap, Tag, TrendingUp, Square, Terminal, SlidersHorizontal, Ban, ShieldOff } from 'lucide-react';
 
 /**
  * Descoberta Automática — v2.
@@ -81,6 +81,10 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [savingSettings, setSavingSettings] = useState(false);
     const [starting, setStarting] = useState(false);
+    const [meta, setMeta] = useState({});            // page_id → {description,title,domain,category}
+    const [blocklist, setBlocklist] = useState({ names: [], categories: [] });
+    const [blockInput, setBlockInput] = useState('');
+    const [showBlock, setShowBlock] = useState(false);
     const logsEndRef = useRef(null);
     const prevStatusRef = useRef(null);
 
@@ -136,7 +140,14 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         fetchDiscoveries();
         fetchStatus();
         stateGet('discovery_settings').then((s) => s && setSettings(v => ({ ...v, ...s }))).catch(() => {});
+        stateGet('discovery_meta').then((m) => m && setMeta(m)).catch(() => {});
+        stateGet('discovery_blocklist').then((b) => b && setBlocklist({ names: b.names || [], categories: b.categories || [] })).catch(() => {});
     }, [fetchKeywords, fetchDiscoveries, fetchStatus, stateGet]);
+
+    // recarrega o meta (descrições) junto quando o job termina
+    const refreshMeta = useCallback(() => {
+        stateGet('discovery_meta').then((m) => m && setMeta(m)).catch(() => {});
+    }, [stateGet]);
 
     // polling do estado: 5s rodando, 20s parado (a tela reflete até runs do Actions/cron)
     useEffect(() => {
@@ -152,6 +163,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         if (prev === 'running' && cur && cur !== 'running') {
             fetchDiscoveries();
             fetchKeywords();
+            refreshMeta();
             if (cur === 'done') showToast(`Busca concluída: ${job.found} oferta(s) escalada(s)!`, 'success');
             else if (cur === 'stopped') showToast(`Busca parada. ${job.found} salva(s) até aqui.`, 'info');
             else if (cur === 'error') showToast('Busca terminou com erro: ' + (job.error || ''), 'error');
@@ -270,6 +282,35 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
             setDiscoveries(prev => prev.map(d => d.id === id ? { ...d, status: 'dismissed' } : d));
             showToast(`"${name}" descartado.`, 'success');
         }
+    };
+
+    /* ── blocklist: nunca mais trazer esse anunciante/categoria ── */
+    const persistBlocklist = async (next) => {
+        setBlocklist(next);
+        await stateSet('discovery_blocklist', next);
+    };
+    const addBlockName = async (term) => {
+        const t = (term || '').trim();
+        if (!t) return;
+        if (blocklist.names.some(n => n.toLowerCase() === t.toLowerCase())) return;
+        await persistBlocklist({ ...blocklist, names: [...blocklist.names, t] });
+        setBlockInput('');
+        showToast(`"${t}" bloqueado — o robô não traz mais.`, 'success');
+    };
+    const addBlockCategory = async (cat) => {
+        const t = (cat || '').trim();
+        if (!t || blocklist.categories.some(c => c.toLowerCase() === t.toLowerCase())) return;
+        await persistBlocklist({ ...blocklist, categories: [...blocklist.categories, t] });
+        showToast(`Categoria "${t}" bloqueada.`, 'success');
+    };
+    const removeBlock = async (kind, val) => {
+        await persistBlocklist({ ...blocklist, [kind]: blocklist[kind].filter(x => x !== val) });
+    };
+    // bloqueia o anunciante da linha + descarta ele agora
+    const handleBlockOffer = async (d) => {
+        await addBlockName(d.advertiser_name);
+        await supabaseClient.from('discovered_offers').update({ status: 'dismissed' }).eq('id', d.id);
+        setDiscoveries(prev => prev.map(x => x.id === d.id ? { ...x, status: 'dismissed' } : x));
     };
 
     const filteredDisc = discoveries.filter(d => filterStatus === 'all' ? true : d.status === filterStatus);
@@ -463,6 +504,55 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                     </button>
                 </div>
 
+                {/* Bloqueios: anunciantes/categorias que o robô nunca traz */}
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                    <button onClick={() => setShowBlock(v => !v)} className="flex items-center gap-2 text-xs font-semibold text-slate-300 w-full">
+                        <ShieldOff size={13} className="text-slate-400" />
+                        Bloqueios
+                        <span className="text-slate-600 font-normal">({blocklist.names.length + blocklist.categories.length})</span>
+                        <span className="ml-auto text-slate-600">{showBlock ? '−' : '+'}</span>
+                    </button>
+                    {showBlock && (
+                        <div className="mt-3 space-y-2.5">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={blockInput}
+                                    onChange={e => setBlockInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBlockName(blockInput); } }}
+                                    placeholder="Bloquear anunciante ou termo (ex: infinitepay)"
+                                    className="flex-1 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500/40"
+                                />
+                                <button
+                                    onClick={() => addBlockName(blockInput)}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-red-600/15 border border-red-500/25 text-red-300 text-xs rounded-lg hover:bg-red-600/25 transition-all"
+                                >
+                                    <Ban size={12} /> Bloquear
+                                </button>
+                            </div>
+                            {(blocklist.names.length > 0 || blocklist.categories.length > 0) && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {blocklist.names.map(n => (
+                                        <span key={'n' + n} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/40 border border-red-500/25 text-red-300 text-xs">
+                                            {n}
+                                            <button onClick={() => removeBlock('names', n)} className="text-red-400/60 hover:text-red-300"><X size={11} /></button>
+                                        </span>
+                                    ))}
+                                    {blocklist.categories.map(c => (
+                                        <span key={'c' + c} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-950/40 border border-orange-500/25 text-orange-300 text-xs">
+                                            categoria: {c}
+                                            <button onClick={() => removeBlock('categories', c)} className="text-orange-400/60 hover:text-orange-300"><X size={11} /></button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-[11px] text-slate-600">
+                                Bloqueia por <b className="text-slate-500">nome</b> (contém o termo) ou <b className="text-slate-500">categoria</b> do FB (ex.: <i>Serviço financeiro</i> mata InfinitePay, PicPay e afins). Vale pro robô automático também.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
                 <p className="text-[11px] text-slate-600">
                     Clique na keyword para pausar/ativar. O robô roda sozinho todo dia — e usa o filtro salvo acima.
                 </p>
@@ -540,23 +630,36 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                             <tbody className="divide-y divide-white/[0.03]">
                                 {filteredDisc.map(d => {
                                     const sc = STATUS_CONFIG[d.status] || STATUS_CONFIG.pending;
+                                    const m = meta[d.facebook_page_id] || {};
                                     return (
                                         <tr key={d.id} className={`${d.status === 'dismissed' ? 'opacity-40' : ''}`}>
-                                            <td className="py-3 pr-4">
+                                            <td className="py-3 pr-4 align-top">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-medium text-white truncate max-w-[180px]">
+                                                    <span className="font-medium text-white truncate max-w-[200px]">
                                                         {d.advertiser_name}
                                                     </span>
+                                                    {m.category && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.08] text-[10px] text-slate-400 flex-shrink-0">
+                                                            {m.category}
+                                                        </span>
+                                                    )}
                                                     <a
-                                                        href={d.facebook_link}
+                                                        href={m.sampleAd || d.facebook_link}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-slate-600 hover:text-blue-400 flex-shrink-0"
-                                                        title="Abrir anúncios ativos na Biblioteca"
+                                                        title={m.sampleAd ? 'Abrir o anúncio carro-chefe' : 'Abrir anúncios ativos na Biblioteca'}
                                                     >
                                                         <ExternalLink size={12} />
                                                     </a>
                                                 </div>
+                                                {(m.title || m.description) && (
+                                                    <div className="mt-1 max-w-[340px]">
+                                                        {m.title && <div className="text-[12px] text-slate-300 font-medium truncate">{m.title}</div>}
+                                                        {m.description && <div className="text-[11px] text-slate-500 leading-snug line-clamp-2">{m.description}</div>}
+                                                        {m.domain && <div className="text-[10px] text-slate-600 mt-0.5 truncate">🔗 {m.domain}</div>}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="py-3 pr-4">
                                                 <span className="px-2 py-0.5 bg-blue-600/10 border border-blue-500/20 text-blue-400 text-xs rounded-lg">
@@ -589,7 +692,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                                                     {sc.label}
                                                 </span>
                                             </td>
-                                            <td className="py-3 pl-3">
+                                            <td className="py-3 pl-3 align-top">
                                                 {d.status === 'pending' && (
                                                     <div className="flex items-center gap-1.5">
                                                         <button
@@ -601,9 +704,16 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                                                             Rastrear
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDismiss(d.id, d.advertiser_name)}
+                                                            onClick={() => handleBlockOffer(d)}
                                                             className="p-1.5 text-slate-600 hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10"
-                                                            title="Descartar"
+                                                            title="Bloquear este anunciante (nunca mais trazer)"
+                                                        >
+                                                            <Ban size={13} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDismiss(d.id, d.advertiser_name)}
+                                                            className="p-1.5 text-slate-600 hover:text-slate-400 transition-colors rounded-lg hover:bg-white/[0.05]"
+                                                            title="Descartar (só some da lista)"
                                                         >
                                                             <X size={13} />
                                                         </button>
