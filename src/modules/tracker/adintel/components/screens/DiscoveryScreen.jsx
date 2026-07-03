@@ -17,12 +17,20 @@ const STATUS_CONFIG = {
 
 const DEFAULT_SETTINGS = { minAdCount: 20, minDaysRunning: 2, maxAdvertisers: 15 };
 
-function JobStatusPill({ job }) {
+function JobStatusPill({ job, stale }) {
     if (!job) {
         return (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900/60 border border-slate-700/40 text-slate-500">
                 <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
                 Sem execuções ainda
+            </span>
+        );
+    }
+    if (stale) {
+        return (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-yellow-950/40 border border-yellow-500/30 text-yellow-400" title="A run da nuvem parou de responder">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                Travado (sem resposta) · {job.found} achada{job.found === 1 ? '' : 's'}
             </span>
         );
     }
@@ -82,13 +90,16 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     const [savingSettings, setSavingSettings] = useState(false);
     const [starting, setStarting] = useState(false);
     const [meta, setMeta] = useState({});            // page_id → {description,title,domain,category}
-    const [blocklist, setBlocklist] = useState({ names: [], categories: [] });
+    const [blocklist, setBlocklist] = useState({ names: [], categories: [], domains: [], terms: [] });
     const [blockInput, setBlockInput] = useState('');
     const [showBlock, setShowBlock] = useState(false);
+    const [jobStamp, setJobStamp] = useState(null); // updated_at do discovery_job (pra detectar travado)
     const logsEndRef = useRef(null);
     const prevStatusRef = useRef(null);
 
-    const jobRunning = job?.status === 'running';
+    // job "travado": status running mas o robô não atualiza há >3 min (run da nuvem morreu)
+    const jobStale = job?.status === 'running' && jobStamp && (Date.now() - new Date(jobStamp).getTime() > 180000);
+    const jobRunning = job?.status === 'running' && !jobStale;
 
     /* ── app_state helpers (o robô espelha o estado aqui) ── */
     const stateGet = useCallback(async (key) => {
@@ -103,10 +114,11 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     }, [supabaseClient]);
 
     const fetchStatus = useCallback(async () => {
-        const j = await stateGet('discovery_job').catch(() => null);
-        if (j) setJob(j);
-        return j;
-    }, [stateGet]);
+        if (!supabaseClient) return null;
+        const { data } = await supabaseClient.from('app_state').select('value,updated_at').eq('key', 'discovery_job').maybeSingle();
+        if (data?.value) { setJob(data.value); setJobStamp(data.updated_at); }
+        return data?.value ?? null;
+    }, [supabaseClient]);
 
     /* ── dados ── */
     const fetchKeywords = useCallback(async () => {
@@ -141,7 +153,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         fetchStatus();
         stateGet('discovery_settings').then((s) => s && setSettings(v => ({ ...v, ...s }))).catch(() => {});
         stateGet('discovery_meta').then((m) => m && setMeta(m)).catch(() => {});
-        stateGet('discovery_blocklist').then((b) => b && setBlocklist({ names: b.names || [], categories: b.categories || [] })).catch(() => {});
+        stateGet('discovery_blocklist').then((b) => b && setBlocklist({ names: b.names || [], categories: b.categories || [], domains: b.domains || [], terms: b.terms || [] })).catch(() => {});
     }, [fetchKeywords, fetchDiscoveries, fetchStatus, stateGet]);
 
     // recarrega o meta (descrições) junto quando o job termina
@@ -214,13 +226,15 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         }
         setStarting(true);
         try {
-            // salva os filtros antes (o robô lê do app_state) e dispara na NUVEM
+            // limpa pedido de Parar antigo + salva filtros (o robô lê do app_state), aí dispara na NUVEM
+            await stateSet('discovery_stop', { requested: false }).catch(() => {});
             await stateSet('discovery_settings', settings).catch(() => {});
             const res = await fetch('/api/scraper-run?job=discovery', { method: 'POST' });
             const data = await res.json();
             if (res.ok && data.ok) {
                 showToast('Busca disparada na nuvem! O robô sobe em ~1 min — acompanhe o status aqui.', 'success');
                 setShowLogs(true);
+                setTimeout(fetchStatus, 3000);
             } else {
                 showToast('Erro ao disparar busca: ' + (data.error || ''), 'error');
             }
@@ -234,7 +248,14 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     const handleStopDiscovery = async () => {
         try {
             await stateSet('discovery_stop', { requested: true, ts: new Date().toISOString() });
-            showToast('Parada solicitada — o robô encerra no próximo passo (até ~15s).', 'info');
+            // se o job está travado (run da nuvem morreu), força o reset do status pra destravar a UI
+            if (jobStale) {
+                await stateSet('discovery_job', { ...job, status: 'stopped', finishedAt: new Date().toISOString() });
+                setJob(j => ({ ...j, status: 'stopped' }));
+                showToast('Job travado — resetado. Pode buscar de novo.', 'info');
+                return;
+            }
+            showToast('Parada solicitada — o robô encerra no próximo passo (até ~10s).', 'info');
         } catch (e) {
             showToast('Erro ao pedir parada: ' + e.message, 'error');
         }
@@ -284,34 +305,39 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         }
     };
 
-    /* ── blocklist: nunca mais trazer esse anunciante/categoria ── */
+    /* ── blocklist: nunca mais trazer esse anunciante/domínio/termo ── */
     const persistBlocklist = async (next) => {
         setBlocklist(next);
         await stateSet('discovery_blocklist', next);
     };
-    const addBlockName = async (term) => {
-        const t = (term || '').trim();
-        if (!t) return;
-        if (blocklist.names.some(n => n.toLowerCase() === t.toLowerCase())) return;
-        await persistBlocklist({ ...blocklist, names: [...blocklist.names, t] });
-        setBlockInput('');
-        showToast(`"${t}" bloqueado — o robô não traz mais.`, 'success');
+    const addToBlock = async (kind, val) => {
+        const t = (val || '').trim();
+        if (!t) return false;
+        const cur = blocklist[kind] || [];
+        if (cur.some(x => x.toLowerCase() === t.toLowerCase())) return false;
+        await persistBlocklist({ ...blocklist, [kind]: [...cur, t] });
+        return true;
     };
-    const addBlockCategory = async (cat) => {
-        const t = (cat || '').trim();
-        if (!t || blocklist.categories.some(c => c.toLowerCase() === t.toLowerCase())) return;
-        await persistBlocklist({ ...blocklist, categories: [...blocklist.categories, t] });
-        showToast(`Categoria "${t}" bloqueada.`, 'success');
+    // input livre: parece domínio (tem ponto, sem espaço) → domains; senão → termo (casa em qualquer campo)
+    const addBlockSmart = async () => {
+        const t = blockInput.trim();
+        if (!t) return;
+        const kind = (/\.[a-z]{2,}$/i.test(t) || t.includes('.')) && !t.includes(' ') ? 'domains' : 'terms';
+        const ok = await addToBlock(kind, t);
+        setBlockInput('');
+        if (ok) showToast(`Bloqueado (${kind === 'domains' ? 'domínio' : 'termo'}): "${t}"`, 'success');
     };
     const removeBlock = async (kind, val) => {
         await persistBlocklist({ ...blocklist, [kind]: blocklist[kind].filter(x => x !== val) });
     };
-    // bloqueia o anunciante da linha + descarta ele agora
+    // bloqueia o anunciante da linha (por nome) + descarta ele agora
     const handleBlockOffer = async (d) => {
-        await addBlockName(d.advertiser_name);
+        await addToBlock('names', d.advertiser_name);
         await supabaseClient.from('discovered_offers').update({ status: 'dismissed' }).eq('id', d.id);
         setDiscoveries(prev => prev.map(x => x.id === d.id ? { ...x, status: 'dismissed' } : x));
+        showToast(`"${d.advertiser_name}" bloqueado — o robô não traz mais.`, 'success');
     };
+    const blockCount = blocklist.names.length + blocklist.categories.length + blocklist.domains.length + blocklist.terms.length;
 
     const filteredDisc = discoveries.filter(d => filterStatus === 'all' ? true : d.status === filterStatus);
     const pendingCount = discoveries.filter(d => d.status === 'pending').length;
@@ -332,7 +358,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                     </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <JobStatusPill job={job} />
+                    <JobStatusPill job={job} stale={jobStale} />
                     <button
                         onClick={() => setShowLogs(v => !v)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
@@ -343,6 +369,16 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                         <Terminal size={13} />
                         Logs
                     </button>
+                    {jobStale && (
+                        <button
+                            onClick={handleStopDiscovery}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-yellow-600/20 text-yellow-300 border border-yellow-500/30 hover:bg-yellow-600/30 transition-all"
+                            title="A run da nuvem não responde há mais de 3 min — reseta o status"
+                        >
+                            <Square size={13} />
+                            Destravar
+                        </button>
+                    )}
                     {jobRunning ? (
                         <button
                             onClick={handleStopDiscovery}
@@ -504,12 +540,12 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                     </button>
                 </div>
 
-                {/* Bloqueios: anunciantes/categorias que o robô nunca traz */}
+                {/* Bloqueios: o que o robô NUNCA traz (nome/categoria/domínio/termo) */}
                 <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                     <button onClick={() => setShowBlock(v => !v)} className="flex items-center gap-2 text-xs font-semibold text-slate-300 w-full">
                         <ShieldOff size={13} className="text-slate-400" />
                         Bloqueios
-                        <span className="text-slate-600 font-normal">({blocklist.names.length + blocklist.categories.length})</span>
+                        <span className="text-slate-600 font-normal">({blockCount})</span>
                         <span className="ml-auto text-slate-600">{showBlock ? '−' : '+'}</span>
                     </button>
                     {showBlock && (
@@ -519,18 +555,18 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                                     type="text"
                                     value={blockInput}
                                     onChange={e => setBlockInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBlockName(blockInput); } }}
-                                    placeholder="Bloquear anunciante ou termo (ex: infinitepay)"
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBlockSmart(); } }}
+                                    placeholder="Bloquear domínio (ex: .app, play.google.com) ou termo (ex: cassino, app store)"
                                     className="flex-1 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500/40"
                                 />
                                 <button
-                                    onClick={() => addBlockName(blockInput)}
+                                    onClick={addBlockSmart}
                                     className="flex items-center gap-1 px-3 py-1.5 bg-red-600/15 border border-red-500/25 text-red-300 text-xs rounded-lg hover:bg-red-600/25 transition-all"
                                 >
                                     <Ban size={12} /> Bloquear
                                 </button>
                             </div>
-                            {(blocklist.names.length > 0 || blocklist.categories.length > 0) && (
+                            {blockCount > 0 && (
                                 <div className="flex flex-wrap gap-1.5">
                                     {blocklist.names.map(n => (
                                         <span key={'n' + n} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/40 border border-red-500/25 text-red-300 text-xs">
@@ -538,16 +574,28 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
                                             <button onClick={() => removeBlock('names', n)} className="text-red-400/60 hover:text-red-300"><X size={11} /></button>
                                         </span>
                                     ))}
+                                    {blocklist.domains.map(dm => (
+                                        <span key={'d' + dm} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-950/40 border border-purple-500/25 text-purple-300 text-xs">
+                                            🔗 {dm}
+                                            <button onClick={() => removeBlock('domains', dm)} className="text-purple-400/60 hover:text-purple-300"><X size={11} /></button>
+                                        </span>
+                                    ))}
                                     {blocklist.categories.map(c => (
                                         <span key={'c' + c} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-950/40 border border-orange-500/25 text-orange-300 text-xs">
-                                            categoria: {c}
+                                            cat: {c}
                                             <button onClick={() => removeBlock('categories', c)} className="text-orange-400/60 hover:text-orange-300"><X size={11} /></button>
+                                        </span>
+                                    ))}
+                                    {blocklist.terms.map(t => (
+                                        <span key={'t' + t} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800/60 border border-slate-600/40 text-slate-300 text-xs">
+                                            {t}
+                                            <button onClick={() => removeBlock('terms', t)} className="text-slate-500 hover:text-slate-300"><X size={11} /></button>
                                         </span>
                                     ))}
                                 </div>
                             )}
                             <p className="text-[11px] text-slate-600">
-                                Bloqueia por <b className="text-slate-500">nome</b> (contém o termo) ou <b className="text-slate-500">categoria</b> do FB (ex.: <i>Serviço financeiro</i> mata InfinitePay, PicPay e afins). Vale pro robô automático também.
+                                Já vem bloqueando <b className="text-slate-500">apps de loja</b> (.app, Google Play/App Store), <b className="text-slate-500">fintech</b> (categoria Serviço financeiro) e <b className="text-slate-500">jogos/apostas</b> (cassino, tigrinho…). Remova qualquer chip se quiser. Cor: <span className="text-red-300">nome</span> · <span className="text-purple-300">domínio</span> · <span className="text-orange-300">categoria</span> · <span className="text-slate-300">termo</span>.
                             </p>
                         </div>
                     )}
