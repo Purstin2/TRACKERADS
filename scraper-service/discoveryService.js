@@ -201,13 +201,22 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
         blocklist = {},
     } = options;
     const log = (msg) => { if (onLog) onLog(msg); else console.log(msg); };
-    const blockNames = (blocklist.names || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
-    const blockCats = (blocklist.categories || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
-    const isBlocked = (name, category) => {
+    const lc = (arr) => (arr || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
+    const blockNames = lc(blocklist.names);
+    const blockCats = lc(blocklist.categories);
+    const blockDomains = lc(blocklist.domains);
+    const blockTerms = lc(blocklist.terms);
+    // bloqueio por nome / categoria / domínio (contém ou termina com) / termo (em qualquer campo)
+    const isBlocked = ({ name, category, domain, title, snippet }) => {
         const n = String(name || '').toLowerCase();
         const c = String(category || '').toLowerCase();
+        const d = String(domain || '').toLowerCase();
+        const blob = `${n} ${String(title || '').toLowerCase()} ${String(snippet || '').toLowerCase()} ${d}`;
         if (blockNames.some((b) => n.includes(b))) return 'nome';
-        if (c && blockCats.some((b) => c.includes(b))) return 'categoria';
+        if (c && blockCats.some((b) => c.includes(b))) return `categoria (${category})`;
+        if (d && blockDomains.some((b) => d.includes(b) || d.endsWith(b))) return `domínio (${domain})`;
+        const hit = blockTerms.find((b) => blob.includes(b));
+        if (hit) return `termo "${hit}"`;
         return null;
     };
 
@@ -268,9 +277,9 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
             if (shouldStop()) { stopped = true; log(`⏹ "${keyword}": interrompida pelo usuário (${i}/${toProcess.length} verificados)`); break; }
             const cand = toProcess[i];
             const name0 = cand.name || `Anunciante ${cand.pageId}`;
-            // bloqueio: pula anunciante/categoria que você não quer (ex.: fintech tipo InfinitePay)
-            const blk = isBlocked(name0, cand.category);
-            if (blk) { log(`🚫 "${keyword}": ${name0} pulado (bloqueado por ${blk}${cand.category ? ` · ${cand.category}` : ''})`); continue; }
+            // bloqueio: pula app de loja / fintech / jogos / termos indesejados
+            const blk = isBlocked({ name: name0, category: cand.category, domain: cand.offerDomain, title: cand.offerTitle, snippet: cand.snippet });
+            if (blk) { log(`🚫 "${keyword}": ${name0} pulado (bloqueado por ${blk})`); continue; }
             log(`🔎 "${keyword}" [${i + 1}/${toProcess.length}] ${name0} — ${cand.matched} ads na keyword`);
 
             const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${cand.pageId}`;
@@ -300,12 +309,12 @@ export async function discoverOffersByKeyword(keyword, options = {}) {
                 const advPageAd = adv.ads.find((a) => a.pageName) || {};
                 const advertiserName = advPageAd.pageName || name0;
                 const category = advPageAd.category || cand.category || null;
-                // segunda chance de bloqueio: a categoria só aparece agora em alguns casos
-                const blk2 = isBlocked(advertiserName, category);
-                if (blk2) { log(`🚫 ${advertiserName} pulado após checagem (bloqueado por ${blk2}${category ? ` · ${category}` : ''})`); await randomDelay(1500, 3000); continue; }
                 const snippet = cand.snippet || adv.ads.find((a) => a.snippet)?.snippet || null;
                 const offerTitle = cand.offerTitle || advPageAd.offerTitle || null;
                 const offerDomain = cand.offerDomain || advPageAd.offerDomain || null;
+                // segunda chance de bloqueio: categoria/domínio/copy só aparecem agora em alguns casos
+                const blk2 = isBlocked({ name: advertiserName, category, domain: offerDomain, title: offerTitle, snippet });
+                if (blk2) { log(`🚫 ${advertiserName} pulado após checagem (bloqueado por ${blk2})`); await randomDelay(1500, 3000); continue; }
                 const sampleAd = cand.bestAd || adv.ads.find((a) => a.adArchiveId)?.adArchiveId || null;
 
                 log(`✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias${offerTitle ? ` | ${offerTitle}` : ''}`);

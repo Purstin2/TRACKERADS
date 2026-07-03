@@ -51,14 +51,16 @@ function pushJobState(force = false) {
     else if (!pushTimer) pushTimer = setTimeout(() => { pushTimer = null; doPush(); }, 2600 - elapsed);
 }
 
-// vigia o pedido de Parar vindo do site (app_state.discovery_stop)
+// vigia o pedido de Parar vindo do site (app_state.discovery_stop).
+// NÃO limpa o pedido no start: o "Buscar Agora" da UI é quem limpa antes de
+// disparar; assim um Parar clicado durante o boot da run (nuvem leva ~1min)
+// não é apagado. Poll rápido (4s) pra parar sem demora.
 let stopWatcher = null;
 function startStopWatcher() {
-    stateUpsert('discovery_stop', { requested: false }); // limpa pedido velho
     stopWatcher = setInterval(async () => {
         const v = await stateGet('discovery_stop');
         if (v && v.requested) requestStop();
-    }, 8000);
+    }, 4000);
 }
 function stopStopWatcher() {
     if (stopWatcher) { clearInterval(stopWatcher); stopWatcher = null; }
@@ -108,20 +110,37 @@ export async function loadSettingsAsync() {
     return remote ? sanitizeSettings({ ...loadSettings(), ...remote }) : loadSettings();
 }
 
-/* ── blocklist (anunciantes/categorias a pular) — vive no app_state ── */
+/* ── blocklist (o que o robô NUNCA traz) — vive no app_state ──
+ * names      = nome do anunciante CONTÉM o termo
+ * categories = categoria do FB bate (ex.: "Serviço financeiro")
+ * domains    = domínio do checkout contém / termina com (ex.: ".app", "play.google.com")
+ * terms      = palavra em nome+título+copy+domínio (ex.: "cassino", "app store")
+ * Defaults sensatos (removíveis pela UI) já cortam app de loja, fintech e jogos. */
+export const DEFAULT_BLOCKLIST = {
+    names: [],
+    categories: ['Serviço financeiro', 'Financial Service', 'Bank', 'App Page', 'Video Game', 'Games/Toys', 'Game'],
+    domains: ['play.google.com', 'apps.apple.com', 'itunes.apple', 'onelink.me', 'app.link', '.app'],
+    terms: ['cassino', 'casino', 'apostas', 'aposta esportiva', 'tigrinho', 'slot', 'bet365', 'betano', 'roleta', 'app store', 'google play', 'play store', 'baixe o app', 'baixe nosso app', 'baixe agora o app', 'disponível na app'],
+};
+
 export async function loadBlocklist() {
     const v = await stateGet('discovery_blocklist');
+    if (!v) return { ...DEFAULT_BLOCKLIST }; // 1ª vez: usa os defaults
     return {
-        names: Array.isArray(v?.names) ? v.names : [],
-        categories: Array.isArray(v?.categories) ? v.categories : [],
+        names: Array.isArray(v.names) ? v.names : [],
+        categories: Array.isArray(v.categories) ? v.categories : [],
+        domains: Array.isArray(v.domains) ? v.domains : [],
+        terms: Array.isArray(v.terms) ? v.terms : [],
     };
 }
 export async function saveBlocklist(patch) {
     const cur = await loadBlocklist();
-    const norm = (arr) => [...new Set((arr || []).map((s) => String(s).trim()).filter(Boolean))].slice(0, 200);
+    const norm = (arr) => [...new Set((arr || []).map((s) => String(s).trim()).filter(Boolean))].slice(0, 300);
     const next = {
         names: norm(patch.names ?? cur.names),
         categories: norm(patch.categories ?? cur.categories),
+        domains: norm(patch.domains ?? cur.domains),
+        terms: norm(patch.terms ?? cur.terms),
     };
     await stateUpsert('discovery_blocklist', next);
     return next;
