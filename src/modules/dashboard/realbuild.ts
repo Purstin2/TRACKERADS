@@ -2,7 +2,7 @@
  * Monta o DashboardData a partir de dados REAIS:
  *  - faturamento/vendas/aprovação/reembolso  → pedidos do gateway (kirvano_orders)
  *  - gasto                                    → soma das campanhas Meta selecionadas
- *  - taxa de gateway / imposto                → % dos Parâmetros aplicados sobre o faturamento real
+ *  - taxas/impostos/custos                    → aba TAXAS, resolvidos POR PRODUTO em cada pedido
  *  - funil (cliques→...→vendas apr)           → métricas Meta + aprovadas reais do gateway
  *
  * Filtros que alimentam isso (escolhidos na tela): produtos da Kirvano, fonte de
@@ -10,6 +10,7 @@
  */
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 import type { FinParams } from '@/modules/monitor/finance'
+import { feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint } from './data'
 
 const up = (s?: string | null) => (s || '').toUpperCase()
@@ -112,10 +113,11 @@ export interface RealOpts {
   spend: number // gasto Meta (BRL) das campanhas selecionadas
   hourlySpend?: number[] // gasto Meta por hora (24) — pro acumulado
   funnelMeta?: FunnelMeta | null // métricas de funil do Meta
-  fin: FinParams
+  fin: FinParams // hoje só `despesas` (período) vem daqui — taxas são por produto
+  taxas: TaxasConfig
 }
 
-export function buildRealDashboard({ orders, products, source, spend, hourlySpend, funnelMeta, fin }: RealOpts): DashboardData {
+export function buildRealDashboard({ orders, products, source, spend, hourlySpend, funnelMeta, fin, taxas: taxasCfg }: RealOpts): DashboardData {
   // filtro de produto casa principal OU order bump; e revaloriza o pedido pro valor
   // real do(s) produto(s) selecionado(s) — assim filtrar por um bump não infla.
   let rows = orders
@@ -141,16 +143,25 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
 
   const fatBruto = sum(approved)
   const vendas = approved.length
-  const taxas = fatBruto * (fin.gateway / 100)
-  const imposto = fatBruto * (fin.imposto / 100)
+  // Taxas/impostos/custos resolvidos POR PEDIDO: produto principal → config da aba
+  // Taxas (por ID Kirvano, fallback nome, fallback padrão). % sobre o valor + fixos.
+  let taxas = 0
+  let imposto = 0
+  let custoTotal = 0
+  approved.forEach((o) => {
+    const s = sumFees(feeItemsForOrder(taxasCfg, o))
+    const v = o.value || 0
+    taxas += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+    imposto += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
+    custoTotal += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
+  })
   const reembolsoVal = sum(refunded)
   const chargebackVal = sum(charged)
-  // Líquido = Bruto − taxas de gateway − imposto (mesma conta da UTMify).
+  // Líquido = Bruto − taxas − imposto (mesma conta da UTMify).
   // Reembolso/chargeback NÃO entram aqui: a venda reembolsada já saiu do Bruto
   // (status vira REFUNDED), então descontar de novo seria dupla penalização.
   // Ficam como métricas informativas (reembolsoPct / vendasReembolsadas).
   const fatLiquido = fatBruto - taxas - imposto
-  const custoTotal = vendas * fin.custoUn
   const lucro = fatLiquido - spend - fin.despesas - custoTotal
   const netFactor = fatBruto > 0 ? fatLiquido / fatBruto : 1
 

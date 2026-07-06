@@ -12,7 +12,9 @@ import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type 
 import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
 import { fetchOrders, fetchRefundsByRefundDate, type KirvanoOrder } from '@/modules/pixel/orders'
 import { getStoredAccounts, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
-import { loadFinParams, saveFinParams, syncFinParams, FIN_DEFAULTS, type FinParams } from '@/modules/monitor/finance'
+import { loadFinParams, saveFinParams, syncFinParams, type FinParams } from '@/modules/monitor/finance'
+import { loadTaxas, syncTaxas, type TaxasConfig } from '@/modules/taxas/taxas'
+import { Link } from 'react-router-dom'
 import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
 
 const ResponsiveGrid = WidthProvider(Responsive)
@@ -130,25 +132,25 @@ function MultiDropdown({
   )
 }
 
-/* ── Parâmetros financeiros ── */
+/* ── Parâmetros financeiros — taxas/impostos/custos moraram pra aba TAXAS (por produto) ── */
 function ParamsModal({ fin, onSave, onClose }: { fin: FinParams; onSave: (f: FinParams) => void; onClose: () => void }) {
   const [f, setF] = useState<FinParams>(fin)
-  const set = (k: keyof FinParams, v: string) => setF((p) => ({ ...p, [k]: parseFloat(v) || 0 }))
-  const Field = ({ k, label, step }: { k: keyof FinParams; label: string; step: string }) => (
-    <div className="field"><label>{label}</label><input type="number" step={step} value={f[k]} onChange={(e) => set(k, e.target.value)} /></div>
-  )
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="card max-h-[90vh] w-full max-w-[480px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="card-header"><h3 className="text-[13px] font-bold">⚙️ Parâmetros financeiros</h3><button onClick={onClose} className="text-muted2 hover:text-ink"><X className="h-4 w-4" /></button></div>
+      <div className="card max-h-[90vh] w-full max-w-[440px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="card-header"><h3 className="text-[13px] font-bold">⚙️ Parâmetros do período</h3><button onClick={onClose} className="text-muted2 hover:text-ink"><X className="h-4 w-4" /></button></div>
         <div className="card-body">
-          <p className="mb-3 text-[12px] text-muted">Faturamento/vendas/aprovação vêm <b>reais</b> do gateway. Aqui só o que o webhook não manda: taxa de gateway, imposto e custos.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field k="gateway" label="Gateway (%)" step="0.1" /><Field k="imposto" label="Imposto (%)" step="0.1" />
-            <Field k="custoUn" label="Custo por venda (R$)" step="0.01" /><Field k="despesas" label="Despesas (período, R$)" step="0.01" />
+          <p className="mb-3 text-[12px] text-muted">
+            Taxas, impostos e custos agora são <b>por produto</b> na aba{' '}
+            <Link to="/taxas" className="font-bold text-brand-2 underline underline-offset-2">Taxas</Link>{' '}
+            — o P&amp;L aqui já usa essa config, pedido a pedido. Aqui fica só a despesa fixa do período.
+          </p>
+          <div className="field max-w-[220px]">
+            <label>Despesas (período, R$)</label>
+            <input type="number" step="0.01" value={f.despesas} onChange={(e) => setF((p) => ({ ...p, despesas: parseFloat(e.target.value) || 0 }))} />
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <button className="btn btn-ghost btn-sm mr-auto" onClick={() => setF({ ...FIN_DEFAULTS })}>↺ Padrão</button>
+            <Link to="/taxas" className="btn btn-ghost btn-sm mr-auto">Abrir aba Taxas →</Link>
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={() => onSave(f)}>Salvar</button>
           </div>
@@ -261,6 +263,7 @@ export default function DashboardPage() {
   const [campStatus, setCampStatus] = useState('active_paused')
   const [platform, setPlatform] = useState('Qualquer')
   const [fin, setFin] = useState<FinParams>(loadFinParams)
+  const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
   const [loading, setLoading] = useState(false)
   const [showParams, setShowParams] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
@@ -376,6 +379,7 @@ export default function DashboardPage() {
     }
     if (token.trim()) load(true)
     syncFinParams().then(setFin)
+    syncTaxas().then(setTaxasCfg)
     // layout/visualização do Supabase (não se perde ao limpar cookies)
     loadState<Persisted | null>(LS_KEY, null).then((p) => {
       if (isValidPersisted(p)) { setEnabled(p.enabled); setLayout(p.layout); savedSnap.current = p }
@@ -402,8 +406,8 @@ export default function DashboardPage() {
 
   // dados sempre reais (da API). Antes de carregar, tudo zero — sem mockup.
   const data: DashboardData = useMemo(
-    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, funnelMeta, fin }),
-    [orders, selProducts, selSources, spend, hourlySpend, funnelMeta, fin],
+    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, funnelMeta, fin, taxas: taxasCfg }),
+    [orders, selProducts, selSources, spend, hourlySpend, funnelMeta, fin, taxasCfg],
   )
 
   const d = data
@@ -483,7 +487,7 @@ export default function DashboardPage() {
             <button className="btn btn-primary btn-sm" onClick={() => load()} disabled={loading}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Carregando...' : 'Atualizar'}</button>
           </div>
         </div>
-        <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; gateway-fee e imposto são % nos Parâmetros.</p>
+        <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; taxas/impostos/custos por produto na aba <Link to="/taxas" className="font-semibold text-brand-2 underline underline-offset-2">Taxas</Link>.</p>
       </div>
 
       <ResponsiveGrid className="-m-2" layouts={{ lg: visibleLayout, md: visibleLayout }} breakpoints={{ lg: 996, md: 768, sm: 480, xs: 0 }} cols={{ lg: 12, md: 12, sm: 1, xs: 1 }} rowHeight={58} margin={[14, 14]} isDraggable={editing} isResizable={editing} draggableHandle=".wdg-head" compactType="vertical" onLayoutChange={(cur: Layout[]) => { if (editing) setLayout(cur.map((l) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }))) }}>

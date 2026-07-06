@@ -30,7 +30,7 @@ import {
   type InsightRow,
   type AdLevel,
 } from '@/lib/meta'
-import { loadFinParams, type FinParams } from './finance'
+import { loadFinParams, loadFinParamsForAccount, type FinParams } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
@@ -547,8 +547,8 @@ function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
   const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
   return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
 }
-export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign', realMap?: Record<string, RealAgg>, cur?: string): ListaRow[] {
-  const FIN = loadFinParams()
+export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign', realMap?: Record<string, RealAgg>, cur?: string, accId?: string): ListaRow[] {
+  const FIN = loadFinParamsForAccount(accId)
   return rows
     .map((r) => {
       const roas = getRoas(r)
@@ -902,7 +902,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
           )
         if (item.kind !== 'lista' || !item.rows) return null
         const sym = curSym(item.acc.cur)
-        const all = analyzeListaRows(item.rows, s, item.meta, m.level, m.realMap, item.acc.cur)
+        const all = analyzeListaRows(item.rows, s, item.meta, m.level, m.realMap, item.acc.cur, item.acc.id)
         let rows = all.filter(
           (r) =>
             (!m.actionFilter || r.action.code === m.actionFilter) &&
@@ -981,7 +981,7 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
   const [days, setDays] = useState<DayProfit[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const fin = loadFinParams()
+  const fin = loadFinParamsForAccount(accId)
   const netFactor = 1 - (fin.gateway + fin.imposto) / 100
 
   useEffect(() => {
@@ -1078,7 +1078,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           const sales = getSales(a)
           const spend = parseFloat(a.spend || '0')
           const revenue = getRevenue(a) || (roas != null ? roas * spend : 0)
-          const { lucro, margem } = rowFin(spend, revenue, sales, loadFinParams())
+          const { lucro, margem } = rowFin(spend, revenue, sales, loadFinParamsForAccount(acc.id))
           return {
             id: a.ad_id!,
             name: a.ad_name || '',

@@ -7,6 +7,7 @@ const MonitorPage = lazy(() => import('./modules/monitor/MonitorPage'))
 const TrackerPage = lazy(() => import('./modules/tracker/TrackerPage'))
 const UploaderPage = lazy(() => import('./modules/uploader/UploaderPage'))
 const PixelPage = lazy(() => import('./modules/pixel/PixelPage'))
+const TaxasPage = lazy(() => import('./modules/taxas/TaxasPage'))
 const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
 
 function Loading() {
@@ -67,6 +68,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loading />}>
               <PixelPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="taxas/*"
+          element={
+            <Suspense fallback={<Loading />}>
+              <TaxasPage />
             </Suspense>
           }
         />

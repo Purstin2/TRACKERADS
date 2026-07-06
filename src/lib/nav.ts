@@ -5,6 +5,7 @@ import {
   Search,
   UploadCloud,
   Crosshair,
+  Percent,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -45,6 +46,12 @@ export const NAV: NavItem[] = [
       { label: 'Funil Manual', to: '/monitor/funman' },
       { label: 'Ações', to: '/monitor/acoes' },
     ],
+  },
+  {
+    id: 'taxas',
+    label: 'Taxas',
+    icon: Percent,
+    to: '/taxas',
   },
   {
     id: 'tracker',

@@ -1,5 +1,6 @@
 import { getSales, getRevenue, type InsightRow } from '@/lib/meta'
 import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
+import { loadTaxas, syncTaxas, feeItemsForAccount, sumFees, type TaxItem, type TaxasConfig } from '@/modules/taxas/taxas'
 
 export interface FinParams {
   aprov: number
@@ -27,14 +28,38 @@ export const FIN_DEFAULTS: FinParams = {
   boleto: 5,
 }
 
-// cache local (instantâneo)
+/** FinParams derivado dos itens da aba Taxas (compat com os cálculos existentes). */
+function finFromItems(items: TaxItem[], cfg: TaxasConfig, despesas: number): FinParams {
+  const s = sumFees(items)
+  return {
+    ...FIN_DEFAULTS,
+    aprov: cfg.aprovEstimada,
+    gateway: s.byCat.taxa.pct + s.byCat.custo.pct,
+    imposto: s.byCat.imposto.pct,
+    custoUn: s.fixo,
+    despesas,
+    reembolso: 0,
+    chargeback: 0,
+  }
+}
+
+const legacyDespesas = () => cacheGet<Partial<FinParams>>('meta_fin', {}).despesas ?? 0
+
+// As taxas agora vêm da aba TAXAS (por produto/conta/padrão — app_state `taxas_v1`).
+// O meta_fin legado só guarda `despesas` (input do Dashboard, específico do período).
 export function loadFinParams(): FinParams {
-  return { ...FIN_DEFAULTS, ...cacheGet<Partial<FinParams>>('meta_fin', {}) }
+  const cfg = loadTaxas()
+  return finFromItems(cfg.global, cfg, legacyDespesas())
+}
+/** Taxas da conta de anúncio (config da aba Taxas), com fallback no padrão. */
+export function loadFinParamsForAccount(accountId?: string | null): FinParams {
+  const cfg = loadTaxas()
+  return finFromItems(feeItemsForAccount(cfg, accountId), cfg, legacyDespesas())
 }
 // fonte de verdade no Supabase (chama ao montar pra sincronizar)
 export async function syncFinParams(): Promise<FinParams> {
-  const v = await loadState<Partial<FinParams>>('meta_fin', {})
-  return { ...FIN_DEFAULTS, ...v }
+  const [cfg, legacy] = await Promise.all([syncTaxas(), loadState<Partial<FinParams>>('meta_fin', {})])
+  return finFromItems(cfg.global, cfg, legacy.despesas ?? 0)
 }
 export function saveFinParams(f: FinParams) {
   cacheSet('meta_fin', f)
