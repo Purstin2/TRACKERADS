@@ -85,15 +85,26 @@ alter table pixel_routes add column if not exists checkout_selector text;
 alter table pixel_routes add column if not exists checkout_keywords  text[];
 alter table pixel_routes add column if not exists fire_on_pix        boolean default false;
 
--- Recria a view pública incluindo os novos campos (sem o token)
-create or replace view pixel_routes_public as
+-- ─── Migration 06/07/2026: view sem SECURITY DEFINER (advisor do Supabase) ───
+-- O advisor flagra view definer como crítico. Mesmo efeito sem definer:
+-- has_token/token_last4 viram colunas GERADAS na tabela (grant SÓ nelas pro anon;
+-- capi_token segue sem grant) e a view roda como security_invoker.
+alter table pixel_routes add column if not exists has_token boolean
+  generated always as (capi_token is not null and capi_token <> '') stored;
+alter table pixel_routes add column if not exists token_last4 text
+  generated always as (right(capi_token, 4)) stored;
+
+grant select (has_token, token_last4) on pixel_routes to anon;
+grant select (has_token, token_last4) on pixel_routes to authenticated;
+
+create or replace view pixel_routes_public
+with (security_invoker = true) as
 select
   id, label, offer_id, match_type, pixel_id, test_code, active, gateways,
   checkout_selector, checkout_keywords, fire_on_pix,
   created_at, updated_at,
-  case when capi_token is null or capi_token = '' then false else true end as has_token,
-  right(capi_token, 4) as token_last4
+  has_token, token_last4
 from pixel_routes;
 
-alter view pixel_routes_public set (security_invoker = false);
 grant select on pixel_routes_public to anon;
+grant select on pixel_routes_public to authenticated;
