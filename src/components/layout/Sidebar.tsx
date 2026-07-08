@@ -31,12 +31,10 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
       >
         {/* logo + toggle */}
         <div className={`flex h-[61px] items-center border-b border-border ${collapsed ? 'lg:justify-center lg:px-0' : ''} gap-2.5 px-4`}>
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-brand">
+          <span className={`hidden shrink-0 items-center justify-center rounded-[9px] bg-brand ${collapsed ? 'lg:flex lg:h-8 lg:w-8' : ''}`}>
             <Zap className="h-[17px] w-[17px] fill-white text-white" />
           </span>
-          <span className={`text-[15px] font-extrabold tracking-tight ${hideLg}`}>
-            PURSTIN<span className="text-brand-2">LAB</span>
-          </span>
+          <img src="/logo.png" alt="PURSTINLAB" className={`h-[26px] w-auto shrink-0 ${hideLg}`} />
           {/* botão recolher (só desktop) */}
           <button
             onClick={onToggleCollapse}

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { loadTaxas, syncTaxas, feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
+import type { KirvanoOrder } from '@/modules/pixel/orders'
 
 // dia comercial BR (UTC-3) — alinhado com a dashboard
 const BR_OFFSET_MS = 3 * 3600000
@@ -31,6 +33,7 @@ const hhmm = (iso?: string | null) => {
 interface Order {
   id: string
   product: string | null
+  products: any[] | null
   value: number | null
   customer_name: string | null
   payment_method: string | null
@@ -85,7 +88,10 @@ function beep() {
 interface AdStats { spend: number; impressions: number; clicks: number }
 
 export default function MobileApp() {
+  const [tab, setTab] = useState<'vendas' | 'dash'>('vendas')
   const [orders, setOrders] = useState<Order[]>([])
+  const [allOrders, setAllOrders] = useState<Order[]>([])
+  const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
   const [loading, setLoading] = useState(true)
   const [updatedAt, setUpdatedAt] = useState('')
   const [adStats, setAdStats] = useState<AdStats | null>(null)
@@ -133,13 +139,15 @@ export default function MobileApp() {
     const [{ data }, adsRes] = await Promise.all([
       sb
         .from('kirvano_orders')
-        .select('id,product,value,customer_name,payment_method,status,ordered_at,created_at')
+        .select('id,product,products,value,customer_name,payment_method,status,ordered_at,created_at')
         .gte('created_at', brtTodayStartISO())
         .order('created_at', { ascending: false })
-        .limit(120),
+        .limit(200),
       fetch('/api/mobile?fn=meta-today').then((r) => r.json()).catch(() => null),
     ])
-    const approved = ((data || []) as Order[]).filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
+    const all = (data || []) as Order[]
+    setAllOrders(all)
+    const approved = all.filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
     if (!firstLoad.current) {
       approved.filter((o) => !seen.current.has(o.id)).forEach(notifySale)
     }
@@ -153,6 +161,7 @@ export default function MobileApp() {
 
   useEffect(() => {
     fetchSales()
+    syncTaxas().then(setTaxasCfg)
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') subscribePush()
     const t = setInterval(fetchSales, 25000)
     const onVis = () => { if (document.visibilityState === 'visible') fetchSales() }
@@ -201,6 +210,43 @@ export default function MobileApp() {
   const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
   const standalone = typeof window !== 'undefined' && window.matchMedia?.('(display-mode: standalone)').matches
 
+  // P&L do dia — taxas POR PRODUTO da aba Taxas (mesma conta do Dashboard desktop)
+  const dash = useMemo(() => {
+    let taxasVal = 0
+    let impostoVal = 0
+    let custoVal = 0
+    orders.forEach((o) => {
+      const s = sumFees(feeItemsForOrder(taxasCfg, o as unknown as KirvanoOrder))
+      const v = o.value || 0
+      taxasVal += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+      impostoVal += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
+      custoVal += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
+    })
+    const fatLiquido = total - taxasVal - impostoVal
+    const lucro = fatLiquido - custoVal - spend
+    const iniciadas = allOrders.filter((o) => (o.status || '').toUpperCase() !== 'ABANDONED').length
+    const pend = allOrders.filter((o) => (o.status || '').toUpperCase() === 'PENDING')
+    const prod: Record<string, { n: number; v: number }> = {}
+    orders.forEach((o) => {
+      const name = o.product || '(sem produto)'
+      if (!prod[name]) prod[name] = { n: 0, v: 0 }
+      prod[name].n++
+      prod[name].v += o.value || 0
+    })
+    return {
+      fatLiquido,
+      lucro,
+      descontos: taxasVal + impostoVal + custoVal,
+      margem: fatLiquido !== 0 ? (lucro / fatLiquido) * 100 : null,
+      cpa: orders.length ? spend / orders.length : null,
+      aprovPct: iniciadas ? (orders.length / iniciadas) * 100 : null,
+      iniciadas,
+      pendCount: pend.length,
+      pendVal: pend.reduce((s, o) => s + (o.value || 0), 0),
+      topProd: Object.entries(prod).sort((a, b) => b[1].v - a[1].v).slice(0, 6),
+    }
+  }, [orders, allOrders, taxasCfg, total, spend])
+
   return (
     <div
       className="min-h-screen bg-bg text-ink"
@@ -213,7 +259,7 @@ export default function MobileApp() {
           <Zap className="h-5 w-5 fill-white text-white" />
         </span>
         <div className="flex-1">
-          <div className="text-[15px] font-extrabold leading-none">Vendas</div>
+          <div className="text-[15px] font-extrabold leading-none">{tab === 'vendas' ? 'Vendas' : 'Dashboard'}</div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted2">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
@@ -227,7 +273,9 @@ export default function MobileApp() {
         </button>
       </header>
 
-      <main className="mx-auto max-w-[560px] px-4 pb-24 pt-4">
+      <main className="mx-auto max-w-[560px] px-4 pb-28 pt-4">
+        {tab === 'vendas' ? (
+        <>
         {/* total do dia */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
           <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted2">
@@ -335,8 +383,89 @@ export default function MobileApp() {
           </div>
         )}
 
+        </>
+        ) : (
+        <>
+        {/* ── DASHBOARD do dia ── */}
+        <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
+          <div className="text-[12px] font-semibold uppercase tracking-wide text-muted2">Lucro de hoje</div>
+          <div className={`mt-1 text-[40px] font-extrabold leading-none ${dash.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{brl(dash.lucro)}</div>
+          <div className="mt-2 text-[12px] text-muted">
+            líquido {brl(dash.fatLiquido)} − ads {brl(spend)} · taxas/custos por produto (aba Taxas)
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {[
+            { k: 'Faturamento', v: brl(total), cls: 'text-ink' },
+            { k: 'Gasto Ads', v: brl(spend), cls: 'text-warn' },
+            { k: 'ROAS', v: roas !== null ? roas.toFixed(2) + '×' : '—', cls: roas !== null && roas >= 1.23 ? 'text-ok' : 'text-danger' },
+            { k: 'CPA', v: dash.cpa !== null ? brl(dash.cpa) : '—', cls: 'text-ink' },
+            { k: 'Margem', v: dash.margem !== null ? dash.margem.toFixed(0) + '%' : '—', cls: dash.margem !== null && dash.margem >= 0 ? 'text-ok' : 'text-danger' },
+            { k: 'Taxas+custos', v: brl(dash.descontos), cls: 'text-muted' },
+          ].map((c) => (
+            <div key={c.k} className="rounded-xl2 border border-border bg-surface p-3.5">
+              <div className="text-[10.5px] font-semibold uppercase tracking-wide text-muted2">{c.k}</div>
+              <div className={`mt-0.5 text-[20px] font-extrabold leading-none ${c.cls}`}>{c.v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-[12px] font-bold text-muted">Aprovação de hoje</div>
+            <div className={`text-[16px] font-extrabold ${dash.aprovPct !== null && dash.aprovPct >= 60 ? 'text-ok' : 'text-warn'}`}>
+              {dash.aprovPct !== null ? dash.aprovPct.toFixed(0) + '%' : '—'}
+            </div>
+          </div>
+          <div className="mt-1 text-[12px] text-muted2">
+            {orders.length} aprovada{orders.length === 1 ? '' : 's'} de {dash.iniciadas} iniciada{dash.iniciadas === 1 ? '' : 's'}
+            {dash.pendCount > 0 && <> · <b className="text-warn">{dash.pendCount} PIX pendente{dash.pendCount > 1 ? 's' : ''}</b> ({brl(dash.pendVal)})</>}
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
+          <div className="mb-2 text-[12px] font-bold text-muted">Vendas por produto</div>
+          {dash.topProd.length === 0 ? (
+            <div className="py-4 text-center text-[12px] text-muted2">sem vendas ainda hoje</div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {dash.topProd.map(([name, d]) => (
+                <div key={name} className="flex items-center gap-2 text-[12.5px]">
+                  <span className="min-w-0 flex-1 truncate text-ink">{name}</span>
+                  <span className="text-muted2">{d.n}×</span>
+                  <span className="w-[84px] text-right font-bold text-ok">{brl(d.v)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        </>
+        )}
+
         <p className="mt-6 text-center text-[11px] text-muted2">Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar</p>
       </main>
+
+      {/* ── abas fixas embaixo ── */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-bg/95 backdrop-blur-xl"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="mx-auto flex max-w-[560px]">
+          {([['vendas', 'Vendas', ListOrdered], ['dash', 'Dashboard', LayoutDashboard]] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold transition-colors ${
+                tab === id ? 'text-brand-2' : 'text-muted2'
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   )
 }
