@@ -1,16 +1,78 @@
-import { Download, Trash2, Plus, Check, Pencil, Bell } from 'lucide-react'
+import { useState } from 'react'
+import { Download, Trash2, Plus, Check, Pencil, Bell, Zap } from 'lucide-react'
 import {
   useLog,
   openLog,
   updateAction,
   deleteAction,
   clearActionLog,
+  todayBR,
   KIND_LABEL,
   KIND_CLS,
   type ActionEntry,
 } from './actionLog'
 import { ImpactBtn } from './BudgetImpact'
 import { trunc, curSym } from './config'
+import { getBudget, setBudget } from '@/lib/meta'
+import { useMonitor } from './MonitorContext'
+import { toast } from '@/components/ui/toast'
+
+/** "Tornar real": aplica na Meta um ajuste de orçamento que foi registrado como simulado
+ *  e tira a marcação [simulado] da entrada. Mesma mecânica do BudgetModal: CBO aplica o
+ *  valor direto; ABO rateia o fator novo/atual em cada adset ativo. */
+function MakeRealBtn({ e }: { e: ActionEntry }) {
+  const m = useMonitor()
+  const [busy, setBusy] = useState(false)
+  if (!m.token?.trim()) return null
+
+  async function run() {
+    const sym = curSym(e.cur || 'USD')
+    const target = e.budgetAfter!
+    setBusy(true)
+    try {
+      const info = await getBudget(e.campId!, m.token.trim())
+      if (!info.items.length) throw new Error('nenhum item ativo com orçamento nessa campanha')
+      const curTotal = info.total / 100
+      const mudou = e.budgetBefore != null && Math.abs(curTotal - e.budgetBefore) > 0.01
+      const ok = confirm(
+        `Aplicar de verdade na Meta?\n\n${e.name}\n` +
+          `Orçamento atual: ${sym}${curTotal.toFixed(2)}/dia\n` +
+          `Novo orçamento: ${sym}${target.toFixed(2)}/dia` +
+          (mudou ? `\n\n⚠ O orçamento atual difere do registrado na simulação (${sym}${e.budgetBefore!.toFixed(2)}).` : ''),
+      )
+      if (!ok) { setBusy(false); return }
+      const factor = curTotal > 0 ? target / curTotal : 1
+      for (const it of info.items) {
+        const cents = info.items.length === 1 ? Math.round(target * 100) : Math.round(it.daily * factor)
+        await setBudget(it.id, cents, m.token.trim())
+      }
+      updateAction(e.id, {
+        sim: false,
+        ts: new Date().toISOString(), // a mudança valeu AGORA — trackers de ritmo/impacto usam o ts
+        dateBR: todayBR(),
+        budgetBefore: Math.round(curTotal * 100) / 100,
+        spendAtTime: null, // foto da simulação é velha; sem foto real do momento, melhor nenhum
+        salesAtTime: null,
+        detail: (e.detail || '').replace(/\s*\[simulado\]/, '') + ' · tornado real',
+      })
+      toast(`Aplicado na Meta: ${sym}${target.toFixed(2)}/dia`, 'ok')
+    } catch (err: any) {
+      toast('Erro: ' + err.message, 'err')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <button
+      title="Tornar real — aplica esse orçamento na Meta agora"
+      onClick={run}
+      disabled={busy}
+      className="flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 text-[10px] font-bold text-warn hover:bg-warn/25 disabled:opacity-50"
+    >
+      <Zap className="h-3 w-3" /> {busy ? 'Aplicando…' : 'Tornar real'}
+    </button>
+  )
+}
 
 function fmtTs(ts: string) {
   const d = new Date(ts)
@@ -192,6 +254,9 @@ export default function AcoesView() {
                     <td className="max-w-[200px] py-1.5 text-[11px] text-muted2">{e.detail || ''}</td>
                     <td className="py-1.5 pr-3">
                       <div className="flex items-center gap-1">
+                        {e.sim && (e.kind === 'orcamento' || e.kind === 'escala') && e.campId && e.budgetAfter != null && (
+                          <MakeRealBtn e={e} />
+                        )}
                         {(e.kind === 'orcamento' || e.kind === 'escala') && e.campId && (
                           <ImpactBtn accId={e.accId || ''} name={e.name} campId={e.campId} cur={e.cur || 'USD'} />
                         )}
