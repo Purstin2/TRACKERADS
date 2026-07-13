@@ -239,7 +239,7 @@ export interface WaHealth {
 
 export async function fetchWaHealth(secret: string): Promise<WaHealth> {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
-  const r = await fetch(`${origin}/api/wa-health?secret=${encodeURIComponent(secret)}`)
+  const r = await fetch(`${origin}/api/wa-templates?action=health&secret=${encodeURIComponent(secret)}`)
   return r.json()
 }
 

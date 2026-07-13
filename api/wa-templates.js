@@ -44,6 +44,46 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
+  // ── SAÚDE do número (Meta Cloud API) — detecta token revogado/número desconectado,
+  // frequentemente causado por erro de pagamento no Business Manager. Fica aqui (em vez
+  // de um arquivo próprio) pra não estourar o limite de 12 Serverless Functions do plano Hobby.
+  if (req.query.action === 'health') {
+    const token = need('WA_TOKEN')
+    const phoneId = need('WA_PHONE_ID')
+    if (!token || !phoneId) {
+      return res.status(200).json({ ok: false, configured: false, reason: 'WA_TOKEN/WA_PHONE_ID não configurados na Vercel — disparo não funciona.' })
+    }
+    try {
+      const r = await fetch(
+        `${GRAPH}/${phoneId}?fields=verified_name,display_phone_number,quality_rating,messaging_limit_tier,code_verification_status&access_token=${token}`,
+      )
+      const j = await r.json()
+      if (j.error) {
+        const msg = (j.error.message || '') + ' ' + (j.error.error_user_msg || '')
+        const billing = /payment|billing|pagamento|cobran|suspen|restrict|disabled|desativad/i.test(msg)
+        return res.status(200).json({
+          ok: false,
+          configured: true,
+          reason: j.error.error_user_msg || j.error.message || 'erro desconhecido na Graph API',
+          code: j.error.code,
+          billingSuspect: billing,
+        })
+      }
+      const quality = (j.quality_rating || '').toUpperCase()
+      return res.status(200).json({
+        ok: true,
+        configured: true,
+        phone: j.display_phone_number || null,
+        verifiedName: j.verified_name || null,
+        qualityRating: quality || null,
+        qualityBad: quality === 'RED',
+        messagingLimitTier: j.messaging_limit_tier || null,
+      })
+    } catch (e) {
+      return res.status(200).json({ ok: false, configured: true, reason: 'falha ao consultar a Graph API: ' + e.message })
+    }
+  }
+
   const token = need('WA_TOKEN')
   const waba = need('WA_WABA_ID')
   if (!token) return res.status(500).json({ error: 'WA_TOKEN não configurado na Vercel' })
