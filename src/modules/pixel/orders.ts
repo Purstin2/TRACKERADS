@@ -167,6 +167,82 @@ export function waDay(body?: string | null): number | null {
   return m ? parseInt(m[1], 10) : null
 }
 
+/* ── Conversão da recuperação (taxa + qual dia converteu) ── */
+export interface WaConversion {
+  order: KirvanoOrder
+  day: number | null // dia (1/2/3) da última mensagem antes da conversão
+}
+export interface WaConversionStats {
+  totalAttempted: number // carrinhos que receberam pelo menos 1 msg
+  converted: number
+  conversionRate: number // 0..1
+  revenue: number // R$ recuperado
+  byDay: Record<number, { sent: number; converted: number }>
+  conversions: WaConversion[]
+}
+
+/** Cruza pedidos (kirvano_orders) com o histórico de disparos (wa_messages) pra
+ *  medir taxa de conversão e atribuir a venda ao dia (1/2/3) da última msg antes de aprovar. */
+export function computeWaConversion(orders: KirvanoOrder[], messages: WaMessage[]): WaConversionStats {
+  const attempted = orders.filter((o) => o.wa_sent_at)
+  const byOrderMsgs = new Map<string, WaMessage[]>()
+  for (const m of messages) {
+    if (!m.order_id || m.ok !== true) continue
+    const arr = byOrderMsgs.get(m.order_id) || []
+    arr.push(m)
+    byOrderMsgs.set(m.order_id, arr)
+  }
+
+  const byDay: Record<number, { sent: number; converted: number }> = { 1: { sent: 0, converted: 0 }, 2: { sent: 0, converted: 0 }, 3: { sent: 0, converted: 0 } }
+  for (const m of messages) {
+    if (m.ok !== true) continue
+    const d = waDay(m.body)
+    if (d && byDay[d]) byDay[d].sent++
+  }
+
+  const conversions: WaConversion[] = []
+  let revenue = 0
+  for (const o of attempted) {
+    if ((o.status || '').toUpperCase() !== 'APPROVED') continue
+    revenue += o.value || 0
+    const msgs = (byOrderMsgs.get(o.id) || []).sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+    const cutoff = o.updated_at ? new Date(o.updated_at).getTime() : Date.now()
+    const before = msgs.filter((m) => new Date(m.created_at || 0).getTime() <= cutoff)
+    const last = before[before.length - 1] || msgs[msgs.length - 1]
+    const day = last ? waDay(last.body) : null
+    if (day && byDay[day]) byDay[day].converted++
+    conversions.push({ order: o, day })
+  }
+
+  return {
+    totalAttempted: attempted.length,
+    converted: conversions.length,
+    conversionRate: attempted.length ? conversions.length / attempted.length : 0,
+    revenue,
+    byDay,
+    conversions: conversions.sort((a, b) => new Date(b.order.updated_at || 0).getTime() - new Date(a.order.updated_at || 0).getTime()),
+  }
+}
+
+/* ── Saúde do número WhatsApp (Meta Cloud API) — detecta erro de pagamento/token ── */
+export interface WaHealth {
+  ok: boolean
+  configured: boolean
+  reason?: string
+  billingSuspect?: boolean
+  phone?: string | null
+  verifiedName?: string | null
+  qualityRating?: string | null
+  qualityBad?: boolean
+  messagingLimitTier?: string | null
+}
+
+export async function fetchWaHealth(secret: string): Promise<WaHealth> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const r = await fetch(`${origin}/api/wa-health?secret=${encodeURIComponent(secret)}`)
+  return r.json()
+}
+
 export async function fetchWaMessages(limit = 200): Promise<WaMessage[]> {
   const sb = supabase()
   if (!sb) return []
