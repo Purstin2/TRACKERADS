@@ -11,7 +11,8 @@
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 import type { FinParams } from '@/modules/monitor/finance'
 import { feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
-import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint, DayPoint } from './data'
+import { campIdFromUtm } from '@/modules/monitor/realRoas'
+import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint, DayPoint, AccountPerf } from './data'
 
 const up = (s?: string | null) => (s || '').toUpperCase()
 const orderDate = (o: KirvanoOrder) => o.ordered_at || o.created_at || null
@@ -119,12 +120,15 @@ export interface RealOpts {
   spend: number // gasto Meta (BRL) das campanhas selecionadas
   hourlySpend?: number[] // gasto Meta por hora (24) — pro acumulado
   dailySpend?: Record<string, number> // gasto Meta por dia BR (YYYY-MM-DD) — pro Lucro por Dia
+  // pra tabela "Performance por Conta" (cada conta isolada):
+  accountSpend?: { id: string; name: string; spend: number }[] // gasto BRL por conta
+  campToAccount?: Record<string, string> // id da campanha Meta → id da conta
   funnelMeta?: FunnelMeta | null // métricas de funil do Meta
   fin: FinParams // hoje só `despesas` (período) vem daqui — taxas são por produto
   taxas: TaxasConfig
 }
 
-export function buildRealDashboard({ orders, products, source, spend, hourlySpend, dailySpend, funnelMeta, fin, taxas: taxasCfg }: RealOpts): DashboardData {
+export function buildRealDashboard({ orders, products, source, spend, hourlySpend, dailySpend, accountSpend, campToAccount, funnelMeta, fin, taxas: taxasCfg }: RealOpts): DashboardData {
   // filtro de produto casa principal OU order bump; e revaloriza o pedido pro valor
   // real do(s) produto(s) selecionado(s) — assim filtrar por um bump não infla.
   let rows = orders
@@ -279,6 +283,49 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
       }
     })
 
+  /* ── Performance por CONTA (cada uma isolada) ──
+   * Gasto = só as campanhas DA conta (accountSpend, já em BRL). Vendas = só os
+   * pedidos cujo id de campanha (no utm_campaign) cai numa campanha DELA
+   * (campToAccount). Assim uma conta não "empresta" venda nem gasto da outra —
+   * é o que mostra como cada uma vai sozinha. Pedido sem id de campanha (orgânico)
+   * ou de campanha fora do fetch entra em "(sem atribuição)", sem sujar conta nenhuma.
+   * Taxas resolvidas por pedido, igual ao lucro geral → o líquido bate com o card. */
+  const netOf = (o: KirvanoOrder): number => {
+    const s = sumFees(feeItemsForOrder(taxasCfg, o))
+    const v = o.value || 0
+    return v - ((v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo)
+             - ((v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo)
+             - ((v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo)
+  }
+  interface AccAcc { id: string; name: string; spend: number; sales: number; revenue: number; net: number }
+  const accMap = new Map<string, AccAcc>()
+  ;(accountSpend || []).forEach((a) => accMap.set(a.id, { id: a.id, name: a.name, spend: a.spend, sales: 0, revenue: 0, net: 0 }))
+  const semConta: AccAcc = { id: '__none__', name: '(sem atribuição / orgânico)', spend: 0, sales: 0, revenue: 0, net: 0 }
+  approved.forEach((o) => {
+    const cid = campIdFromUtm(o.utm_campaign)
+    const accId = cid && campToAccount ? campToAccount[cid] : undefined
+    const bucket = (accId && accMap.get(accId)) || semConta
+    bucket.sales += 1
+    bucket.revenue += o.value || 0
+    bucket.net += netOf(o)
+  })
+  const accountsRaw = [...accMap.values()]
+  if (semConta.sales > 0) accountsRaw.push(semConta)
+  const accounts: AccountPerf[] = accountsRaw
+    .map((a) => {
+      const lucro = a.net - a.spend
+      const roas = a.spend > 0 ? a.revenue / a.spend : null
+      const margem = a.revenue > 0 ? lucro / a.revenue : 0
+      const cls: AccountPerf['cls'] =
+        a.spend <= 0 && a.revenue <= 0 ? 'none'
+        : a.id === '__none__' ? 'none'
+        : lucro < 0 ? 'bad'
+        : margem >= 0.15 ? 'good'
+        : 'warn'
+      return { id: a.id, name: a.name, spend: a.spend, sales: a.sales, revenue: a.revenue, roas, lucro, cls }
+    })
+    .sort((x, y) => y.spend - x.spend)
+
   // Funil (igual UTMify): topo = Meta (cliques/visita/checkout); base = GATEWAY real.
   // "Vendas iniciadas" = checkouts que geraram transação (pix/boleto/cartão) = tudo
   // que NÃO é abandonado. "Aprovadas" = pagas. Isso a gente tem no banco (confiável).
@@ -320,5 +367,6 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     positioning: [],
     profitByHour,
     profitByDay,
+    accounts,
   }
 }

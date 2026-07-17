@@ -167,6 +167,78 @@ export const WIDGETS: WidgetDef[] = [
   { id: 'taxas', category: 'Impostos', title: 'Taxas', w: 3, h: 2, render: (d) => kpiBody(BRL(d.taxas)) },
   { id: 'imposto_total', category: 'Impostos', title: 'Imposto total', w: 3, h: 2, render: (d) => kpiBody(BRL(d.impostoTotal)) },
 
+  // ── Performance por Conta (cada conta isolada: só o gasto e as vendas DELA) ──
+  {
+    id: 'perf_contas',
+    category: 'Gráficos Avançados',
+    title: 'Performance por Conta',
+    w: 12,
+    h: 4,
+    minH: 3,
+    minW: 5,
+    render: (d) => {
+      const accs = d.accounts.filter((a) => a.id !== '__none__')
+      const sem = d.accounts.find((a) => a.id === '__none__')
+      if (!accs.length) return <div className="flex h-full items-center justify-center text-[12px] text-muted2">Sem dados de conta no período.</div>
+      const T = accs.reduce((a, x) => ({ spend: a.spend + x.spend, sales: a.sales + x.sales, revenue: a.revenue + x.revenue, lucro: a.lucro + x.lucro }), { spend: 0, sales: 0, revenue: 0, lucro: 0 })
+      const troas = T.spend > 0 ? T.revenue / T.spend : null
+      // fundo por classe: verde/amarelo/vermelho/cinza
+      const bg: Record<string, string> = { good: 'bg-ok/[0.08]', warn: 'bg-warn/[0.08]', bad: 'bg-danger/[0.10]', none: '' }
+      const dot: Record<string, string> = { good: 'bg-ok', warn: 'bg-warn', bad: 'bg-danger', none: 'bg-muted2/50' }
+      const roasCls = (r: number | null) => (r == null ? 'text-muted2' : r >= 1.5 ? 'text-ok' : r >= 1.2 ? 'text-warn' : 'text-danger')
+      const lucroCls = (v: number) => (v >= 0 ? 'text-ok' : 'text-danger')
+      const money = (v: number) => (v >= 0 ? '' : '-') + BRL(Math.abs(v)).replace('R$', 'R$')
+      return (
+        <div className="h-full overflow-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted2">
+                <th className="py-2 pl-1 text-left">Conta</th>
+                <th className="py-2 text-right">Gasto</th>
+                <th className="py-2 text-right">Vendas</th>
+                <th className="py-2 text-right">Fat.</th>
+                <th className="py-2 text-right">ROAS</th>
+                <th className="py-2 pr-1 text-right">Lucro</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accs.map((a) => (
+                <tr key={a.id} className={`border-b border-border/40 ${bg[a.cls]}`}>
+                  <td className="py-2 pl-1">
+                    <span className="flex items-center gap-2">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${dot[a.cls]}`} />
+                      <span className="truncate font-semibold text-ink" title={a.name}>{a.name || '(sem nome)'}</span>
+                    </span>
+                  </td>
+                  <td className="py-2 text-right font-mono tabular-nums text-muted">{BRL(a.spend)}</td>
+                  <td className="py-2 text-right font-mono tabular-nums text-muted">{a.sales}</td>
+                  <td className="py-2 text-right font-mono tabular-nums text-muted">{BRL(a.revenue)}</td>
+                  <td className={`py-2 text-right font-mono tabular-nums font-bold ${roasCls(a.roas)}`}>{a.roas != null ? a.roas.toFixed(2) : '—'}</td>
+                  <td className={`py-2 pr-1 text-right font-mono tabular-nums font-semibold ${lucroCls(a.lucro)}`}>{money(a.lucro)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border font-bold">
+                <td className="py-2 pl-1 text-muted">Total</td>
+                <td className="py-2 text-right font-mono tabular-nums">{BRL(T.spend)}</td>
+                <td className="py-2 text-right font-mono tabular-nums">{T.sales}</td>
+                <td className="py-2 text-right font-mono tabular-nums">{BRL(T.revenue)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums ${roasCls(troas)}`}>{troas != null ? troas.toFixed(2) : '—'}</td>
+                <td className={`py-2 pr-1 text-right font-mono tabular-nums ${lucroCls(T.lucro)}`}>{money(T.lucro)}</td>
+              </tr>
+            </tfoot>
+          </table>
+          {sem && (
+            <p className="mt-1.5 px-1 text-[10.5px] text-muted2">
+              + {sem.sales} venda{sem.sales > 1 ? 's' : ''} ({BRL(sem.revenue)}) sem campanha atribuída (orgânico / sem UTM) — não entram em nenhuma conta.
+            </p>
+          )}
+          <p className="mt-1 px-1 text-[10px] text-muted2">🟢 lucro ≥15% · 🟡 lucra apertado · 🔴 no prejuízo. Cada conta usa só o gasto e as vendas DELA.</p>
+        </div>
+      )
+    },
+  },
   // ── Gráficos Avançados ──
   // Lucro REAL por dia: único gráfico que desconta o anúncio → único que fica vermelho.
   {
@@ -427,11 +499,12 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'chargeback', x: 3, y: 10, w: 3, h: 2 },
   { i: 'vendas_pendentes', x: 6, y: 10, w: 3, h: 2 },
   { i: 'vendas_reembolsadas', x: 9, y: 10, w: 3, h: 2 },
-  { i: 'lucro_dia', x: 0, y: 12, w: 12, h: 4 },
-  { i: 'vendas_pais', x: 0, y: 16, w: 4, h: 4 },
-  { i: 'lucro_horario', x: 4, y: 16, w: 8, h: 4 },
-  { i: 'funil_conversao', x: 0, y: 20, w: 12, h: 5 },
-  { i: 'fat_inv_lucro', x: 0, y: 25, w: 12, h: 4 },
+  { i: 'perf_contas', x: 0, y: 12, w: 12, h: 4 },
+  { i: 'lucro_dia', x: 0, y: 16, w: 12, h: 4 },
+  { i: 'vendas_pais', x: 0, y: 20, w: 4, h: 4 },
+  { i: 'lucro_horario', x: 4, y: 20, w: 8, h: 4 },
+  { i: 'funil_conversao', x: 0, y: 24, w: 12, h: 5 },
+  { i: 'fat_inv_lucro', x: 0, y: 29, w: 12, h: 4 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)

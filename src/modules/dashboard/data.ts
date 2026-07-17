@@ -33,6 +33,19 @@ export interface CumulativePoint {
   faturamento: number
   lucro: number
 }
+/** Performance ISOLADA de uma conta de anúncio: só o gasto DELA (campanhas dela) e
+ *  só as vendas DELA (pedidos do gateway cujo id de campanha cai nela). Sem mistura
+ *  com as outras contas — é o que deixa ver como cada uma performa sozinha. */
+export interface AccountPerf {
+  id: string
+  name: string
+  spend: number // BRL, só as campanhas desta conta
+  sales: number // vendas do gateway atribuídas a esta conta
+  revenue: number // BRL bruto do gateway desta conta
+  roas: number | null // revenue / spend (null = sem gasto)
+  lucro: number // revenue líquido (taxas por pedido) − gasto
+  cls: 'good' | 'warn' | 'bad' | 'none' // verde/amarelo/vermelho/cinza
+}
 /** Um dia do gráfico "Lucro por Dia": lucro REAL (já com anúncio, taxas e custos
  *  descontados) — positivo = verde acima da linha, negativo = vermelho abaixo. */
 export interface DayPoint {
@@ -75,6 +88,7 @@ export interface DashboardData {
   positioning: PositioningRow[]
   profitByHour: HourPoint[]
   profitByDay: DayPoint[]
+  accounts: AccountPerf[]
 }
 
 export const SAMPLE: DashboardData = {
@@ -135,6 +149,11 @@ export const SAMPLE: DashboardData = {
     { label: 'Instagram Reels (2)', count: 162, pct: 12.8 },
     { label: 'Instagram Stories (2)', count: 160, pct: 12.6 },
     { label: 'Instagram Feed', count: 111, pct: 8.8 },
+  ],
+  accounts: [
+    { id: 'a1', name: 'BRASIL', spend: 213, sales: 10, revenue: 473, roas: 2.22, lucro: 203, cls: 'good' },
+    { id: 'a2', name: 'CHILE', spend: 686, sales: 10, revenue: 802, roas: 1.17, lucro: 20, cls: 'warn' },
+    { id: 'a3', name: 'HOLANDA', spend: 291, sales: 1, revenue: 48, roas: 0.17, lucro: -248, cls: 'bad' },
   ],
   profitByDay: [
     { date: '2026-07-01', label: '01/07', lucro: 412, bruto: 2810, spend: 2100, vendas: 52, roas: 1.34 },

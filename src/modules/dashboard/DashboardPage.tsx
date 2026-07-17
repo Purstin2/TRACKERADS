@@ -425,11 +425,26 @@ export default function DashboardPage() {
     })
     return m
   }, [selectedCamps, dailyByCamp])
+  // gasto BRL por conta + mapa campanha→conta (pro widget "Performance por Conta")
+  // a key do CampMetric é `accId::campId` — separo os dois aqui.
+  const accountSpend = useMemo(() => {
+    const m: Record<string, { id: string; name: string; spend: number }> = {}
+    selectedCamps.forEach((c) => {
+      const a = (m[c.accId] ||= { id: c.accId, name: c.accName, spend: 0 })
+      a.spend += c.spend
+    })
+    return Object.values(m)
+  }, [selectedCamps])
+  const campToAccount = useMemo(() => {
+    const m: Record<string, string> = {}
+    selectedCamps.forEach((c) => { const campId = c.key.split('::')[1]; if (campId) m[campId] = c.accId })
+    return m
+  }, [selectedCamps])
 
   // dados sempre reais (da API). Antes de carregar, tudo zero — sem mockup.
   const data: DashboardData = useMemo(
-    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, dailySpend, funnelMeta, fin, taxas: taxasCfg }),
-    [orders, selProducts, selSources, spend, hourlySpend, dailySpend, funnelMeta, fin, taxasCfg],
+    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, dailySpend, accountSpend, campToAccount, funnelMeta, fin, taxas: taxasCfg }),
+    [orders, selProducts, selSources, spend, hourlySpend, dailySpend, accountSpend, campToAccount, funnelMeta, fin, taxasCfg],
   )
 
   const d = data
