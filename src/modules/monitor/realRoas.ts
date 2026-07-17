@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 
 /**
  * ROAS REAL por campanha: junta as vendas aprovadas do gateway (kirvano_orders)
@@ -38,16 +38,21 @@ export async function fetchRealByCampaign(preset: string): Promise<Record<string
   const sb = supabase()
   if (!sb) return {}
   const { since, until } = presetRange(preset)
-  let q = sb
-    .from('kirvano_orders')
-    .select('utm_campaign,value')
-    .eq('status', 'APPROVED')
-    .gte('created_at', since)
-    .limit(5000)
-  if (until) q = q.lt('created_at', until)
-  const { data } = await q
+  // Paginado: o `.limit(5000)` de antes recebia 1000 do servidor e calava a boca —
+  // em 14 dias isso é metade das vendas, então ROAS real / V. reais / Lucro real
+  // apareciam MENORES do que a realidade. Nunca confie em limit > 1000 aqui.
+  const data = await fetchAll<{ utm_campaign: string | null; value: number | null }>((from, to) => {
+    let q = sb
+      .from('kirvano_orders')
+      .select('utm_campaign,value')
+      .eq('status', 'APPROVED')
+      .gte('created_at', since)
+      .range(from, to)
+    if (until) q = q.lt('created_at', until)
+    return q
+  })
   const map: Record<string, RealAgg> = {}
-  for (const o of (data || []) as { utm_campaign: string | null; value: number | null }[]) {
+  for (const o of data) {
     const id = campIdFromUtm(o.utm_campaign)
     if (!id) continue
     const agg = (map[id] ??= { sales: 0, revenue: 0 })

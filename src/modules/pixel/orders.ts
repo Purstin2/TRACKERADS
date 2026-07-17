@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, fetchAll } from '@/lib/supabase'
 
 export interface KirvanoOrder {
   id: string
@@ -73,34 +73,17 @@ export function waNumber(phone?: string | null): string {
   return d
 }
 
-/** Pedidos do gateway no período — PAGINADO.
- *
- *  ⚠ O PostgREST corta a resposta em 1000 linhas por requisição, e ignora `limit`
- *  acima disso. O `.limit(2000)` de antes não trazia 2000: trazia 1000 e descartava
- *  o resto EM SILÊNCIO. Como a ordem era `created_at desc`, o que sumia eram os
- *  pedidos mais ANTIGOS do período — o dashboard perdia o começo do mês e mostrava
- *  faturamento/lucro menores do que os reais. Agora busca em páginas até acabar. */
-const PAGE = 1000
+/** Pedidos do gateway no período — PAGINADO (ver `fetchAll`: o servidor corta em
+ *  1000 e ignora .limit maior, então o que passava disso sumia em silêncio). */
 export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
-  const out: KirvanoOrder[] = []
-  for (let from = 0; ; from += PAGE) {
-    let q = sb
-      .from('kirvano_orders')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(from, from + PAGE - 1)
+  return fetchAll<KirvanoOrder>((from, to) => {
+    let q = sb.from('kirvano_orders').select('*').order('created_at', { ascending: false }).range(from, to)
     if (sinceISO) q = q.gte('created_at', sinceISO)
     if (untilISO) q = q.lt('created_at', untilISO)
-    const { data, error } = await q
-    if (error) break
-    const b = (data || []) as KirvanoOrder[]
-    out.push(...b)
-    if (b.length < PAGE) break
-    if (out.length >= 50000) break // trava de segurança
-  }
-  return out
+    return q
+  })
 }
 
 /** Reembolsos/chargebacks que ACONTECERAM no período (por data do estorno = updated_at),
@@ -109,22 +92,16 @@ export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise
 export async function fetchRefundsByRefundDate(sinceISO: string, untilISO: string): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
-  const out: KirvanoOrder[] = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await sb
+  return fetchAll<KirvanoOrder>((from, to) =>
+    sb
       .from('kirvano_orders')
       .select('*')
       .in('status', ['REFUNDED', 'CHARGEBACK'])
       .gte('updated_at', sinceISO)
       .lte('updated_at', untilISO)
       .order('updated_at', { ascending: false })
-      .range(from, from + PAGE - 1) // paginado: `limit` acima de 1000 é ignorado pelo servidor
-    if (error) break
-    const b = (data || []) as KirvanoOrder[]
-    out.push(...b)
-    if (b.length < PAGE) break
-  }
-  return out
+      .range(from, to),
+  )
 }
 
 export async function fetchLogs(limit = 100): Promise<WebhookLog[]> {
@@ -355,13 +332,17 @@ export async function fetchNaoTrackeado(sinceDays = 30): Promise<NaoTrackeadoOrd
   if (!sb) return []
   const since = new Date()
   since.setDate(since.getDate() - sinceDays)
-  const { data } = await sb
-    .from('kirvano_orders')
-    .select('*')
-    .eq('status', 'APPROVED')
-    .gte('created_at', since.toISOString())
-    .order('created_at', { ascending: false })
-    .limit(1000)
+  // 30 dias de vendas aprovadas passa de 1000 fácil — sem paginar, as mais antigas
+  // sumiam da lista de "não trackeado" e você nunca via que existiam.
+  const data = await fetchAll<KirvanoOrder>((from, to) =>
+    sb
+      .from('kirvano_orders')
+      .select('*')
+      .eq('status', 'APPROVED')
+      .gte('created_at', since.toISOString())
+      .order('created_at', { ascending: false })
+      .range(from, to),
+  )
   return (data || [])
     .map((o) => {
       const order = o as KirvanoOrder

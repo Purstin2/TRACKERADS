@@ -128,6 +128,26 @@ function pickUtm(...vals) {
   return null
 }
 
+// Kiwify: order_status → status canônico. Explícito de propósito — os nomes dela
+// não casam por substring ("chargedback" não contém "chargeback", "waiting_payment"
+// não contém "pending"), então adivinhar aqui esconderia chargeback e pendente.
+const KIWIFY_STATUS = {
+  paid: 'APPROVED',
+  approved: 'APPROVED',
+  waiting_payment: 'PENDING',
+  refused: 'REFUSED',
+  refunded: 'REFUNDED',
+  chargedback: 'CHARGEBACK',
+  chargeback: 'CHARGEBACK',
+}
+
+/** Valor em CENTAVOS (Kiwify) → reais. "4990" → 49.90 */
+function centsToNumber(v) {
+  if (v == null || v === '') return 0
+  const n = typeof v === 'number' ? v : parseInt(String(v).replace(/[^\d-]/g, ''), 10)
+  return isNaN(n) ? 0 : n / 100
+}
+
 function canonicalStatus(event, rawStatus) {
   const e = String(event || '').toUpperCase()
   const s = String(rawStatus || '').toUpperCase()
@@ -288,6 +308,78 @@ function parseOrder(gateway, body) {
       ttclid: cookies.ttclid || body.ttclid || trk.ttclid || null,
       ttp: cookies.ttp || body.ttp || trk.ttp || null,
       orderedAt: brtNaiveToISO(body.created_at),
+    }
+  }
+
+  /* ── Kiwify ──
+   * Três armadilhas que o parser genérico não trata e por isso este bloco existe:
+   *  1) DINHEIRO EM CENTAVOS: Commissions.charge_amount vem string ("4990" = R$49,90).
+   *     Passar direto pro toNumber daria R$4.990 — 100× o faturamento real.
+   *  2) STATUS COM NOME PRÓPRIO: order_status usa "chargedback" (com D), que NÃO casa
+   *     com o `includes('CHARGEBACK')` do canonicalStatus → chargeback viraria PENDING
+   *     e sumiria do painel. Por isso o mapa abaixo é explícito.
+   *  3) UM PRODUTO POR PEDIDO: a Kiwify não manda products[]; montamos o array no
+   *     formato da Kirvano pra aba Taxas e o dashboard contarem itens igual.
+   * checkout_id = order_id, que é estável no ciclo do pedido (aprovado → reembolso →
+   * chargeback), então o upsert atualiza a MESMA linha — sem venda duplicada. */
+  if (gateway === 'kiwify') {
+    const c = body.Customer || {}
+    const p = body.Product || {}
+    const com = body.Commissions || {}
+    const trk = body.TrackingParameters || {}
+    const st = String(body.order_status || '').toLowerCase()
+    const ev = String(body.webhook_event_type || '').toLowerCase()
+    const status =
+      KIWIFY_STATUS[st] ||
+      (ev.includes('chargeback') ? 'CHARGEBACK'
+        : ev.includes('refund') ? 'REFUNDED'
+        : ev.includes('reject') || ev.includes('refus') ? 'REFUSED'
+        : ev.includes('approved') ? 'APPROVED'
+        : 'PENDING')
+    // charge_amount = o que o cliente pagou (equivale ao total_price da Kirvano).
+    // my_commission é o líquido dele e NÃO serve como faturamento bruto.
+    const value = centsToNumber(com.charge_amount ?? com.product_base_price)
+    const productId = p.product_id ? String(p.product_id) : null
+    const productName = p.product_name || body.product_name || 'Produto'
+    const phone = c.mobile || c.phone || null
+    return {
+      gateway,
+      event: body.webhook_event_type || '',
+      status,
+      approved: status === 'APPROVED',
+      abandoned: false,
+      offerId: productId,
+      productId,
+      checkoutId: body.order_id || body.order_ref,
+      saleId: body.order_ref || body.order_id || null,
+      value,
+      product: productName,
+      products: [{ id: productId, name: productName, price: value, is_order_bump: false }],
+      paymentMethod: String(body.payment_method || '').toUpperCase() || null,
+      name: c.full_name || c.first_name || null,
+      email: c.email || null,
+      phone,
+      doc: c.CPF || c.cpf || null,
+      buyerIp: c.ip || null,
+      city: c.city || null,
+      state: c.state || stateFromDDD(phone),
+      zip: c.zipcode || c.zip || null,
+      country: isoCountry(c.country || 'br'),
+      currency: String(com.currency || com.product_base_price_currency || '').toUpperCase() || null,
+      utmSource: pickUtm(trk.utm_source, trk.src),
+      utmMedium: pickUtm(trk.utm_medium),
+      utmCampaign: pickUtm(trk.utm_campaign),
+      utmContent: pickUtm(trk.utm_content),
+      utmTerm: pickUtm(trk.utm_term),
+      checkoutUrl: body.access_url || null,
+      fbc: buildFbc({ rawFbc: trk.fbc || body.fbc, fbclid: findFbclid(trk.fbclid, body.fbclid, trk.src, trk.sck), createdAt: body.created_at }),
+      fbp: trk.fbp && /^fb\.1\./.test(trk.fbp) ? trk.fbp : (trk.fbp ? `fb.1.${Date.now()}.${trk.fbp}` : null),
+      gclid: trk.gclid || null,
+      ttclid: trk.ttclid || null,
+      ttp: trk.ttp || null,
+      // approved_date é quando o dinheiro entrou; created_at é quando o pedido nasceu.
+      // Pra venda aprovada o que vale pro caixa/dia é a aprovação.
+      orderedAt: brtNaiveToISO(body.approved_date || body.created_at),
     }
   }
 
@@ -668,6 +760,7 @@ async function upsertOrder(o, capiOk) {
   const row = {
     checkout_id: String(o.checkoutId || ''),
     sale_id: o.saleId ? String(o.saleId) : null,
+    gateway: o.gateway || null, // de onde veio a venda (kirvano/kiwify/hotmart)
     event: o.event,
     status: o.status,
     value: o.value,
@@ -699,13 +792,32 @@ async function upsertOrder(o, capiOk) {
 
   Object.keys(row).forEach((k) => row[k] === undefined && delete row[k])
 
+  // Antes o erro era engolido: um `fetch` com HTTP 400 (coluna faltando, tipo errado)
+  // NÃO lança, então a venda simplesmente não era gravada e ninguém ficava sabendo.
+  // Agora a falha vira log — é o que dá pra ver quando o painel "perde" vendas.
   try {
-    await fetch(`${url}/rest/v1/kirvano_orders?on_conflict=checkout_id`, {
+    const r = await fetch(`${url}/rest/v1/kirvano_orders?on_conflict=checkout_id`, {
       method: 'POST',
       headers: sbHeaders(key, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify([row]),
     })
-  } catch {}
+    if (!r.ok) {
+      const msg = await r.text().catch(() => '')
+      await logHit({
+        gateway: o.gateway, event: o.event, status: o.status, ok: false,
+        http_status: r.status, secret_ok: true, capi_ok: capiOk,
+        message: `FALHA AO GRAVAR PEDIDO: ${String(msg).slice(0, 300)}`,
+        created_at: new Date().toISOString(),
+      })
+    }
+  } catch (e) {
+    await logHit({
+      gateway: o.gateway, event: o.event, status: o.status, ok: false,
+      http_status: 0, secret_ok: true, capi_ok: capiOk,
+      message: `FALHA AO GRAVAR PEDIDO (rede): ${String(e?.message || e).slice(0, 300)}`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {})
+  }
 }
 
 async function logHit(entry) {

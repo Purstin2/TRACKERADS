@@ -40,6 +40,14 @@ create table if not exists kirvano_orders (
   updated_at      timestamptz default now()
 );
 
+-- De qual gateway veio a venda (kirvano | kiwify | hotmart). Antes só existia a
+-- Kirvano e a coluna não era necessária; com a Kiwify entrando na mesma tabela,
+-- sem isto não dá pra separar a operação por plataforma.
+-- ⚠ RODE ISTO ANTES de subir o webhook novo: o upsert grava `gateway` e falha se
+-- a coluna não existir (aí nenhuma venda é registrada).
+alter table kirvano_orders add column if not exists gateway text;
+create index if not exists kirvano_orders_gateway_idx on kirvano_orders (gateway);
+
 create index if not exists kirvano_orders_status_idx   on kirvano_orders (status);
 create index if not exists kirvano_orders_created_idx  on kirvano_orders (created_at desc);
 create index if not exists kirvano_orders_campaign_idx on kirvano_orders (utm_campaign);

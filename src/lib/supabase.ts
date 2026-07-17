@@ -47,6 +47,34 @@ export function supabase(): SupabaseClient | null {
   return _client
 }
 
+/* ── Paginação ────────────────────────────────────────────────────────────────
+ * O PostgREST corta TODA resposta em 1000 linhas e IGNORA `.limit()` acima disso —
+ * sem erro, sem aviso. Quem pedia `.limit(5000)` recebia 1000 e achava que era tudo.
+ * Foi assim que o dashboard escondeu R$8k de lucro (perdia o começo do mês, porque
+ * ordenava por data desc e cortava o resto).
+ *
+ * Use isto em QUALQUER consulta que possa passar de 1000 linhas. `build` recebe a
+ * faixa e devolve a query já com `.range(from, to)` aplicado.
+ *
+ *   const rows = await fetchAll<Pedido>((from, to) =>
+ *     sb.from('kirvano_orders').select('*').range(from, to))
+ */
+const PAGE_SIZE = 1000
+export async function fetchAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  maxRows = 100000, // trava de segurança: nunca vira loop infinito
+): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; from < maxRows; from += PAGE_SIZE) {
+    const { data, error } = await build(from, from + PAGE_SIZE - 1)
+    if (error) break
+    const batch = data || []
+    out.push(...batch)
+    if (batch.length < PAGE_SIZE) break // última página
+  }
+  return out
+}
+
 /* ── Auth (TrackerAds usa RLS por usuário → precisa logar pra ver os dados) ── */
 export async function signIn(email: string, password: string) {
   const sb = supabase()
