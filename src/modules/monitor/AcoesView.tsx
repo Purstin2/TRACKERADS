@@ -11,7 +11,7 @@ import {
   KIND_CLS,
   type ActionEntry,
 } from './actionLog'
-import { ImpactBtn } from './BudgetImpact'
+import { TrackerBtn } from './BudgetTracker'
 import { trunc, curSym } from './config'
 import { getBudget, setBudget } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
@@ -258,7 +258,7 @@ export default function AcoesView() {
                           <MakeRealBtn e={e} />
                         )}
                         {(e.kind === 'orcamento' || e.kind === 'escala') && e.campId && (
-                          <ImpactBtn accId={e.accId || ''} name={e.name} campId={e.campId} cur={e.cur || 'USD'} />
+                          <TrackerBtn accId={e.accId || ''} name={e.name} campId={e.campId} cur={e.cur || 'USD'} />
                         )}
                         {e.verifyBy && !e.done && (
                           <button title="Marcar verificado" onClick={() => updateAction(e.id, { done: true })} className="text-muted2 hover:text-ok">

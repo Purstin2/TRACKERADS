@@ -296,6 +296,20 @@ export function fetchFin(accId: string, preset: string, t: string, statuses: str
   })
   return paginate(`${BASE}/act_${accId}/insights?${p}`)
 }
+/** Gasto DIA a DIA por campanha — alimenta o "Lucro por Dia" (o único gráfico que
+ *  desconta o anúncio do dia certo, por isso precisa do gasto quebrado por data). */
+export function fetchFinDaily(accId: string, preset: string, t: string, statuses: string[]) {
+  const p = new URLSearchParams({
+    level: 'campaign',
+    fields: 'campaign_id,campaign_name,spend,date_start',
+    ...dateParams(preset),
+    time_increment: '1',
+    filtering: JSON.stringify([statusClause(statuses)]),
+    access_token: t,
+    limit: '500',
+  })
+  return paginate(`${BASE}/act_${accId}/insights?${p}`)
+}
 export function fetchFinHourly(accId: string, preset: string, t: string, statuses: string[]) {
   const p = new URLSearchParams({
     level: 'campaign',

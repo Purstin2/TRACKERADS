@@ -33,6 +33,17 @@ export interface CumulativePoint {
   faturamento: number
   lucro: number
 }
+/** Um dia do gráfico "Lucro por Dia": lucro REAL (já com anúncio, taxas e custos
+ *  descontados) — positivo = verde acima da linha, negativo = vermelho abaixo. */
+export interface DayPoint {
+  date: string // YYYY-MM-DD
+  label: string // DD/MM
+  lucro: number
+  bruto: number
+  spend: number
+  vendas: number
+  roas: number | null
+}
 
 export interface DashboardData {
   isSample: boolean
@@ -63,6 +74,7 @@ export interface DashboardData {
   approval: ApprovalRate[]
   positioning: PositioningRow[]
   profitByHour: HourPoint[]
+  profitByDay: DayPoint[]
 }
 
 export const SAMPLE: DashboardData = {
@@ -123,6 +135,13 @@ export const SAMPLE: DashboardData = {
     { label: 'Instagram Reels (2)', count: 162, pct: 12.8 },
     { label: 'Instagram Stories (2)', count: 160, pct: 12.6 },
     { label: 'Instagram Feed', count: 111, pct: 8.8 },
+  ],
+  profitByDay: [
+    { date: '2026-07-01', label: '01/07', lucro: 412, bruto: 2810, spend: 2100, vendas: 52, roas: 1.34 },
+    { date: '2026-07-02', label: '02/07', lucro: -180, bruto: 2210, spend: 2180, vendas: 41, roas: 1.01 },
+    { date: '2026-07-03', label: '03/07', lucro: 690, bruto: 3120, spend: 2180, vendas: 58, roas: 1.43 },
+    { date: '2026-07-04', label: '04/07', lucro: -95, bruto: 1980, spend: 1930, vendas: 37, roas: 1.03 },
+    { date: '2026-07-05', label: '05/07', lucro: 260, bruto: 2540, spend: 1990, vendas: 47, roas: 1.28 },
   ],
   profitByHour: [
     { hour: '00', value: 210 },

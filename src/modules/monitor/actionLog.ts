@@ -175,6 +175,22 @@ export function budgetIncreases(campId?: string, maxDays = 14): ActionEntry[] {
     .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
 }
 
+/** IDs das campanhas que eu MEXI num dia BR: aumentei orçamento, escalei ou dupliquei.
+ *  Na duplicação entram as duas pontas (a cópia criada e a original de onde saiu) —
+ *  é o par que interessa olhar junto. Usado pelo filtro "⚡ Mexidas hoje". */
+export function touchedIds(dateBR: string = todayBR()): Set<string> {
+  const set = new Set<string>()
+  getLog().forEach((e) => {
+    if (e.sim) return
+    if ((e.dateBR || todayBR(new Date(e.ts))) !== dateBR) return
+    if (e.kind === 'orcamento' || e.kind === 'escala' || e.kind === 'duplicacao') {
+      if (e.campId) set.add(e.campId)
+      if (e.kind === 'duplicacao' && e.linkedTo) set.add(e.linkedTo)
+    }
+  })
+  return set
+}
+
 /** Datas (dias BR) em que a campanha teve aumento com foto — pra listar quais têm impacto. */
 export function impactDays(campId: string): string[] {
   const set = new Set<string>()

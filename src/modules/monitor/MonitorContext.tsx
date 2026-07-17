@@ -96,8 +96,6 @@ interface Ctx {
   setLevel: (l: AdLevel) => void
   settings: Settings
   saveSettings: (s: Settings) => void
-  exec: boolean
-  setExec: (b: boolean) => void
   cache: CacheItem[]
   loading: boolean
   actionFilter: string | null
@@ -108,6 +106,8 @@ interface Ctx {
   selectMany: (keys: string[], on: boolean) => void
   onlySelected: boolean
   setOnlySelected: (b: boolean) => void
+  touchedOnly: boolean
+  setTouchedOnly: (b: boolean) => void
   neonKeys: Set<string>
   compareDuplication: (accId: string, origId: string, copyId: string) => void
   realMap: Record<string, RealAgg>
@@ -127,12 +127,12 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<MonitorView>('lista')
   const [level, setLevelState] = useState<AdLevel>('campaign')
   const [settings, setSettings] = useState<Settings>(loadSettings)
-  const [exec, setExec] = useState(false)
   const [cache, setCache] = useState<CacheItem[]>([])
   const [loading, setLoading] = useState(false)
   const [actionFilter, setActionFilter] = useState<string | null>(null)
   const [campSel, setCampSel] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
+  const [touchedOnly, setTouchedOnly] = useState(false)
   const [neonKeys, setNeonKeys] = useState<Set<string>>(new Set())
   const [realMap, setRealMap] = useState<Record<string, RealAgg>>({})
   const toggleCamp = (key: string) =>
@@ -318,8 +318,6 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setLevel,
     settings,
     saveSettings,
-    exec,
-    setExec,
     cache,
     loading,
     actionFilter,
@@ -330,6 +328,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     selectMany,
     onlySelected,
     setOnlySelected,
+    touchedOnly,
+    setTouchedOnly,
     neonKeys,
     compareDuplication,
     realMap,

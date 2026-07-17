@@ -30,15 +30,14 @@ import {
   type InsightRow,
   type AdLevel,
 } from '@/lib/meta'
-import { loadFinParams, loadFinParamsForAccount, type FinParams } from './finance'
+import { loadFinParamsForAccount, rowFin } from './finance'
 import { useMonitor } from './MonitorContext'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
 import type { RealAgg } from './realRoas'
-import { openLog, lastScale, useLog, addAction, todayBR, increasesForDay, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
-import { ImpactBtn, ImpactModal } from './BudgetImpact'
+import { openLog, lastScale, useLog, addAction, todayBR, touchedIds, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
+import { TrackerBtn, TrackerCell, BudgetTrackerModal } from './BudgetTracker'
 import { DuplicateModal, DupProofModal } from './Duplicate'
-import { BudgetPaceModal } from './BudgetPace'
 import { MoreHorizontal, Layers } from 'lucide-react'
 import { toast } from '@/components/ui/toast'
 import {
@@ -151,8 +150,8 @@ export function LogBtn({ accId, name, campId, roas, cur, spend, sales }: { accId
   )
 }
 
-/** Botão de aumentar orçamento direto na linha (abre modal). Respeita Execução ON/OFF. */
-export function BudgetBtn({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
+/** Botão de aumentar orçamento direto na linha (abre modal). */
+export function BudgetBtn({ accId, name, campId, cur }: { accId: string; name: string; campId: string; cur: string }) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -163,13 +162,15 @@ export function BudgetBtn({ accId, name, campId, roas, cur, spend, sales }: { ac
       >
         <TrendingUp className="h-3 w-3" /> $
       </button>
-      {open && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setOpen(false)} />}
+      {open && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setOpen(false)} />}
     </>
   )
 }
 
+/** Foto de HOJE da campanha — é o "antes" que o tracker congela no momento do aumento. */
+interface DaySnap { spend: number; sales: number; revenue: number; roas: number | null }
 
-function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; onClose: () => void }) {
+function BudgetModal({ accId, name, campId, cur, onClose }: { accId: string; name: string; campId: string; cur: string; onClose: () => void }) {
   const m = useMonitor()
   const sym = curSym(cur)
   const [loading, setLoading] = useState(true)
@@ -179,6 +180,7 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
   const [pct, setPct] = useState(20)
   const [absVal, setAbsVal] = useState('') // valor absoluto opcional (em moeda, não centavos)
   const [mode, setMode] = useState<'pct' | 'abs'>('pct')
+  const [snap, setSnap] = useState<DaySnap | null | 'fail'>(null)
 
   useEffect(() => {
     // carrega o orçamento atual ao montar
@@ -192,6 +194,26 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campId])
 
+  // A foto vem do acumulado de HOJE, buscado aqui — nunca do período que a tela mostra
+  // (em "últimos 14 dias" o gasto da linha é dos 14 dias e envenenaria o antes×depois).
+  // Pede 2 dias e casa por date_start: o range do fetch é UTC e das 21h à meia-noite o
+  // "hoje" UTC já virou amanhã.
+  useEffect(() => {
+    let alive = true
+    fetchCampDaily(accId, campId, m.token.trim(), 2)
+      .then((rows: any[]) => {
+        if (!alive) return
+        const row = (rows || []).find((r) => (r.date_start as string) === todayBR())
+        if (!row) return setSnap({ spend: 0, sales: 0, revenue: 0, roas: null }) // ainda não gastou hoje
+        const sp = parseFloat(row.spend || '0')
+        const rev = getRevenue(row) || 0
+        setSnap({ spend: sp, sales: getSales(row), revenue: rev, roas: sp > 0 ? rev / sp : null })
+      })
+      .catch(() => alive && setSnap('fail'))
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accId, campId])
+
   const curTotal = info ? info.total / 100 : 0
   const newTotal = mode === 'abs' ? parseFloat(absVal || '0') : curTotal * (1 + pct / 100)
   const delta = newTotal - curTotal
@@ -202,32 +224,37 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
     setApplying(true)
     const factor = mode === 'abs' ? (curTotal > 0 ? newTotal / curTotal : 1) : 1 + pct / 100
     try {
-      if (m.exec) {
-        // aplica de verdade: em CBO é 1 item (campanha); em ABO, rateia o fator em cada adset
-        for (const it of info.items) {
-          const target =
-            mode === 'abs' && info.items.length === 1
-              ? Math.round(newTotal * 100)
-              : Math.round(it.daily * factor)
-          await setBudget(it.id, target, m.token.trim())
-        }
+      // aplica de verdade: em CBO é 1 item (campanha); em ABO, rateia o fator em cada adset
+      for (const it of info.items) {
+        const target =
+          mode === 'abs' && info.items.length === 1
+            ? Math.round(newTotal * 100)
+            : Math.round(it.daily * factor)
+        await setBudget(it.id, target, m.token.trim())
       }
+      const foto = snap && snap !== 'fail' ? snap : null
       addAction({
         accId,
         name,
         campId,
         kind: 'orcamento',
-        sim: !m.exec,
+        sim: false,
         cur,
-        roasAtTime: roas,
-        spendAtTime: spend ?? null, // foto do gasto/vendas acumulados no momento do aumento
-        salesAtTime: sales ?? null,
+        // foto do acumulado de HOJE no momento do aumento — é o "antes" congelado do tracker
+        roasAtTime: foto ? foto.roas : null,
+        spendAtTime: foto ? foto.spend : null,
+        salesAtTime: foto ? foto.sales : null,
         dateBR: todayBR(),
         budgetBefore: Math.round(curTotal * 100) / 100,
         budgetAfter: Math.round(newTotal * 100) / 100,
-        detail: `${mode === 'pct' ? `${pct >= 0 ? '+' : ''}${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})${m.exec ? '' : ' [simulado]'}`,
+        detail: `${mode === 'pct' ? `${pct >= 0 ? '+' : ''}${pct}%` : 'valor fixo'} (${info.level === 'campaign' ? 'CBO' : 'ABO ' + info.items.length + ' adsets'})`,
       })
-      toast(m.exec ? `Orçamento ajustado p/ ${sym}${newTotal.toFixed(2)}/dia` : `Simulado (Execução OFF): ${sym}${curTotal.toFixed(2)} → ${sym}${newTotal.toFixed(2)}`, 'ok')
+      toast(
+        foto
+          ? `Orçamento ajustado p/ ${sym}${newTotal.toFixed(2)}/dia — o tracker já está medindo o resultado`
+          : `Orçamento ajustado p/ ${sym}${newTotal.toFixed(2)}/dia · ⚠ sem a foto de hoje, o tracker não vai medir este aumento`,
+        foto ? 'ok' : 'warn',
+      )
       onClose()
     } catch (e: any) {
       toast('Erro: ' + e.message, 'err')
@@ -307,9 +334,23 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
                 </span>
               </div>
 
-              {!m.exec && (
+              {/* o que o tracker vai congelar como "antes" */}
+              {snap === null ? (
+                <div className="rounded-[8px] border border-border bg-surface2/40 px-3 py-2 text-[11.5px] text-muted2 animate-pulse">
+                  buscando o resultado de hoje…
+                </div>
+              ) : snap === 'fail' ? (
                 <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">
-                  ⚠ <b>Execução OFF</b> — vai apenas registrar no log (simulado), sem alterar na Meta. Ligue o switch <b>Execução</b> no topo pra aplicar de verdade.
+                  ⚠ Não consegui buscar o acumulado de hoje — o orçamento é aplicado, mas o tracker fica sem o "antes" deste aumento.
+                </div>
+              ) : (
+                <div className="rounded-[8px] border border-brand/25 bg-brand/[0.05] px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide text-brand-2">Hoje até agora — vira o "antes" do tracker</div>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px] text-muted">
+                    <span>ROAS <b className="font-mono text-ink">{snap.roas != null ? snap.roas.toFixed(2) : '—'}</b></span>
+                    <span>Vendas <b className="font-mono text-ink">{snap.sales}</b></span>
+                    <span>Gasto <b className="font-mono text-ink">{sym}{snap.spend.toFixed(2)}</b></span>
+                  </div>
                 </div>
               )}
             </>
@@ -318,7 +359,7 @@ function BudgetModal({ accId, name, campId, roas, cur, spend, sales, onClose }: 
           <div className="flex justify-end gap-2">
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
             <button className="btn btn-primary btn-sm" onClick={apply} disabled={loading || applying || !!err || !info?.items.length}>
-              <TrendingUp className="h-3.5 w-3.5" /> {applying ? 'Aplicando…' : m.exec ? 'Aplicar na Meta' : 'Registrar (simulado)'}
+              <TrendingUp className="h-3.5 w-3.5" /> {applying ? 'Aplicando…' : 'Aplicar na Meta'}
             </button>
           </div>
         </div>
@@ -445,19 +486,18 @@ function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: 
   useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
-  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'hist'>(null)
+  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist'>(null)
 
   const dups = duplicationsFor(campId)
-  const incs = budgetIncreases(campId)
   const impDays = impactDays(campId)
+  const trackHoje = impDays[0] === todayBR()
 
-  const items: { key: 'budget' | 'dup' | 'proof' | 'pace' | 'impact' | 'hist' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
+  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
     { key: 'budget', icon: '💰', label: 'Ajustar orçamento', desc: 'aumentar ou diminuir', show: true, accent: 'text-ok' },
+    { key: 'track', icon: '📈', label: 'Tracker do aumento', desc: trackHoje ? 'medindo o de hoje · ao vivo' : 'antes × depois do aumento', show: impDays.length > 0, accent: 'text-brand-2' },
     { key: 'dup', icon: '📋', label: 'Duplicar campanha', desc: 'cópia idêntica + prova 7d', show: true, accent: 'text-warn' },
     { key: 'hist', icon: '🕐', label: 'Histórico da campanha', desc: 'o que já fiz nela + cópias', show: true, accent: 'text-brand-2' },
     { key: 'proof', icon: '🔗', label: 'Prova da duplicação', desc: 'cópia × original', show: dups.length > 0, accent: 'text-warn' },
-    { key: 'pace', icon: '📈', label: 'Ritmo 3h', desc: 'ROAS desde o aumento', show: incs.length > 0, accent: 'text-brand-2' },
-    { key: 'impact', icon: '📊', label: 'Impacto do aumento', desc: 'antes × depois', show: impDays.length > 0, accent: 'text-brand-2' },
     { key: 'log', icon: '✎', label: 'Registrar ação', desc: 'anotar no log', show: true, accent: 'text-muted' },
   ]
 
@@ -500,12 +540,11 @@ function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: 
         </>
       )}
 
-      {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
+      {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
       {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
-      {modal === 'pace' && <BudgetPaceModal accId={accId} name={name} campId={campId} cur={cur} incs={incs} onClose={() => setModal(null)} />}
-      {modal === 'impact' && <ImpactModal accId={accId} name={name} campId={campId} cur={cur} days={impDays} onClose={() => setModal(null)} />}
+      {modal === 'track' && <BudgetTrackerModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
     </>
   )
 }
@@ -539,14 +578,6 @@ interface ListaRow {
   lucroReal: number | null
 }
 
-/** Lucro/margem de uma linha pelo modelo financeiro (mesmas taxas do Financeiro). */
-function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
-  const aprov = FIN.aprov / 100
-  const fatBruto = revenue * aprov
-  const fatLiq = fatBruto * (1 - (FIN.gateway + FIN.imposto + FIN.reembolso + FIN.chargeback) / 100)
-  const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
-  return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
-}
 export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign', realMap?: Record<string, RealAgg>, cur?: string, accId?: string): ListaRow[] {
   const FIN = loadFinParamsForAccount(accId)
   return rows
@@ -783,38 +814,6 @@ function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
     </>
   )
 }
-/* Coluna "Aumento": antes → depois do aumento de orçamento de HOJE. Usa o total atual
- * da linha como "depois" (sem fetch). Só aparece se houve aumento registrado hoje. */
-function BudgetTrackCell({ r, sym }: { r: ListaRow; sym: string }) {
-  useLog()
-  const incs = increasesForDay(r.id, todayBR())
-  if (!incs.length) return <td className="px-2 py-2 text-center text-[11px] text-muted2">—</td>
-  const last = incs[incs.length - 1]
-  const prev = incs.length > 1 ? incs[incs.length - 2] : null
-  const sSpend = last.spendAtTime || 0
-  const sRev = sSpend * (last.roasAtTime || 0)
-  const pSpend = prev ? prev.spendAtTime || 0 : 0
-  const pRev = prev ? (prev.spendAtTime || 0) * (prev.roasAtTime || 0) : 0
-  const bSpend = sSpend - pSpend, bRev = sRev - pRev
-  const aSpend = Math.max(0, r.spend - sSpend), aRev = Math.max(0, r.revenue - sRev)
-  const rb = bSpend > 0 ? bRev / bSpend : null
-  const ra = aSpend > 0 ? aRev / aSpend : null
-  const better = rb != null && ra != null ? ra >= rb : null
-  return (
-    <td className="whitespace-nowrap px-2 py-2 text-[10.5px] leading-tight">
-      <div className="font-mono font-semibold text-ink">
-        {sym}{(last.budgetBefore || 0).toFixed(0)}<span className="text-ok"> → </span>{sym}{(last.budgetAfter || 0).toFixed(0)}
-        {incs.length > 1 ? <span className="text-muted2"> ({incs.length}×)</span> : ''}
-      </div>
-      <div className="flex items-center gap-1 font-mono" title="ROAS antes → depois do aumento">
-        <span className="text-muted2">{rb != null ? rb.toFixed(2) : '—'}</span>
-        <span className={better == null ? 'text-muted2' : better ? 'text-ok' : 'text-danger'}>→ {ra != null ? ra.toFixed(2) : '…'}</span>
-        {better != null && <span>{better ? '✅' : '❌'}</span>}
-      </div>
-    </td>
-  )
-}
-
 type Sort = { key: string; dir: 'asc' | 'desc' } | null
 
 function sortRows(rows: ListaRow[], sort: Sort): ListaRow[] {
@@ -866,6 +865,8 @@ export function ListaView({ items }: { items: CacheItem[] }) {
   const [nameFilter, setNameFilter] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const onSort = (key: string) => setSort((p) => (p?.key === key ? (p.dir === 'desc' ? { key, dir: 'asc' } : null) : { key, dir: 'desc' }))
+  useLog() // "Mexidas hoje" reage assim que eu aumento/duplico
+  const touched = m.touchedOnly ? touchedIds() : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -907,6 +908,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
           (r) =>
             (!m.actionFilter || r.action.code === m.actionFilter) &&
             (!nameFilter || r.name.toLowerCase().includes(nameFilter.toLowerCase())) &&
+            (!touched || touched.has(r.id)) &&
             (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${r.id}`)),
         )
         rows = sortRows(rows, sort)
@@ -1044,10 +1046,10 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
           </div>
         ))}
       </div>
-      {/* ação: aumentar orçamento (já loga antes/depois + ROAS) */}
-      <div className="shrink-0">
-        <BudgetBtn accId={accId} name={name} campId={campId} roas={today.roas} cur={cur} spend={today.spend} sales={today.sales} />
-        <ImpactBtn accId={accId} name={name} campId={campId} cur={cur} />
+      {/* ação: aumentar orçamento (a foto do "antes" é congelada pelo próprio modal) */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        <BudgetBtn accId={accId} name={name} campId={campId} cur={cur} />
+        <TrackerBtn accId={accId} name={name} campId={campId} cur={cur} />
       </div>
     </div>
   )
@@ -1130,7 +1132,13 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           </div>
         </td>
         <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
-        <BudgetTrackCell r={r} sym={sym} />
+        <td className="px-2 py-2">
+          {m.level === 'campaign' ? (
+            <TrackerCell accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} empty={<span className="text-[11px] text-muted2">—</span>} />
+          ) : (
+            <span className="text-[11px] text-muted2">—</span>
+          )}
+        </td>
         <MetCells r={r} sym={sym} s={m.settings} />
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
@@ -1200,8 +1208,9 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
 }
 
 /* ── Célula "Histórico" (resumo do que já foi feito na campanha) ──
- * Chips compactos: última mexida de orçamento, se foi duplicada / é cópia.
- * Clicar em qualquer lugar abre a timeline completa (CampHistoryModal). */
+ * Em cima: o tracker do aumento de HOJE (antes → depois, ao vivo) quando existe.
+ * Embaixo: chips do que já rolou (última mexida, duplicada / é cópia) — clicar
+ * abre a timeline completa (CampHistoryModal). */
 function HistCell({ accId, campId, name, cur }: { accId: string; campId: string; name: string; cur: string }) {
   useLog()
   const [open, setOpen] = useState(false)
@@ -1215,11 +1224,12 @@ function HistCell({ accId, campId, name, cur }: { accId: string; campId: string;
   const vazio = !last && copias.length === 0 && !ehCopia
 
   return (
-    <>
+    <div className="flex min-w-[130px] flex-col items-start gap-1">
+      <TrackerCell accId={accId} name={name} campId={campId} cur={cur} />
       <button
         onClick={() => setOpen(true)}
         title="Ver histórico completo desta campanha"
-        className="flex min-w-[130px] flex-col items-start gap-1.5 text-left text-[12px] leading-tight hover:opacity-70"
+        className="flex flex-col items-start gap-1.5 text-left text-[12px] leading-tight hover:opacity-70"
       >
         {vazio && <span className="text-muted2">— <span className="text-[11px] text-muted2/70">sem mexidas</span></span>}
         {last && (
@@ -1231,7 +1241,7 @@ function HistCell({ accId, campId, name, cur }: { accId: string; campId: string;
         {ehCopia && <span className="font-medium text-warn">é cópia</span>}
       </button>
       {open && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setOpen(false)} />}
-    </>
+    </div>
   )
 }
 
@@ -1275,6 +1285,8 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
   const s = m.settings
   const [q, setQ] = useState('')
   const ql = q.trim().toLowerCase()
+  useLog()
+  const touched = m.touchedOnly ? touchedIds() : null
   const [cols, setCols] = useState<HistCols>(readHistCols)
   useEffect(() => { localStorage.setItem(HISTCOLS_KEY, JSON.stringify(cols)) }, [cols])
   const toggleCol = (k: 'status' | 'hist') => setCols((c) => ({ ...c, [k]: !c[k] }))
@@ -1357,6 +1369,7 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
           .filter(
             (x) =>
               (!m.actionFilter || x.action.code === m.actionFilter) &&
+              (!touched || touched.has(x.cid)) &&
               (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${x.cid}`)) &&
               (!ql || (x.camp.name || '').toLowerCase().includes(ql)),
           )

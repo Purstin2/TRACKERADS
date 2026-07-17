@@ -12,9 +12,11 @@ import {
   AreaChart,
   Area,
   Legend,
+  ReferenceLine,
+  Rectangle,
 } from 'recharts'
 import Funnel from '@/modules/monitor/components/Funnel'
-import { BRL, PCT, type DashboardData } from './data'
+import { BRL, PCT, type DashboardData, type DayPoint } from './data'
 
 export interface WidgetDef {
   id: string
@@ -166,10 +168,95 @@ export const WIDGETS: WidgetDef[] = [
   { id: 'imposto_total', category: 'Impostos', title: 'Imposto total', w: 3, h: 2, render: (d) => kpiBody(BRL(d.impostoTotal)) },
 
   // ── Gráficos Avançados ──
+  // Lucro REAL por dia: único gráfico que desconta o anúncio → único que fica vermelho.
+  {
+    id: 'lucro_dia',
+    category: 'Gráficos Avançados',
+    title: 'Lucro por Dia',
+    w: 12,
+    h: 4,
+    minH: 3,
+    minW: 4,
+    render: (d) => {
+      const days = d.profitByDay
+      if (!days.length)
+        return <div className="flex h-full items-center justify-center text-[12px] text-muted2">Sem dados no período.</div>
+      const verdes = days.filter((p) => p.lucro >= 0).length
+      const vermelhos = days.length - verdes
+      const total = days.reduce((s, p) => s + p.lucro, 0)
+      const melhor = days.reduce((a, b) => (b.lucro > a.lucro ? b : a))
+      const pior = days.reduce((a, b) => (b.lucro < a.lucro ? b : a))
+      return (
+        <div className="flex h-full flex-col">
+          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+            <span className="font-semibold text-ok">{verdes} dia{verdes === 1 ? '' : 's'} no lucro</span>
+            <span className="font-semibold text-danger">{vermelhos} no prejuízo</span>
+            <span className="text-muted2">melhor {melhor.label} ({BRL(melhor.lucro)})</span>
+            {pior.lucro < 0 && <span className="text-muted2">pior {pior.label} ({BRL(pior.lucro)})</span>}
+            <span className={`ml-auto font-bold ${total >= 0 ? 'text-ok' : 'text-danger'}`}>total {BRL(total)}</span>
+          </div>
+          <div className="min-h-0 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={days} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} minTickGap={4} />
+                <YAxis tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} width={46} />
+                <ReferenceLine y={0} stroke="#545c84" strokeWidth={1} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(99,102,241,.08)' }}
+                  contentStyle={TOOLTIP_STYLE}
+                  content={({ active, payload }: any) => {
+                    if (!active || !payload?.length) return null
+                    const p = payload[0].payload as DayPoint
+                    const ok = p.lucro >= 0
+                    return (
+                      <div className="rounded-lg border border-border bg-[#0d0f1e] px-3 py-2 text-[11.5px]">
+                        <div className="mb-1 font-bold text-ink">{p.label}</div>
+                        <div className={`text-[15px] font-extrabold ${ok ? 'text-ok' : 'text-danger'}`}>
+                          {ok ? 'Lucro ' : 'Prejuízo '}{BRL(Math.abs(p.lucro))}
+                        </div>
+                        <div className="mt-1 flex flex-col gap-0.5 text-muted2">
+                          <span>Faturamento <b className="text-ink">{BRL(p.bruto)}</b></span>
+                          <span>Gasto em ads <b className="text-ink">{BRL(p.spend)}</b></span>
+                          <span>Vendas <b className="text-ink">{p.vendas}</b>{p.roas != null && <> · ROAS <b className="text-ink">{p.roas.toFixed(2)}</b></>}</span>
+                        </div>
+                      </div>
+                    )
+                  }}
+                />
+                {/* shape próprio: a cor sai do sinal do lucro e o canto arredondado
+                    acompanha o lado da barra (topo pra cima, base pra baixo) */}
+                <Bar
+                  dataKey="lucro"
+                  shape={(props: any) => {
+                    const { x, y, width, height, payload } = props
+                    const ok = (payload as DayPoint).lucro >= 0
+                    const r = Math.min(4, Math.abs(height))
+                    return (
+                      <Rectangle
+                        x={x}
+                        y={y}
+                        width={width}
+                        height={height}
+                        fill={ok ? '#10b981' : '#ef4444'}
+                        radius={ok ? [r, r, 0, 0] : [0, 0, r, r]}
+                      />
+                    )
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )
+    },
+  },
   {
     id: 'lucro_horario',
     category: 'Gráficos Avançados',
-    title: 'Lucro por Horário',
+    // NÃO é lucro: é o faturamento líquido da hora (não desconta anúncio). O nome
+    // antigo dizia "Lucro" e por isso nenhuma barra ficava vermelha. Lucro de
+    // verdade está no "Lucro por Dia".
+    title: 'Faturamento líquido por Horário',
     w: 12,
     h: 4,
     minH: 3,
@@ -340,10 +427,24 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'chargeback', x: 3, y: 10, w: 3, h: 2 },
   { i: 'vendas_pendentes', x: 6, y: 10, w: 3, h: 2 },
   { i: 'vendas_reembolsadas', x: 9, y: 10, w: 3, h: 2 },
-  { i: 'vendas_pais', x: 0, y: 12, w: 4, h: 4 },
-  { i: 'lucro_horario', x: 4, y: 12, w: 8, h: 4 },
-  { i: 'funil_conversao', x: 0, y: 16, w: 12, h: 5 },
-  { i: 'fat_inv_lucro', x: 0, y: 21, w: 12, h: 4 },
+  { i: 'lucro_dia', x: 0, y: 12, w: 12, h: 4 },
+  { i: 'vendas_pais', x: 0, y: 16, w: 4, h: 4 },
+  { i: 'lucro_horario', x: 4, y: 16, w: 8, h: 4 },
+  { i: 'funil_conversao', x: 0, y: 20, w: 12, h: 5 },
+  { i: 'fat_inv_lucro', x: 0, y: 25, w: 12, h: 4 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
+
+/** Widgets criados DEPOIS que o usuário já salvou o layout dele.
+ *  Um widget ausente do layout salvo é novo (nunca foi visto) — entra.
+ *  Um que está no layout mas fora de `enabled` foi removido de propósito — fica fora.
+ *  Sem isso, todo gráfico novo nasceria invisível pra quem já mexeu no dashboard. */
+export function withNewWidgets(p: { enabled: string[]; layout: GridItem[] }): { enabled: string[]; layout: GridItem[] } {
+  const known = new Set(p.layout.map((l) => l.i))
+  const novos = DEFAULT_LAYOUT.filter((d) => !known.has(d.i) && WIDGET_MAP[d.i])
+  if (!novos.length) return p
+  let y = p.layout.reduce((mx, l) => Math.max(mx, l.y + l.h), 0)
+  const add = novos.map((d) => { const item = { ...d, x: 0, y }; y += d.h; return item })
+  return { enabled: [...p.enabled, ...add.map((a) => a.i)], layout: [...p.layout, ...add] }
+}

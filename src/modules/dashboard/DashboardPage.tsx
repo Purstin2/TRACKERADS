@@ -8,8 +8,8 @@ import {
 } from 'lucide-react'
 import { type DashboardData } from './data'
 import { buildRealDashboard, distinctProducts, distinctSources, normSource, type FunnelMeta } from './realbuild'
-import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, type GridItem } from './widgets'
-import { fetchFin, fetchFunil, fetchFinHourly, getRevenue, getSales, findVal } from '@/lib/meta'
+import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, withNewWidgets, type GridItem } from './widgets'
+import { fetchFin, fetchFunil, fetchFinHourly, fetchFinDaily, getRevenue, getSales, findVal } from '@/lib/meta'
 import { fetchOrders, fetchRefundsByRefundDate, type KirvanoOrder } from '@/modules/pixel/orders'
 import { getStoredAccounts, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
 import { loadFinParams, saveFinParams, syncFinParams, type FinParams } from '@/modules/monitor/finance'
@@ -44,7 +44,7 @@ function isValidPersisted(p: unknown): p is Persisted {
 }
 function loadPersisted(): Persisted {
   const p = cacheGet<Persisted | null>(LS_KEY, null)
-  return isValidPersisted(p) ? p : { enabled: DEFAULT_ENABLED, layout: DEFAULT_LAYOUT }
+  return isValidPersisted(p) ? withNewWidgets(p) : { enabled: DEFAULT_ENABLED, layout: DEFAULT_LAYOUT }
 }
 function getFx(): number {
   try { return +JSON.parse(localStorage.getItem('meta_settings') || '{}').fx || DEFAULT_SETTINGS.fx } catch { return DEFAULT_SETTINGS.fx }
@@ -237,7 +237,7 @@ function CampDrawer({ camps, sel, onSel, status, onStatus, onClose, onReload, lo
 
 // cache local do dashboard: mostra na hora o último resultado, atualiza por trás
 const DASH_CACHE = 'purstin_dash_cache_v1'
-interface DashCache { period: string; camps: CampMetric[]; orders: KirvanoOrder[]; fByCamp: Record<string, FunnelMeta>; hByName: Record<string, number[]>; ts: string }
+interface DashCache { period: string; camps: CampMetric[]; orders: KirvanoOrder[]; fByCamp: Record<string, FunnelMeta>; hByName: Record<string, number[]>; dByCamp?: Record<string, Record<string, number>>; ts: string }
 function readDashCache(): DashCache | null {
   try { return JSON.parse(localStorage.getItem(DASH_CACHE) || 'null') } catch { return null }
 }
@@ -272,6 +272,7 @@ export default function DashboardPage() {
   const [selCamps, setSelCamps] = useState<Set<string>>(new Set())
   const [funnelByCamp, setFunnelByCamp] = useState<Record<string, FunnelMeta>>({})
   const [hourlyByName, setHourlyByName] = useState<Record<string, number[]>>({})
+  const [dailyByCamp, setDailyByCamp] = useState<Record<string, Record<string, number>>>({})
   const [orders, setOrders] = useState<KirvanoOrder[]>([])
   const [products, setProducts] = useState<string[]>([])
   const [selProducts, setSelProducts] = useState<Set<string> | null>(null)
@@ -298,17 +299,26 @@ export default function DashboardPage() {
     const cs: CampMetric[] = []
     const fByCamp: Record<string, FunnelMeta> = {}
     const hByName: Record<string, number[]> = {}
+    const dByCamp: Record<string, Record<string, number>> = {}
     const tok = token.trim()
-    // PARALELO: todas as contas de uma vez, e as 3 chamadas de cada conta juntas
+    // PARALELO: todas as contas de uma vez, e as 4 chamadas de cada conta juntas
     // (antes era tudo em fila → ~18 chamadas sequenciais com 6 contas)
     await Promise.all(
       accs.map(async (acc) => {
         const toBRL = acc.cur === 'BRL' ? 1 : fx
-        const [rows, fn, hr] = await Promise.all([
+        const [rows, fn, hr, dy] = await Promise.all([
           fetchFin(acc.id, preset, tok, statuses).catch(() => [] as any[]),
           fetchFunil(acc.id, preset, tok, statuses).catch(() => [] as any[]),
           fetchFinHourly(acc.id, preset, tok, statuses).catch(() => [] as any[]),
+          fetchFinDaily(acc.id, preset, tok, statuses).catch(() => [] as any[]),
         ])
+        // gasto por dia, por campanha (mesma chave do CampMetric → respeita a seleção)
+        ;(dy as any[]).forEach((r) => {
+          if (!r.campaign_id || !r.date_start) return
+          const k = `${acc.id}::${r.campaign_id}`
+          if (!dByCamp[k]) dByCamp[k] = {}
+          dByCamp[k][r.date_start as string] = (dByCamp[k][r.date_start as string] || 0) + parseFloat(r.spend || '0') * toBRL
+        })
         ;(rows as any[]).forEach((r) => {
           if (!r.campaign_id) return
           cs.push({ key: `${acc.id}::${r.campaign_id}`, accId: acc.id, accName: acc.name, name: r.campaign_name || '(sem nome)', spend: parseFloat(r.spend || '0') * toBRL, rev: getRevenue(r) * toBRL, sales: getSales(r) })
@@ -335,6 +345,7 @@ export default function DashboardPage() {
     setSelCamps(new Set(cs.map((c) => c.key)))
     setFunnelByCamp(fByCamp)
     setHourlyByName(hByName)
+    setDailyByCamp(dByCamp)
 
     let within: KirvanoOrder[] = []
     try {
@@ -363,7 +374,7 @@ export default function DashboardPage() {
     setUpdatedAt(stamp)
     setLoading(false)
     // salva cache do período pra abrir instantâneo da próxima vez
-    saveDashCache({ period: eff, camps: cs, orders: within, fByCamp, hByName, ts: stamp })
+    saveDashCache({ period: eff, camps: cs, orders: within, fByCamp, hByName, dByCamp, ts: stamp })
   }
 
   // auto-carrega da API do Meta ao abrir (token permanente salvo) — sem mockup
@@ -373,7 +384,7 @@ export default function DashboardPage() {
     const c = readDashCache()
     if (c && c.period === period && Array.isArray(c.camps)) {
       setCamps(c.camps); setSelCamps(new Set(c.camps.map((x) => x.key)))
-      setFunnelByCamp(c.fByCamp || {}); setHourlyByName(c.hByName || {})
+      setFunnelByCamp(c.fByCamp || {}); setHourlyByName(c.hByName || {}); setDailyByCamp(c.dByCamp || {})
       setOrders(c.orders || []); setProducts(distinctProducts(c.orders || [])); setSources(distinctSources(c.orders || []))
       setLoaded(true); setUpdatedAt(c.ts)
     }
@@ -382,7 +393,9 @@ export default function DashboardPage() {
     syncTaxas().then(setTaxasCfg)
     // layout/visualização do Supabase (não se perde ao limpar cookies)
     loadState<Persisted | null>(LS_KEY, null).then((p) => {
-      if (isValidPersisted(p)) { setEnabled(p.enabled); setLayout(p.layout); savedSnap.current = p }
+      if (!isValidPersisted(p)) return
+      const m = withNewWidgets(p) // gráficos novos entram sem apagar o que ele arrumou
+      setEnabled(m.enabled); setLayout(m.layout); savedSnap.current = m
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -403,11 +416,20 @@ export default function DashboardPage() {
     selectedCamps.forEach((c) => { const h = hourlyByName[`${c.accId}::${c.name}`]; if (h) for (let i = 0; i < 24; i++) arr[i] += h[i] })
     return arr
   }, [selectedCamps, hourlyByName])
+  // gasto por dia das campanhas selecionadas (pro Lucro por Dia)
+  const dailySpend = useMemo(() => {
+    const m: Record<string, number> = {}
+    selectedCamps.forEach((c) => {
+      const d = dailyByCamp[c.key]
+      if (d) Object.entries(d).forEach(([day, v]) => { m[day] = (m[day] || 0) + v })
+    })
+    return m
+  }, [selectedCamps, dailyByCamp])
 
   // dados sempre reais (da API). Antes de carregar, tudo zero — sem mockup.
   const data: DashboardData = useMemo(
-    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, funnelMeta, fin, taxas: taxasCfg }),
-    [orders, selProducts, selSources, spend, hourlySpend, funnelMeta, fin, taxasCfg],
+    () => buildRealDashboard({ orders, products: selProducts, source: selSources, spend, hourlySpend, dailySpend, funnelMeta, fin, taxas: taxasCfg }),
+    [orders, selProducts, selSources, spend, hourlySpend, dailySpend, funnelMeta, fin, taxasCfg],
   )
 
   const d = data

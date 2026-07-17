@@ -66,6 +66,16 @@ export function saveFinParams(f: FinParams) {
   remoteSet('meta_fin', f)
 }
 
+/** Lucro/margem de uma janela (linha da lista, dia, ou intervalo entre aumentos)
+ *  pelo modelo financeiro da conta — mesmas taxas do Financeiro. */
+export function rowFin(spend: number, revenue: number, sales: number, FIN: FinParams) {
+  const aprov = FIN.aprov / 100
+  const fatBruto = revenue * aprov
+  const fatLiq = fatBruto * (1 - (FIN.gateway + FIN.imposto + FIN.reembolso + FIN.chargeback) / 100)
+  const lucro = fatLiq - spend - sales * aprov * FIN.custoUn
+  return { lucro, margem: fatLiq !== 0 ? lucro / fatLiq : 0 }
+}
+
 /** Agrupa produto pela nomenclatura da campanha (mesma lógica da aba Por Oferta) */
 export function offerKey(name: string): string {
   const p = name.split(/\s*-\s*/)

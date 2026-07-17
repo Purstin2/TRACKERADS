@@ -11,10 +11,16 @@
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 import type { FinParams } from '@/modules/monitor/finance'
 import { feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
-import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint } from './data'
+import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint, DayPoint } from './data'
 
 const up = (s?: string | null) => (s || '').toUpperCase()
 const orderDate = (o: KirvanoOrder) => o.ordered_at || o.created_at || null
+/** Dia (YYYY-MM-DD) de um instante, no fuso BR — mesmo dia comercial da Kirvano/Meta. */
+const BR_OFFSET_MS = 3 * 3600000
+const dayKeyBR = (t: string): string | null => {
+  const ms = Date.parse(t)
+  return isNaN(ms) ? null : new Date(ms - BR_OFFSET_MS).toISOString().slice(0, 10)
+}
 
 /** Converte preço (número OU string BR tipo "R$ 49,90") em número. */
 function numPrice(v: unknown): number {
@@ -112,12 +118,13 @@ export interface RealOpts {
   source: Set<string> | null // fontes de tráfego selecionadas (null = todas)
   spend: number // gasto Meta (BRL) das campanhas selecionadas
   hourlySpend?: number[] // gasto Meta por hora (24) — pro acumulado
+  dailySpend?: Record<string, number> // gasto Meta por dia BR (YYYY-MM-DD) — pro Lucro por Dia
   funnelMeta?: FunnelMeta | null // métricas de funil do Meta
   fin: FinParams // hoje só `despesas` (período) vem daqui — taxas são por produto
   taxas: TaxasConfig
 }
 
-export function buildRealDashboard({ orders, products, source, spend, hourlySpend, funnelMeta, fin, taxas: taxasCfg }: RealOpts): DashboardData {
+export function buildRealDashboard({ orders, products, source, spend, hourlySpend, dailySpend, funnelMeta, fin, taxas: taxasCfg }: RealOpts): DashboardData {
   // filtro de produto casa principal OU order bump; e revaloriza o pedido pro valor
   // real do(s) produto(s) selecionado(s) — assim filtrar por um bump não infla.
   let rows = orders
@@ -232,6 +239,46 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     return { hour: String(h).padStart(2, '0'), investimento: Math.round(accInv), faturamento: Math.round(accFat), lucro: Math.round(accLuc) }
   })
 
+  /* ── Lucro por DIA (o único gráfico que desconta o anúncio) ──
+   * Decompõe o KPI de Lucro dia a dia, com a MESMA conta: cada pedido resolve as
+   * próprias taxas (por produto) e o gasto do dia vem do Meta quebrado por data.
+   *   lucro(dia) = bruto − taxa − imposto − gasto − custo
+   * Somar todos os dias reproduz o Lucro do período (menos `despesas`, que é do
+   * período inteiro e não tem data). Dia com gasto e nenhuma venda entra também —
+   * é justamente o dia vermelho que interessa enxergar. */
+  interface DayAgg { bruto: number; taxas: number; imposto: number; custo: number; vendas: number }
+  const zeroDay = (): DayAgg => ({ bruto: 0, taxas: 0, imposto: 0, custo: 0, vendas: 0 })
+  const byDay = new Map<string, DayAgg>()
+  approved.forEach((o) => {
+    const t = orderDate(o)
+    const k = t ? dayKeyBR(t) : null
+    if (!k) return
+    const s = sumFees(feeItemsForOrder(taxasCfg, o))
+    const v = o.value || 0
+    const a = byDay.get(k) || zeroDay()
+    a.bruto += v
+    a.taxas += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+    a.imposto += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
+    a.custo += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
+    a.vendas += 1
+    byDay.set(k, a)
+  })
+  Object.keys(dailySpend || {}).forEach((k) => { if (!byDay.has(k)) byDay.set(k, zeroDay()) })
+  const profitByDay: DayPoint[] = [...byDay.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([date, a]) => {
+      const sp = dailySpend?.[date] || 0
+      return {
+        date,
+        label: date.slice(8) + '/' + date.slice(5, 7),
+        lucro: a.bruto - a.taxas - a.imposto - sp - a.custo,
+        bruto: a.bruto,
+        spend: sp,
+        vendas: a.vendas,
+        roas: sp > 0 ? a.bruto / sp : null,
+      }
+    })
+
   // Funil (igual UTMify): topo = Meta (cliques/visita/checkout); base = GATEWAY real.
   // "Vendas iniciadas" = checkouts que geraram transação (pix/boleto/cartão) = tudo
   // que NÃO é abandonado. "Aprovadas" = pagas. Isso a gente tem no banco (confiável).
@@ -272,5 +319,6 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     approval,
     positioning: [],
     profitByHour,
+    profitByDay,
   }
 }

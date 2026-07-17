@@ -134,35 +134,32 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
       for (let i = 1; i <= N; i++) {
         const sfx = N > 1 ? ` ${i}` : ''
         setApplyingMsg(N > 1 ? `Cópia ${i}/${N}…` : 'Enviando…')
-        let newId = `sim-${campId}-${Date.now().toString(36)}-${i}`
         let newName = `${nomeCopia}${sfx}`
-        if (m.exec) {
-          const rp = { renamePrefix: renameParts.renamePrefix, renameSuffix: `${renameParts.renameSuffix}${sfx}` }
-          const res = await copyCampaign(
-            campId, m.token.trim(), { deepCopy: true, status, ...rp },
-            (msg) => setApplyingMsg(N > 1 ? `Cópia ${i}/${N} · ${msg}` : msg),
-          )
-          newId = res.copied_campaign_id
-          if (nomeECustom) await renameEntity(newId, `${nomeCopia}${sfx}`, m.token.trim())
-          try { newName = (await fetchCampaignName(newId, m.token.trim())) || newName } catch { /* mantém */ }
-          // orçamento no nível escolhido (CBO = campanha; ABO = cada conjunto). Best-effort.
-          if (cents > 0) {
-            try {
-              if (budgetLevel === 'campaign') {
-                await setBudget(newId, cents, m.token.trim())
-              } else {
-                const adsetIds = (res.ad_object_ids || []).filter((o) => o.ad_object_type === 'AD_SET').map((o) => o.copied_id)
-                for (const aid of adsetIds) await setBudget(aid, cents, m.token.trim())
-              }
-            } catch { budgetWarn++ }
-          }
+        const rp = { renamePrefix: renameParts.renamePrefix, renameSuffix: `${renameParts.renameSuffix}${sfx}` }
+        const res = await copyCampaign(
+          campId, m.token.trim(), { deepCopy: true, status, ...rp },
+          (msg) => setApplyingMsg(N > 1 ? `Cópia ${i}/${N} · ${msg}` : msg),
+        )
+        const newId = res.copied_campaign_id
+        if (nomeECustom) await renameEntity(newId, `${nomeCopia}${sfx}`, m.token.trim())
+        try { newName = (await fetchCampaignName(newId, m.token.trim())) || newName } catch { /* mantém */ }
+        // orçamento no nível escolhido (CBO = campanha; ABO = cada conjunto). Best-effort.
+        if (cents > 0) {
+          try {
+            if (budgetLevel === 'campaign') {
+              await setBudget(newId, cents, m.token.trim())
+            } else {
+              const adsetIds = (res.ad_object_ids || []).filter((o) => o.ad_object_type === 'AD_SET').map((o) => o.copied_id)
+              for (const aid of adsetIds) await setBudget(aid, cents, m.token.trim())
+            }
+          } catch { budgetWarn++ }
         }
         addAction({
           accId,
           campId: newId,
           name: newName,
           kind: 'duplicacao',
-          sim: !m.exec,
+          sim: false,
           cur,
           linkedTo: campId,
           linkedName: name,
@@ -171,13 +168,11 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
           salesAtTime: sales ?? null,
           dateBR: todayBR(),
           verifyBy: plus7(),
-          detail: `Duplicada de "${name}"${N > 1 ? ` (${i}/${N})` : ''} · ${estr} · ${status === 'ACTIVE' ? 'ativa' : 'pausada'}${m.exec ? '' : ' [simulado]'}`,
+          detail: `Duplicada de "${name}"${N > 1 ? ` (${i}/${N})` : ''} · ${estr} · ${status === 'ACTIVE' ? 'ativa' : 'pausada'}`,
         })
         feitas++
       }
-      const base = m.exec
-        ? `${feitas} cópia(s) ${estr} criada(s) (${status === 'ACTIVE' ? 'ativas' : 'pausadas'}) e linkada(s)`
-        : `Simulado (Execução OFF): ${feitas} link(s) registrado(s) sem criar na Meta`
+      const base = `${feitas} cópia(s) ${estr} criada(s) (${status === 'ACTIVE' ? 'ativas' : 'pausadas'}) e linkada(s)`
       toast(budgetWarn ? `${base} · ⚠ orçamento não aplicado em ${budgetWarn} (ajuste manual)` : base, budgetWarn ? 'warn' : 'ok')
       onClose()
     } catch (e: any) {
@@ -327,14 +322,9 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             O sufixo <b className="text-muted">{renameParts.renameSuffix || '(nenhum)'}</b> é aplicado a campanha, conjuntos e anúncios
           </span>
 
-          {status === 'ACTIVE' && m.exec && (
+          {status === 'ACTIVE' && (
             <div className="rounded-[8px] border border-ok/30 bg-ok/[0.07] px-3 py-2 text-[11.5px] text-ok">
               ▶ A cópia vai <b>começar a gastar</b> assim que aprovada. É isso que testa o canibalismo.
-            </div>
-          )}
-          {!m.exec && (
-            <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">
-              ⚠ <b>Execução OFF</b> — só registra o link no log (simulado), sem criar na Meta. Ligue o switch <b>Execução</b> no topo pra duplicar de verdade.
             </div>
           )}
           </>
@@ -376,7 +366,7 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
                 )}
               </div>
             )}
-            <span className="text-[10.5px] text-muted2">Dica: a mais recente aparece no topo. Registro entra como duplicação <b>real</b> (não simulada), independente do switch Execução.</span>
+            <span className="text-[10.5px] text-muted2">Dica: a mais recente aparece no topo.</span>
           </div>
           )}
 
@@ -386,7 +376,7 @@ export function DuplicateModal({ accId, name, campId, roas, cur, spend, sales, o
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
             {mode === 'auto' ? (
               <button className="btn btn-primary btn-sm" onClick={apply} disabled={applying}>
-                <Copy className="h-3.5 w-3.5" /> {applying ? applyingMsg || 'Duplicando…' : m.exec ? (qtd > 1 ? `Duplicar ${qtd}× na Meta` : 'Duplicar na Meta') : (qtd > 1 ? `Registrar ${qtd} links` : 'Registrar link (simulado)')}
+                <Copy className="h-3.5 w-3.5" /> {applying ? applyingMsg || 'Duplicando…' : qtd > 1 ? `Duplicar ${qtd}× na Meta` : 'Duplicar na Meta'}
               </button>
             ) : (
               <button className="btn btn-primary btn-sm" onClick={applyLink} disabled={applying || !selectedCopyId}>
@@ -530,7 +520,7 @@ export function DupProofModal({ dups, cur, onClose }: { dups: ActionEntry[]; cur
             </div>
           </div>
 
-          {e.sim && <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">⚠ Duplicação <b>simulada</b> (Execução estava OFF) — não há dados reais da cópia pra comparar.</div>}
+          {e.sim && <div className="rounded-[8px] border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] text-warn">⚠ Duplicação <b>simulada</b> (registro antigo) — não há dados reais da cópia pra comparar.</div>}
           {err && <div className="rounded-lg border border-danger/30 bg-danger/[0.07] px-3 py-2 text-[12px] text-danger">❌ {err}</div>}
           {loading && <div className="py-4 text-center text-[12px] text-muted2 animate-pulse">Buscando histórico das duas campanhas…</div>}
 
