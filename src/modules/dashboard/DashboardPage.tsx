@@ -545,7 +545,18 @@ export default function DashboardPage() {
         <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; taxas/impostos/custos por produto na aba <Link to="/taxas" className="font-semibold text-brand-2 underline underline-offset-2">Taxas</Link>.</p>
       </div>
 
-      <ResponsiveGrid className="-m-2" layouts={{ lg: visibleLayout, md: visibleLayout }} breakpoints={{ lg: 996, md: 768, sm: 480, xs: 0 }} cols={{ lg: 12, md: 12, sm: 1, xs: 1 }} rowHeight={58} margin={[14, 14]} isDraggable={editing} isResizable={editing} draggableHandle=".wdg-head" compactType="vertical" onLayoutChange={(cur: Layout[]) => { if (editing) setLayout(cur.map((l) => ({ i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }))) }}>
+      <ResponsiveGrid className="-m-2" layouts={{ lg: visibleLayout, md: visibleLayout }} breakpoints={{ lg: 996, md: 768, sm: 480, xs: 0 }} cols={{ lg: 12, md: 12, sm: 1, xs: 1 }} rowHeight={58} margin={[14, 14]} isDraggable={editing} isResizable={editing} draggableHandle=".wdg-head" compactType="vertical" onLayoutChange={(cur: Layout[]) => {
+          if (!editing) return
+          // O grid só devolve os widgets VISÍVEIS. Antes isso substituía o layout
+          // inteiro e APAGAVA o registro dos ocultos/removidos — aí o withNewWidgets
+          // achava que eram widgets novos e re-adicionava no reload (a remoção "voltava").
+          // Agora faço MERGE: atualiza a posição dos visíveis e preserva os demais.
+          setLayout((prev) => {
+            const byId = new Map(prev.map((l) => [l.i, l]))
+            cur.forEach((l) => byId.set(l.i, { i: l.i, x: l.x, y: l.y, w: l.w, h: l.h }))
+            return [...byId.values()]
+          })
+        }}>
         {visibleLayout.map((item) => {
           const def = WIDGET_MAP[item.i]
           return <div key={item.i} data-grid={item}><Frame title={def.title} editing={editing} onRemove={() => removeWidget(item.i)}>{def.render(d)}</Frame></div>

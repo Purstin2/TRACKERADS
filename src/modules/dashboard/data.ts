@@ -46,6 +46,18 @@ export interface AccountPerf {
   lucro: number // revenue líquido (taxas por pedido) − gasto
   cls: 'good' | 'warn' | 'bad' | 'none' // verde/amarelo/vermelho/cinza
 }
+/** Uma hora do gráfico "Lucro por Horário": mesma lógica do Lucro por Dia, só que
+ *  por hora — faturamento da hora − taxas do pedido − gasto em ads daquela hora.
+ *  Mostra em qual faixa do dia você realmente ganha e em qual você queima. */
+export interface HourProfitPoint {
+  hour: string // "00".."23"
+  label: string // "00h"
+  lucro: number
+  bruto: number
+  spend: number
+  vendas: number
+  roas: number | null
+}
 /** Um dia do gráfico "Lucro por Dia": lucro REAL (já com anúncio, taxas e custos
  *  descontados) — positivo = verde acima da linha, negativo = vermelho abaixo. */
 export interface DayPoint {
@@ -87,6 +99,7 @@ export interface DashboardData {
   approval: ApprovalRate[]
   positioning: PositioningRow[]
   profitByHour: HourPoint[]
+  profitByHourReal: HourProfitPoint[]
   profitByDay: DayPoint[]
   accounts: AccountPerf[]
 }
@@ -150,6 +163,15 @@ export const SAMPLE: DashboardData = {
     { label: 'Instagram Stories (2)', count: 160, pct: 12.6 },
     { label: 'Instagram Feed', count: 111, pct: 8.8 },
   ],
+  profitByHourReal: Array.from({ length: 24 }, (_, h) => ({
+    hour: String(h).padStart(2, '0'),
+    label: `${String(h).padStart(2, '0')}h`,
+    lucro: Math.round(Math.sin(h / 3) * 180),
+    bruto: 300 + h * 12,
+    spend: 260 + h * 6,
+    vendas: (h % 5) + 1,
+    roas: 1.2,
+  })),
   accounts: [
     { id: 'a1', name: 'BRASIL', spend: 213, sales: 10, revenue: 473, roas: 2.22, lucro: 203, cls: 'good' },
     { id: 'a2', name: 'CHILE', spend: 686, sales: 10, revenue: 802, roas: 1.17, lucro: 20, cls: 'warn' },

@@ -12,7 +12,7 @@ import type { KirvanoOrder } from '@/modules/pixel/orders'
 import type { FinParams } from '@/modules/monitor/finance'
 import { feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import { campIdFromUtm } from '@/modules/monitor/realRoas'
-import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint, DayPoint, AccountPerf } from './data'
+import type { DashboardData, PaymentSlice, ApprovalRate, HourPoint, PositioningRow, FunnelStageData, CumulativePoint, DayPoint, HourProfitPoint, AccountPerf } from './data'
 
 const up = (s?: string | null) => (s || '').toUpperCase()
 const orderDate = (o: KirvanoOrder) => o.ordered_at || o.created_at || null
@@ -297,6 +297,36 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
              - ((v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo)
              - ((v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo)
   }
+  /* ── Lucro por HORÁRIO (mesma lógica do Lucro por Dia, só que por hora) ──
+   * lucro(hora) = faturamento da hora − taxas do pedido − gasto em ads da hora.
+   * Hora no fuso BR, igual ao gasto horário do Meta (que vem no fuso da conta).
+   * É o gráfico que mostra em qual faixa do dia você ganha e em qual queima. */
+  const hourBR = (t: string): number | null => {
+    const ms = Date.parse(t)
+    return isNaN(ms) ? null : new Date(ms - BR_OFFSET_MS).getUTCHours()
+  }
+  const hAgg = Array.from({ length: 24 }, () => ({ bruto: 0, net: 0, vendas: 0 }))
+  approved.forEach((o) => {
+    const t = orderDate(o)
+    const h = t ? hourBR(t) : null
+    if (h == null) return
+    hAgg[h].bruto += o.value || 0
+    hAgg[h].net += netOf(o)
+    hAgg[h].vendas += 1
+  })
+  const profitByHourReal: HourProfitPoint[] = hAgg.map((a, h) => {
+    const sp = hourlySpend && hourlySpend.length === 24 ? hourlySpend[h] || 0 : 0
+    return {
+      hour: String(h).padStart(2, '0'),
+      label: `${String(h).padStart(2, '0')}h`,
+      lucro: a.net - sp,
+      bruto: a.bruto,
+      spend: sp,
+      vendas: a.vendas,
+      roas: sp > 0 ? a.bruto / sp : null,
+    }
+  })
+
   interface AccAcc { id: string; name: string; spend: number; sales: number; revenue: number; net: number }
   const accMap = new Map<string, AccAcc>()
   ;(accountSpend || []).forEach((a) => accMap.set(a.id, { id: a.id, name: a.name, spend: a.spend, sales: 0, revenue: 0, net: 0 }))
@@ -366,6 +396,7 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     approval,
     positioning: [],
     profitByHour,
+    profitByHourReal,
     profitByDay,
     accounts,
   }

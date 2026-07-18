@@ -46,6 +46,73 @@ function kpiBody(value: ReactNode, tone?: Tone, sub?: ReactNode) {
   )
 }
 
+/* Barras de LUCRO REAL (faturamento − taxas − gasto em ads): verde acima da linha
+ * do zero, vermelho abaixo, altura proporcional ao valor. Compartilhado pelo
+ * "Lucro por Dia" e pelo "Lucro por Horário" — é o mesmo gráfico, muda só a
+ * granularidade (e no horário o gasto vem do breakdown por hora do Meta). */
+interface ProfitRow { label: string; lucro: number; bruto: number; spend: number; vendas: number; roas: number | null }
+function ProfitBars({ rows, unidade }: { rows: ProfitRow[]; unidade: 'dia' | 'hora' }) {
+  const ativos = rows.filter((r) => r.bruto > 0 || r.spend > 0)
+  if (!ativos.length) return <div className="flex h-full items-center justify-center text-[12px] text-muted2">Sem dados no período.</div>
+  const verdes = ativos.filter((r) => r.lucro >= 0).length
+  const vermelhos = ativos.length - verdes
+  const total = ativos.reduce((s, r) => s + r.lucro, 0)
+  const melhor = ativos.reduce((a, b) => (b.lucro > a.lucro ? b : a))
+  const pior = ativos.reduce((a, b) => (b.lucro < a.lucro ? b : a))
+  const un = unidade === 'dia' ? 'dia' : 'hora'
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+        <span className="font-semibold text-ok">{verdes} {un}{verdes === 1 ? '' : 's'} no lucro</span>
+        <span className="font-semibold text-danger">{vermelhos} no prejuízo</span>
+        <span className="text-muted2">melhor {melhor.label} ({BRL(melhor.lucro)})</span>
+        {pior.lucro < 0 && <span className="text-muted2">pior {pior.label} ({BRL(pior.lucro)})</span>}
+        <span className={`ml-auto font-bold ${total >= 0 ? 'text-ok' : 'text-danger'}`}>total {BRL(total)}</span>
+      </div>
+      <div className="min-h-0 flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={rows} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} minTickGap={4} />
+            <YAxis tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} width={46} />
+            <ReferenceLine y={0} stroke="#545c84" strokeWidth={1} />
+            <Tooltip
+              cursor={{ fill: 'rgba(99,102,241,.08)' }}
+              contentStyle={TOOLTIP_STYLE}
+              content={({ active, payload }: any) => {
+                if (!active || !payload?.length) return null
+                const p = payload[0].payload as ProfitRow
+                const ok = p.lucro >= 0
+                return (
+                  <div className="rounded-lg border border-border bg-[#0d0f1e] px-3 py-2 text-[11.5px]">
+                    <div className="mb-1 font-bold text-ink">{p.label}</div>
+                    <div className={`text-[15px] font-extrabold ${ok ? 'text-ok' : 'text-danger'}`}>
+                      {ok ? 'Lucro ' : 'Prejuízo '}{BRL(Math.abs(p.lucro))}
+                    </div>
+                    <div className="mt-1 flex flex-col gap-0.5 text-muted2">
+                      <span>Faturamento <b className="text-ink">{BRL(p.bruto)}</b></span>
+                      <span>Gasto em ads <b className="text-ink">{BRL(p.spend)}</b></span>
+                      <span>Vendas <b className="text-ink">{p.vendas}</b>{p.roas != null && <> · ROAS <b className="text-ink">{p.roas.toFixed(2)}</b></>}</span>
+                    </div>
+                  </div>
+                )
+              }}
+            />
+            <Bar
+              dataKey="lucro"
+              shape={(props: any) => {
+                const { x, y, width, height, payload } = props
+                const ok = (payload as ProfitRow).lucro >= 0
+                const r = Math.min(4, Math.abs(height))
+                return <Rectangle x={x} y={y} width={width} height={height} fill={ok ? '#10b981' : '#ef4444'} radius={ok ? [r, r, 0, 0] : [0, 0, r, r]} />
+              }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
 function approvalColor(pct: number) {
   if (pct >= 80) return '#10b981'
   if (pct >= 65) return '#f59e0b'
@@ -249,78 +316,19 @@ export const WIDGETS: WidgetDef[] = [
     h: 4,
     minH: 3,
     minW: 4,
-    render: (d) => {
-      const days = d.profitByDay
-      if (!days.length)
-        return <div className="flex h-full items-center justify-center text-[12px] text-muted2">Sem dados no período.</div>
-      const verdes = days.filter((p) => p.lucro >= 0).length
-      const vermelhos = days.length - verdes
-      const total = days.reduce((s, p) => s + p.lucro, 0)
-      const melhor = days.reduce((a, b) => (b.lucro > a.lucro ? b : a))
-      const pior = days.reduce((a, b) => (b.lucro < a.lucro ? b : a))
-      return (
-        <div className="flex h-full flex-col">
-          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
-            <span className="font-semibold text-ok">{verdes} dia{verdes === 1 ? '' : 's'} no lucro</span>
-            <span className="font-semibold text-danger">{vermelhos} no prejuízo</span>
-            <span className="text-muted2">melhor {melhor.label} ({BRL(melhor.lucro)})</span>
-            {pior.lucro < 0 && <span className="text-muted2">pior {pior.label} ({BRL(pior.lucro)})</span>}
-            <span className={`ml-auto font-bold ${total >= 0 ? 'text-ok' : 'text-danger'}`}>total {BRL(total)}</span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={days} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} minTickGap={4} />
-                <YAxis tick={{ fontSize: 10, fill: '#545c84' }} axisLine={false} tickLine={false} width={46} />
-                <ReferenceLine y={0} stroke="#545c84" strokeWidth={1} />
-                <Tooltip
-                  cursor={{ fill: 'rgba(99,102,241,.08)' }}
-                  contentStyle={TOOLTIP_STYLE}
-                  content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null
-                    const p = payload[0].payload as DayPoint
-                    const ok = p.lucro >= 0
-                    return (
-                      <div className="rounded-lg border border-border bg-[#0d0f1e] px-3 py-2 text-[11.5px]">
-                        <div className="mb-1 font-bold text-ink">{p.label}</div>
-                        <div className={`text-[15px] font-extrabold ${ok ? 'text-ok' : 'text-danger'}`}>
-                          {ok ? 'Lucro ' : 'Prejuízo '}{BRL(Math.abs(p.lucro))}
-                        </div>
-                        <div className="mt-1 flex flex-col gap-0.5 text-muted2">
-                          <span>Faturamento <b className="text-ink">{BRL(p.bruto)}</b></span>
-                          <span>Gasto em ads <b className="text-ink">{BRL(p.spend)}</b></span>
-                          <span>Vendas <b className="text-ink">{p.vendas}</b>{p.roas != null && <> · ROAS <b className="text-ink">{p.roas.toFixed(2)}</b></>}</span>
-                        </div>
-                      </div>
-                    )
-                  }}
-                />
-                {/* shape próprio: a cor sai do sinal do lucro e o canto arredondado
-                    acompanha o lado da barra (topo pra cima, base pra baixo) */}
-                <Bar
-                  dataKey="lucro"
-                  shape={(props: any) => {
-                    const { x, y, width, height, payload } = props
-                    const ok = (payload as DayPoint).lucro >= 0
-                    const r = Math.min(4, Math.abs(height))
-                    return (
-                      <Rectangle
-                        x={x}
-                        y={y}
-                        width={width}
-                        height={height}
-                        fill={ok ? '#10b981' : '#ef4444'}
-                        radius={ok ? [r, r, 0, 0] : [0, 0, r, r]}
-                      />
-                    )
-                  }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )
-    },
+    render: (d) => <ProfitBars rows={d.profitByDay} unidade="dia" />,
+  },
+  // Lucro REAL por HORA: faturamento da hora − taxas − gasto em ads daquela hora.
+  // Mostra em qual faixa do dia a operação ganha e em qual ela queima.
+  {
+    id: 'lucro_horario_real',
+    category: 'Gráficos Avançados',
+    title: 'Lucro por Horário',
+    w: 12,
+    h: 4,
+    minH: 3,
+    minW: 4,
+    render: (d) => <ProfitBars rows={d.profitByHourReal} unidade="hora" />,
   },
   {
     id: 'lucro_horario',
@@ -501,10 +509,11 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'vendas_reembolsadas', x: 9, y: 10, w: 3, h: 2 },
   { i: 'perf_contas', x: 0, y: 12, w: 12, h: 4 },
   { i: 'lucro_dia', x: 0, y: 16, w: 12, h: 4 },
-  { i: 'vendas_pais', x: 0, y: 20, w: 4, h: 4 },
-  { i: 'lucro_horario', x: 4, y: 20, w: 8, h: 4 },
-  { i: 'funil_conversao', x: 0, y: 24, w: 12, h: 5 },
-  { i: 'fat_inv_lucro', x: 0, y: 29, w: 12, h: 4 },
+  { i: 'lucro_horario_real', x: 0, y: 20, w: 12, h: 4 },
+  { i: 'vendas_pais', x: 0, y: 24, w: 4, h: 4 },
+  { i: 'lucro_horario', x: 4, y: 24, w: 8, h: 4 },
+  { i: 'funil_conversao', x: 0, y: 28, w: 12, h: 5 },
+  { i: 'fat_inv_lucro', x: 0, y: 33, w: 12, h: 4 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
