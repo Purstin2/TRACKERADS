@@ -15,7 +15,7 @@ import { getStoredAccounts, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/mo
 import { loadFinParams, saveFinParams, syncFinParams, type FinParams } from '@/modules/monitor/finance'
 import { loadTaxas, syncTaxas, type TaxasConfig } from '@/modules/taxas/taxas'
 import { Link } from 'react-router-dom'
-import { cacheGet, cacheSet, remoteSet, loadState } from '@/lib/appState'
+import { cacheGet, cacheSet, remoteSet, remoteGet } from '@/lib/appState'
 
 const ResponsiveGrid = WidthProvider(Responsive)
 const LS_KEY = 'purstin_dashboard_layout_v2'
@@ -37,7 +37,7 @@ const LPV = ['landing_page_view', 'omni_landing_page_view']
 const IC = ['initiate_checkout', 'omni_initiated_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']
 
 interface CampMetric { key: string; accId: string; accName: string; name: string; spend: number; rev: number; sales: number }
-interface Persisted { enabled: string[]; layout: GridItem[] }
+interface Persisted { enabled: string[]; layout: GridItem[]; savedAt?: number }
 
 function isValidPersisted(p: unknown): p is Persisted {
   return !!p && Array.isArray((p as Persisted).enabled) && Array.isArray((p as Persisted).layout)
@@ -391,11 +391,22 @@ export default function DashboardPage() {
     if (token.trim()) load(true)
     syncFinParams().then(setFin)
     syncTaxas().then(setTaxasCfg)
-    // layout/visualização do Supabase (não se perde ao limpar cookies)
-    loadState<Persisted | null>(LS_KEY, null).then((p) => {
-      if (!isValidPersisted(p)) return
-      const m = withNewWidgets(p) // gráficos novos entram sem apagar o que ele arrumou
-      setEnabled(m.enabled); setLayout(m.layout); savedSnap.current = m
+    // layout/visualização: o MAIS NOVO vence (local vs Supabase).
+    // Antes, o load puxava o remoto e sobrescrevia CEGAMENTE o local — então se o
+    // save remoto não completasse (ex.: você atualiza a tela antes do POST terminar),
+    // o refresh revertia sua edição pra versão velha do banco. Agora comparo o
+    // carimbo `savedAt`: se o local é mais recente, mantenho ele E re-empurro pro
+    // banco (auto-cura o save que não subiu). Só aplico o remoto se ele for o mais novo.
+    remoteGet<Persisted>(LS_KEY).then((remote) => {
+      if (!isValidPersisted(remote)) return
+      const localAt = init.savedAt || 0
+      const remoteAt = remote.savedAt || 0
+      if (remoteAt > localAt) {
+        const m = withNewWidgets(remote) // outra máquina salvou mais recente → aplica
+        cacheSet(LS_KEY, m); setEnabled(m.enabled); setLayout(m.layout); savedSnap.current = m
+      } else if (localAt > remoteAt) {
+        remoteSet(LS_KEY, init) // local é mais novo → re-sobe pro banco (retenta o save perdido)
+      }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -452,7 +463,14 @@ export default function DashboardPage() {
 
   function startEdit() { savedSnap.current = { enabled: [...enabled], layout: layout.map((l) => ({ ...l })) }; setEditing(true); setDrawerOpen(true) }
   function cancelEdit() { setEnabled(savedSnap.current.enabled); setLayout(savedSnap.current.layout); setEditing(false); setDrawerOpen(false) }
-  function saveEdit() { const v = { enabled, layout }; cacheSet(LS_KEY, v); remoteSet(LS_KEY, v); setEditing(false); setDrawerOpen(false) }
+  function saveEdit() {
+    // carimba o momento do save → o load usa isso pra saber qual versão é a mais nova.
+    // localStorage é síncrono (grava na hora); o Supabase é retentado no próximo load
+    // se o POST não completar agora (ex.: refresh imediato).
+    const v: Persisted = { enabled, layout, savedAt: Date.now() }
+    cacheSet(LS_KEY, v); remoteSet(LS_KEY, v); savedSnap.current = v
+    setEditing(false); setDrawerOpen(false)
+  }
   function resetDefaults() { setEnabled(DEFAULT_ENABLED); setLayout(DEFAULT_LAYOUT) }
   function addWidget(id: string) {
     if (enabled.includes(id)) return

@@ -513,11 +513,12 @@ export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
  *  Um widget ausente do layout salvo é novo (nunca foi visto) — entra.
  *  Um que está no layout mas fora de `enabled` foi removido de propósito — fica fora.
  *  Sem isso, todo gráfico novo nasceria invisível pra quem já mexeu no dashboard. */
-export function withNewWidgets(p: { enabled: string[]; layout: GridItem[] }): { enabled: string[]; layout: GridItem[] } {
+export function withNewWidgets<T extends { enabled: string[]; layout: GridItem[] }>(p: T): T {
   const known = new Set(p.layout.map((l) => l.i))
   const novos = DEFAULT_LAYOUT.filter((d) => !known.has(d.i) && WIDGET_MAP[d.i])
   if (!novos.length) return p
   let y = p.layout.reduce((mx, l) => Math.max(mx, l.y + l.h), 0)
   const add = novos.map((d) => { const item = { ...d, x: 0, y }; y += d.h; return item })
-  return { enabled: [...p.enabled, ...add.map((a) => a.i)], layout: [...p.layout, ...add] }
+  // preserva campos extras (ex.: savedAt) — só acrescenta os widgets novos
+  return { ...p, enabled: [...p.enabled, ...add.map((a) => a.i)], layout: [...p.layout, ...add] }
 }
