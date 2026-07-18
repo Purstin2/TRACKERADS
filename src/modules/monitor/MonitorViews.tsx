@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -486,8 +486,25 @@ function CampHistoryModal({ accId, name, campId, cur, onClose }: { accId: string
 export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
   useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const [pos, setPos] = useState<{ top: number; left: number; anchorTop: number }>({ top: 0, left: 0, anchorTop: 0 })
+  const menuRef = useRef<HTMLDivElement>(null)
   const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas'>(null)
+
+  /* Reposiciona depois de renderizar: mede a altura REAL do menu (que varia com
+   * quantos itens aparecem) e, se ele passar da borda de baixo, vira pra CIMA do
+   * botão. Se não couber nem em cima (tela baixa), encosta na borda inferior.
+   * Antes só havia trava horizontal — em linha no rodapé o menu saía da tela. */
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return
+    const h = menuRef.current.offsetHeight
+    const m = 8
+    setPos((p) => {
+      if (p.top + h <= window.innerHeight - m) return p // cabe embaixo, mantém
+      const acima = p.anchorTop - h - 6
+      const top = acima >= m ? acima : Math.max(m, window.innerHeight - h - m)
+      return top === p.top ? p : { ...p, top }
+    })
+  }, [open])
 
   const dups = duplicationsFor(campId)
   const impDays = impactDays(campId)
@@ -515,7 +532,7 @@ export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { 
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
           const W = 248
-          setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - W, window.innerWidth - W - 8)) })
+          setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - W, window.innerWidth - W - 8)), anchorTop: rect.top })
           setOpen(true)
         }}
         title="Ações da campanha"
@@ -527,7 +544,7 @@ export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { 
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="fixed z-50 w-[248px] overflow-hidden rounded-xl2 border border-border bg-[#0d1220] shadow-2xl shadow-black/40" style={{ top: pos.top, left: pos.left }}>
+          <div ref={menuRef} className="fixed z-50 w-[248px] overflow-y-auto overflow-x-hidden rounded-xl2 border border-border bg-[#0d1220] shadow-2xl shadow-black/40" style={{ top: pos.top, left: pos.left, maxHeight: 'calc(100vh - 16px)' }}>
             <div className="border-b border-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted2">Ações da campanha</div>
             {items.filter((it) => it.show).map((it) => (
               <button key={it.key} onClick={() => pick(it.key)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-surface2">
