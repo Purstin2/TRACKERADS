@@ -103,9 +103,10 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
 
   const buscar = useCallback(async () => {
     setCarregando(true)
-    const since = janela.ms === 0 ? inicioDoDiaBR() : new Date(Date.now() - janela.ms).toISOString()
+    const inicioDia = inicioDoDiaBR()
+    const since = janela.ms === 0 ? inicioDia : new Date(Date.now() - janela.ms).toISOString()
     try {
-      const v = await fetchRecentSales(since)
+      const v = await fetchRecentSales(since, inicioDia)
       if (vivo.current) { setVendas(v); setAtualizadoEm(new Date()) }
     } catch { if (vivo.current) setVendas([]) }
     if (vivo.current) setCarregando(false)
@@ -239,7 +240,12 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                     <td className="py-2.5">
                       <span className="rounded-full bg-surface2 px-2 py-0.5 text-[10.5px] font-semibold text-muted2">{l.accName || '—'}</span>
                     </td>
-                    <td className="py-2.5 text-right font-mono font-bold tabular-nums text-ink">{l.sales}</td>
+                    {/* vendas da JANELA + total do dia ao lado — sem isso o número
+                        daqui parece brigar com o do Histórico (que é o dia inteiro) */}
+                    <td className="whitespace-nowrap py-2.5 text-right font-mono tabular-nums">
+                      <span className="font-bold text-ink">{l.sales}</span>
+                      {l.salesToday > l.sales && <span className="ml-1 text-[10px] text-muted2">de {l.salesToday} hoje</span>}
+                    </td>
                     <td className="py-2.5 text-right font-mono tabular-nums text-ok">R${l.revenue.toFixed(2)}</td>
                     <td className={`py-2.5 text-right font-mono font-bold tabular-nums ${l.roasHoje == null ? 'text-muted2' : l.roasHoje >= m.settings.roasGood ? 'text-ok' : l.roasHoje >= m.settings.roasBe ? 'text-warn' : 'text-danger'}`}>
                       {l.roasHoje != null ? l.roasHoje.toFixed(2) : '—'}

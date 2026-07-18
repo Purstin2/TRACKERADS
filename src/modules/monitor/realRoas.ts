@@ -30,27 +30,33 @@ export function campNameFromUtm(utm?: string | null): string | null {
   return n || null
 }
 
-/** Uma campanha que vendeu na janela, com a hora da ÚLTIMA venda. */
+/** Uma campanha que vendeu na janela, com a hora da ÚLTIMA venda.
+ *  Traz TAMBÉM o total do dia: sem isso o "2" da janela conflita visualmente com
+ *  o "6" do Histórico (que é o dia inteiro) e parece bug — são perguntas diferentes. */
 export interface LiveSale {
   campId: string
   name: string | null // do utm (fallback quando não achamos no Meta)
-  sales: number
-  revenue: number
+  sales: number // na JANELA escolhida
+  revenue: number // na janela
+  salesToday: number // no dia BR inteiro (contexto)
+  revenueToday: number
   lastAt: string // ISO da venda mais recente
 }
 
-/** Vendas aprovadas desde `sinceISO`, agrupadas por campanha e ordenadas pela
- *  venda MAIS RECENTE primeiro. É a base da aba "Ao vivo": o gateway é a única
- *  fonte com hora exata da venda (o Meta só dá agregado do dia/hora). */
-export async function fetchRecentSales(sinceISO: string): Promise<LiveSale[]> {
+/** Vendas aprovadas agrupadas por campanha, ordenadas pela venda MAIS RECENTE.
+ *  Uma consulta só cobre as duas janelas (busca da mais antiga entre elas):
+ *  `windowSinceISO` = a janela da aba; `dayStartISO` = 00h BR, pro total do dia.
+ *  Devolve só quem vendeu DENTRO da janela — é uma tela de "acabou de vender". */
+export async function fetchRecentSales(windowSinceISO: string, dayStartISO: string): Promise<LiveSale[]> {
   const sb = supabase()
   if (!sb) return []
+  const desde = windowSinceISO < dayStartISO ? windowSinceISO : dayStartISO
   const rows = await fetchAll<{ utm_campaign: string | null; value: number | null; ordered_at: string | null }>((from, to) =>
     sb
       .from('kirvano_orders')
       .select('utm_campaign,value,ordered_at')
       .eq('status', 'APPROVED')
-      .gte('ordered_at', sinceISO)
+      .gte('ordered_at', desde)
       .order('ordered_at', { ascending: false })
       .range(from, to),
   )
@@ -58,16 +64,43 @@ export async function fetchRecentSales(sinceISO: string): Promise<LiveSale[]> {
   for (const o of rows) {
     const id = campIdFromUtm(o.utm_campaign)
     if (!id || !o.ordered_at) continue
-    const cur = map.get(id)
-    if (!cur) {
-      map.set(id, { campId: id, name: campNameFromUtm(o.utm_campaign), sales: 1, revenue: o.value || 0, lastAt: o.ordered_at })
-    } else {
-      cur.sales += 1
-      cur.revenue += o.value || 0
-      if (o.ordered_at > cur.lastAt) cur.lastAt = o.ordered_at
-    }
+    const at = o.ordered_at
+    const cur =
+      map.get(id) ||
+      map.set(id, { campId: id, name: campNameFromUtm(o.utm_campaign), sales: 0, revenue: 0, salesToday: 0, revenueToday: 0, lastAt: at }).get(id)!
+    const v = o.value || 0
+    if (at >= dayStartISO) { cur.salesToday += 1; cur.revenueToday += v }
+    if (at >= windowSinceISO) { cur.sales += 1; cur.revenue += v; if (at > cur.lastAt) cur.lastAt = at }
   }
-  return [...map.values()].sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
+  return [...map.values()].filter((c) => c.sales > 0).sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
+}
+
+/** Uma venda individual de uma campanha, com a hora exata. */
+export interface CampSale {
+  at: string // ISO
+  value: number
+  product: string | null
+}
+
+/** Todas as vendas aprovadas de UMA campanha desde `sinceISO`, mais recente primeiro.
+ *  Casa pelo final do utm_campaign ("...|<campId>") — o id é numérico e único, então
+ *  o LIKE não pega campanha errada. É o que alimenta o "Vendas por horário". */
+export async function fetchCampaignSales(campId: string, sinceISO: string): Promise<CampSale[]> {
+  const sb = supabase()
+  if (!sb) return []
+  const rows = await fetchAll<{ ordered_at: string | null; value: number | null; product: string | null }>((from, to) =>
+    sb
+      .from('kirvano_orders')
+      .select('ordered_at,value,product')
+      .eq('status', 'APPROVED')
+      .like('utm_campaign', `%|${campId}`)
+      .gte('ordered_at', sinceISO)
+      .order('ordered_at', { ascending: false })
+      .range(from, to),
+  )
+  return rows
+    .filter((r) => r.ordered_at)
+    .map((r) => ({ at: r.ordered_at as string, value: r.value || 0, product: r.product }))
 }
 
 /** Converte o date_preset do Meta em janela [since, until) ISO usando o dia BRT.

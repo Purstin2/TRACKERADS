@@ -38,6 +38,7 @@ import type { RealAgg } from './realRoas'
 import { openLog, lastScale, useLog, addAction, todayBR, touchedIds, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
 import { TrackerBtn, TrackerCell, BudgetTrackerModal } from './BudgetTracker'
 import { DuplicateModal, DupProofModal } from './Duplicate'
+import { SalesTimelineModal } from './SalesTimeline'
 import { MoreHorizontal, Layers } from 'lucide-react'
 import { toast } from '@/components/ui/toast'
 import {
@@ -486,14 +487,15 @@ export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { 
   useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
-  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist'>(null)
+  const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas'>(null)
 
   const dups = duplicationsFor(campId)
   const impDays = impactDays(campId)
   const trackHoje = impDays[0] === todayBR()
 
-  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
+  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
     { key: 'budget', icon: '💰', label: 'Ajustar orçamento', desc: 'aumentar ou diminuir', show: true, accent: 'text-ok' },
+    { key: 'vendas', icon: '🕒', label: 'Vendas por horário', desc: 'a hora exata de cada venda', show: true, accent: 'text-ok' },
     { key: 'track', icon: '📈', label: 'Tracker do aumento', desc: trackHoje ? 'medindo o de hoje · ao vivo' : 'antes × depois do aumento', show: impDays.length > 0, accent: 'text-brand-2' },
     { key: 'dup', icon: '📋', label: 'Duplicar campanha', desc: 'cópia idêntica + prova 7d', show: true, accent: 'text-warn' },
     { key: 'hist', icon: '🕐', label: 'Histórico da campanha', desc: 'o que já fiz nela + cópias', show: true, accent: 'text-brand-2' },
@@ -542,6 +544,7 @@ export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { 
 
       {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
+      {modal === 'vendas' && <SalesTimelineModal name={name} campId={campId} onClose={() => setModal(null)} />}
       {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
       {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'track' && <BudgetTrackerModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
