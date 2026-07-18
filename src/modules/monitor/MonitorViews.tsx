@@ -1456,10 +1456,16 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                             title={`ROAS ${day.roas !== null ? day.roas.toFixed(2) : '—'} · ${day.sales} venda(s) · gasto $${day.spend.toFixed(2)}`}
                           >
                             <span className="inline-flex items-center gap-1">
-                              {cls !== 'none' && <span className={`h-[6px] w-[6px] rounded-full ${CLS_DOT[cls]}`} />}
+                              {cls !== 'none' && <span className={`h-[6px] w-[6px] shrink-0 rounded-full ${CLS_DOT[cls]}`} />}
                               <span className={`font-mono text-[11px] tabular-nums ${CLS_TXT[cls]}`}>
                                 {day.roas !== null ? day.roas.toFixed(2) : '—'}
                               </span>
+                              {/* nº de vendas do dia em sobrescrito, colado no ROAS: cabe na
+                                  mesma célula (não vira coluna nem empurra layout) e responde
+                                  "esse ROAS veio de quantas vendas?" — 6.68 de 1 venda ≠ de 10. */}
+                              {day.sales > 0 && (
+                                <span className="-ml-0.5 self-start font-mono text-[8.5px] font-semibold leading-[1.15] text-muted2">{day.sales}</span>
+                              )}
                             </span>
                           </td>
                         )
