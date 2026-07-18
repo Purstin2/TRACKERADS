@@ -90,6 +90,12 @@ export default function RecuperacaoView() {
     [orders],
   )
   const withPhone = pending.filter((o) => o.customer_phone)
+  // ⚠ TODOS os hooks têm que vir ANTES dos early returns abaixo. Este useMemo estava
+  // lá embaixo (depois do `if (!cfg) return`) — quando a config carregava, o render
+  // passava a chamar 1 hook a mais e o React estourava "Rendered more hooks than
+  // during the previous render", crashando o painel de volta pra tela "rode o SQL".
+  // Parecia que o WhatsApp tinha parado; era só o painel morrendo no carregamento.
+  const stats = useMemo(() => computeWaConversion(orders, waMessages), [orders, waMessages])
 
   if (!connected) {
     return (
@@ -163,7 +169,6 @@ export default function RecuperacaoView() {
 
   const okMsgs = waMessages.filter((m) => m.ok === true).length
   const errMsgs = waMessages.filter((m) => m.ok === false).length
-  const stats = useMemo(() => computeWaConversion(orders, waMessages), [orders, waMessages])
 
   const lastMsgAt = waMessages[0]?.created_at ? new Date(waMessages[0].created_at).getTime() : null
   const minsSinceLastMsg = lastMsgAt ? (Date.now() - lastMsgAt) / 60000 : null
