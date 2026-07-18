@@ -11,6 +11,7 @@ import {
   SummaryStrip,
   tallyCounts,
 } from './MonitorViews'
+import AoVivoView from './AoVivoView'
 import RegrasView from './RegrasView'
 import PrecosView from './PrecosView'
 import FunilManualView from './FunilManualView'
@@ -127,6 +128,7 @@ function MonitorInner() {
               {m.view === 'lista' && <ListaView items={m.cache} />}
               {m.view === 'historico' && <HistoricoView items={m.cache} />}
               {m.view === 'grafico' && <GraficoView items={m.cache} />}
+              {m.view === 'aovivo' && <AoVivoView items={m.cache} />}
             </>
           )}
         </>

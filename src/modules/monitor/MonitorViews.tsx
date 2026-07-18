@@ -482,7 +482,7 @@ function CampHistoryModal({ accId, name, campId, cur, onClose }: { accId: string
  *  dropdown limpo. Os modais vivem AQUI (fora do dropdown) pra não fecharem
  *  junto com o menu. Itens contextuais (prova/ritmo/impacto) só aparecem quando
  *  há registro pra eles. */
-function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
+export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
   useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })

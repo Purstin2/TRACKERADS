@@ -54,6 +54,7 @@ const VIEWS: { value: MonitorView; label: string }[] = [
   { value: 'lista', label: 'Lista' },
   { value: 'historico', label: 'Histórico' },
   { value: 'grafico', label: 'Gráfico' },
+  { value: 'aovivo', label: '⚡ Ao vivo' },
 ]
 
 export default function ContextBar() {

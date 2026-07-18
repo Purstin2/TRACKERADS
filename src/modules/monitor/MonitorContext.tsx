@@ -29,7 +29,7 @@ import {
 } from './config'
 import { fetchRealByCampaign, type RealAgg } from './realRoas'
 
-export type MonitorView = 'lista' | 'historico' | 'grafico'
+export type MonitorView = 'lista' | 'historico' | 'grafico' | 'aovivo'
 
 export interface CampMap {
   [campId: string]: { name: string; dates: Record<string, DayData> }
@@ -41,7 +41,7 @@ export interface CampMeta {
 }
 export interface CacheItem {
   acc: Account
-  kind: 'lista' | 'historico' | 'grafico' | 'err'
+  kind: MonitorView | 'err'
   rows?: InsightRow[]
   meta?: Record<string, CampMeta>
   campMap?: CampMap
