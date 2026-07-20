@@ -4,7 +4,7 @@ import { campUrl } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
 import type { CacheItem } from './MonitorContext'
 import { fetchRecentSales, type LiveSale } from './realRoas'
-import { ActionsMenu, Checkbox } from './MonitorViews'
+import { ActionsBar, Checkbox } from './MonitorViews'
 import { curSym } from './config'
 
 /**
@@ -279,7 +279,7 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                       </div>
                       <div className="mt-1">
                         {l.accId ? (
-                          <ActionsMenu accId={l.accId} name={l.nome} campId={l.campId} roas={l.roasHoje} cur={l.cur} spend={l.gastoHoje} sales={l.sales} />
+                          <ActionsBar accId={l.accId} name={l.nome} campId={l.campId} roas={l.roasHoje} cur={l.cur} spend={l.gastoHoje} sales={l.sales} />
                         ) : (
                           <span className="text-[10px] text-muted2" title="Campanha não veio no fetch do Meta (pausada ou fora do filtro de status)">fora do filtro</span>
                         )}

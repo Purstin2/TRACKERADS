@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -10,7 +10,7 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts'
-import { ExternalLink, ChevronDown, ChevronUp, Search, X, TrendingUp, Check as CheckIcon } from 'lucide-react'
+import { ExternalLink, Search, X, TrendingUp, Check as CheckIcon } from 'lucide-react'
 import {
   fetchAds,
   fetchCampDaily,
@@ -39,7 +39,7 @@ import { openLog, lastScale, useLog, addAction, todayBR, touchedIds, duplication
 import { TrackerBtn, TrackerCell, BudgetTrackerModal } from './BudgetTracker'
 import { DuplicateModal, DupProofModal } from './Duplicate'
 import { SalesTimelineModal } from './SalesTimeline'
-import { MoreHorizontal, Layers } from 'lucide-react'
+import { Layers } from 'lucide-react'
 import { toast } from '@/components/ui/toast'
 import {
   ICONS,
@@ -479,85 +479,48 @@ function CampHistoryModal({ accId, name, campId, cur, onClose }: { accId: string
   )
 }
 
-/** Menu consolidado de ações da campanha — um único gatilho "Ações" abre um
- *  dropdown limpo. Os modais vivem AQUI (fora do dropdown) pra não fecharem
- *  junto com o menu. Itens contextuais (prova/ritmo/impacto) só aparecem quando
- *  há registro pra eles. */
-export function ActionsMenu({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
-  useLog() // reage ao log: prova/ritmo/impacto surgem conforme há registro
-  const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number; anchorTop: number }>({ top: 0, left: 0, anchorTop: 0 })
-  const menuRef = useRef<HTMLDivElement>(null)
+/** Barra de ações da campanha — todos os botões ABERTOS lado a lado (padrão do
+ *  Gerenciador do Facebook), sem dropdown: a ação fica a 1 clique, não a 2, e
+ *  dá pra ver de relance o que existe pra fazer. Itens contextuais (Tracker,
+ *  Prova) só aparecem quando há registro pra eles.
+ *  Os modais vivem AQUI, fora dos botões, pra não fecharem junto. */
+export function ActionsBar({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
+  useLog() // reage ao log: tracker/prova surgem conforme há registro
   const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas'>(null)
-
-  /* Reposiciona depois de renderizar: mede a altura REAL do menu (que varia com
-   * quantos itens aparecem) e, se ele passar da borda de baixo, vira pra CIMA do
-   * botão. Se não couber nem em cima (tela baixa), encosta na borda inferior.
-   * Antes só havia trava horizontal — em linha no rodapé o menu saía da tela. */
-  useLayoutEffect(() => {
-    if (!open || !menuRef.current) return
-    const h = menuRef.current.offsetHeight
-    const m = 8
-    setPos((p) => {
-      if (p.top + h <= window.innerHeight - m) return p // cabe embaixo, mantém
-      const acima = p.anchorTop - h - 6
-      const top = acima >= m ? acima : Math.max(m, window.innerHeight - h - m)
-      return top === p.top ? p : { ...p, top }
-    })
-  }, [open])
 
   const dups = duplicationsFor(campId)
   const impDays = impactDays(campId)
   const trackHoje = impDays[0] === todayBR()
 
-  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas' | 'log'; icon: string; label: string; desc: string; show: boolean; accent: string }[] = [
-    { key: 'budget', icon: '💰', label: 'Ajustar orçamento', desc: 'aumentar ou diminuir', show: true, accent: 'text-ok' },
-    { key: 'vendas', icon: '🕒', label: 'Vendas por horário', desc: 'a hora exata de cada venda', show: true, accent: 'text-ok' },
-    { key: 'track', icon: '📈', label: 'Tracker do aumento', desc: trackHoje ? 'medindo o de hoje · ao vivo' : 'antes × depois do aumento', show: impDays.length > 0, accent: 'text-brand-2' },
-    { key: 'dup', icon: '📋', label: 'Duplicar campanha', desc: 'cópia idêntica + prova 7d', show: true, accent: 'text-warn' },
-    { key: 'hist', icon: '🕐', label: 'Histórico da campanha', desc: 'o que já fiz nela + cópias', show: true, accent: 'text-brand-2' },
-    { key: 'proof', icon: '🔗', label: 'Prova da duplicação', desc: 'cópia × original', show: dups.length > 0, accent: 'text-warn' },
-    { key: 'log', icon: '✎', label: 'Registrar ação', desc: 'anotar no log', show: true, accent: 'text-muted' },
+  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas' | 'log'; icon: string; label: string; title: string; show: boolean; accent: string }[] = [
+    { key: 'budget', icon: '💰', label: 'Orçamento', title: 'Ajustar orçamento (aumentar ou diminuir)', show: true, accent: 'hover:text-ok' },
+    { key: 'vendas', icon: '🕒', label: 'Vendas', title: 'Vendas por horário — a hora exata de cada venda', show: true, accent: 'hover:text-ok' },
+    { key: 'track', icon: '📈', label: 'Tracker', title: trackHoje ? 'Tracker do aumento — medindo o de hoje, ao vivo' : 'Tracker do aumento — antes × depois', show: impDays.length > 0, accent: 'hover:text-brand-2' },
+    { key: 'dup', icon: '📋', label: 'Duplicar', title: 'Duplicar campanha — cópia idêntica + prova 7d', show: true, accent: 'hover:text-warn' },
+    { key: 'hist', icon: '🕐', label: 'Histórico', title: 'Histórico da campanha — o que já fiz nela + cópias', show: true, accent: 'hover:text-brand-2' },
+    { key: 'proof', icon: '🔗', label: 'Prova', title: 'Prova da duplicação — cópia × original', show: dups.length > 0, accent: 'hover:text-warn' },
+    { key: 'log', icon: '✎', label: 'Log', title: 'Registrar ação — anotar no log', show: true, accent: 'hover:text-ink' },
   ]
 
   function pick(k: (typeof items)[number]['key']) {
-    setOpen(false)
     if (k === 'log') { openLog({ accId, name, campId, kind: 'escala', roasAtTime: roas, cur, spendAtTime: spend ?? null, salesAtTime: sales ?? null, dateBR: todayBR() }); return }
     setModal(k)
   }
 
   return (
     <>
-      <button
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          const W = 248
-          setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.right - W, window.innerWidth - W - 8)), anchorTop: rect.top })
-          setOpen(true)
-        }}
-        title="Ações da campanha"
-        className={`inline-flex items-center gap-1 rounded-[7px] border px-2 py-0.5 text-[10.5px] font-bold ${open ? 'border-brand bg-brand/10 text-brand-2' : 'border-border text-muted hover:border-brand hover:text-brand-2'}`}
-      >
-        <MoreHorizontal className="h-3.5 w-3.5" /> Ações
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div ref={menuRef} className="fixed z-50 w-[248px] overflow-y-auto overflow-x-hidden rounded-xl2 border border-border bg-[#0d1220] shadow-2xl shadow-black/40" style={{ top: pos.top, left: pos.left, maxHeight: 'calc(100vh - 16px)' }}>
-            <div className="border-b border-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted2">Ações da campanha</div>
-            {items.filter((it) => it.show).map((it) => (
-              <button key={it.key} onClick={() => pick(it.key)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-surface2">
-                <span className={`text-[14px] leading-none ${it.accent}`}>{it.icon}</span>
-                <span className="min-w-0">
-                  <span className="block text-[12px] font-semibold text-ink">{it.label}</span>
-                  <span className="block text-[10px] text-muted2">{it.desc}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      <div className="flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
+        {items.filter((it) => it.show).map((it) => (
+          <button
+            key={it.key}
+            onClick={() => pick(it.key)}
+            title={it.title}
+            className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold text-muted2 transition-colors hover:bg-surface2 ${it.accent}`}
+          >
+            <span className="mr-0.5">{it.icon}</span>{it.label}
+          </button>
+        ))}
+      </div>
 
       {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
       {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
@@ -960,7 +923,7 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
             <div className="-mx-4 overflow-x-auto lg:-mx-6">
-              <table className="w-full border-collapse text-[12px] [&_td]:border-border/20 [&_th]:border-border/20 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
+              <table className="w-full border-collapse text-[12px] [&_td]:border-border2/40 [&_th]:border-border2/40 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
                 <thead>
                   <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
                     <th className="w-9 py-2.5 text-center">
@@ -1136,7 +1099,7 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
 
   return (
     <>
-      <tr style={neon ? NEON_STYLE : undefined} className={`border-b border-border align-middle ${neon ? 'bg-warn/[0.08]' : `${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}`}>
+      <tr style={neon ? NEON_STYLE : undefined} className={`border-b border-border2 align-middle ${neon ? 'bg-warn/[0.08]' : `${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}`}>
         <td className="py-2 text-center">
           <Checkbox checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} />
         </td>
@@ -1150,6 +1113,28 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
+          {/* TODAS as ações embaixo do nome (padrão do Gerenciador) — inclusive
+              escala/criativos, que expandem a linha. Tirar isso da direita encurtou
+              a tabela em ~3 colunas de botão e matou boa parte da rolagem lateral. */}
+          {m.level === 'campaign' && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
+              <button
+                onClick={() => setScaleOpen((v) => !v)}
+                title="Lucro de hoje + últimos dias (pra decidir escalar)"
+                className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold transition-colors hover:bg-surface2 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}
+              >
+                <BarChart3 className="mr-0.5 inline h-3 w-3" />escala{scaleOpen ? ' ▴' : ' ▾'}
+              </button>
+              <button
+                onClick={toggle}
+                title="Ver criativos/anúncios desta campanha"
+                className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold transition-colors hover:bg-surface2 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}
+              >
+                <Layers className="mr-0.5 inline h-3 w-3" />criativos{open ? ' ▴' : ' ▾'}
+              </button>
+              <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
+            </div>
+          )}
         </td>
         <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
         <td className="px-2 py-2">
@@ -1160,30 +1145,11 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           )}
         </td>
         <MetCells r={r} sym={sym} s={m.settings} />
+        {/* só o veredito fica na direita — os botões migraram pra baixo do nome */}
         <td className="py-2 pl-3 pr-3">
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
-            {m.level === 'campaign' && (
-              <>
-                <ScaleBadge campId={r.id} />
-                <button
-                  onClick={() => setScaleOpen((v) => !v)}
-                  title="Lucro de hoje + últimos dias (pra decidir escalar)"
-                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] border px-2 py-0.5 text-[10.5px] font-semibold ${scaleOpen ? 'border-ok bg-ok/10 text-ok' : 'border-border text-muted hover:border-ok/50 hover:text-ok'}`}
-                >
-                  <BarChart3 className="h-3 w-3" /> escala {scaleOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </button>
-                <button
-                  onClick={toggle}
-                  title="Ver criativos/anúncios desta campanha"
-                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] border px-2 py-0.5 text-[10.5px] font-semibold ${open ? 'border-brand bg-brand/10 text-brand-2' : 'border-border text-muted hover:border-brand hover:text-brand-2'}`}
-                >
-                  <Layers className="h-3 w-3" /> criativos {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </button>
-                <span className="mx-0.5 h-4 w-px shrink-0 bg-border/70" />
-                <ActionsMenu accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-              </>
-            )}
+            {m.level === 'campaign' && <ScaleBadge campId={r.id} />}
           </div>
         </td>
       </tr>
@@ -1429,7 +1395,6 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                     })}
                     {cols.pos === 'right' && cols.status && <th className="px-3 py-3 text-left">Status</th>}
                     {cols.pos === 'right' && cols.hist && <th className="px-3 py-3 text-left">Histórico</th>}
-                    <th className="w-16 py-3 pr-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1438,7 +1403,7 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                     const sel = m.campSel.has(key)
                     const neon = m.neonKeys.has(key)
                     return (
-                    <tr key={cid} style={neon ? NEON_STYLE : undefined} className={`border-b border-border/40 transition-colors ${neon ? 'relative bg-warn/[0.08]' : sel ? 'bg-brand/[0.07]' : 'hover:bg-surface2/25'}`}>
+                    <tr key={cid} style={neon ? NEON_STYLE : undefined} className={`border-b border-border2 transition-colors ${neon ? 'relative bg-warn/[0.08]' : sel ? 'bg-brand/[0.07]' : 'hover:bg-surface2/25'}`}>
                       <td className="py-3.5 text-center">
                         <Checkbox checked={sel} onChange={() => m.toggleCamp(key)} />
                       </td>
@@ -1455,6 +1420,11 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                           <a href={campUrl(item.acc.id, cid)} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
                             <ExternalLink className="h-3 w-3" />
                           </a>
+                          {!cols.hist && <ScaleBadge campId={cid} />}
+                        </div>
+                        {/* ações abertas embaixo do nome (padrão do Gerenciador) */}
+                        <div className="mt-1">
+                          <ActionsBar accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
                         </div>
                       </td>
                       {cols.pos === 'left' && cols.status && <td className="px-3 py-3.5"><Badge a={action} /></td>}
@@ -1492,12 +1462,6 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                       })}
                       {cols.pos === 'right' && cols.status && <td className="px-3 py-3.5"><Badge a={action} /></td>}
                       {cols.pos === 'right' && cols.hist && <td className="px-3 py-3.5"><HistCell accId={item.acc.id} campId={cid} name={camp.name} cur={item.acc.cur} /></td>}
-                      <td className="py-3.5 pr-4">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {!cols.hist && <ScaleBadge campId={cid} />}
-                          <ActionsMenu accId={item.acc.id} name={camp.name} campId={cid} roas={null} cur={item.acc.cur} />
-                        </div>
-                      </td>
                     </tr>
                     )
                   })}

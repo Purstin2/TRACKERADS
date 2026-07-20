@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, Zap } from 'lucide-react'
 import { useMonitor, type MonitorView } from '../MonitorContext'
-import { DATE_OPTIONS } from '../config'
 import { touchedIds, useLog } from '../actionLog'
 import { debugToken } from '@/modules/uploader/lib/fb'
 
@@ -62,20 +61,7 @@ export default function ContextBar() {
   return (
     <div className="mb-5 flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">Período</span>
-      <select
-        value={m.datePreset}
-        onChange={(e) => m.setDatePreset(e.target.value)}
-        className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink"
-      >
-        {DATE_OPTIONS.map((d) => (
-          <option key={d.value} value={d.value}>
-            {d.label}
-          </option>
-        ))}
-      </select>
-
-      <div className="ml-1 flex overflow-hidden rounded-[8px] border border-border bg-surface2">
+      <div className="flex overflow-hidden rounded-[8px] border border-border bg-surface2">
         {VIEWS.map((v) => (
           <button
             key={v.value}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, Settings, Bell, RefreshCw, ChevronDown, Check } from 'lucide-react'
 import { useMonitor } from '../MonitorContext'
-import { STATUS_FILTERS } from '../config'
+import { STATUS_FILTERS, DATE_OPTIONS } from '../config'
 import { useLog } from '../actionLog'
 
 /** Seletor de contas compacto: botão "N/M contas" → painel com checkboxes. */
@@ -125,6 +125,20 @@ export default function SharedBar({ onSettings }: { onSettings: () => void }) {
           {Object.entries(STATUS_FILTERS).map(([k, v]) => (
             <option key={k} value={k}>
               {v.label}
+            </option>
+          ))}
+        </select>
+        {/* Período mora aqui (junto de Contas/Status) — os três definem O QUE é buscado.
+            A barra de baixo fica só com O QUE FAZER com o resultado (abas + Atualizar). */}
+        <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-muted2">Período</span>
+        <select
+          value={m.datePreset}
+          onChange={(e) => m.setDatePreset(e.target.value)}
+          className="rounded-[7px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12px] text-ink"
+        >
+          {DATE_OPTIONS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
             </option>
           ))}
         </select>
