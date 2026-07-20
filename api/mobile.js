@@ -95,9 +95,41 @@ async function pushSubscribe(req, res) {
   }
 }
 
+// Cotas de envio COMPARTILHADAS entre os produtos: Brevo (e-mail/dia) e WhatsApp
+// (qualidade/nível do número). Serve pro widget "Limites de Envio" do dashboard
+// avisar antes de estourar. Mora aqui junto das outras por causa do limite de
+// 12 Serverless Functions do plano Hobby.
+async function limites(req, res) {
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=60')
+  const out = { ok: true, brevo: null, whatsapp: null }
+
+  const bk = process.env.BREVO_API_KEY
+  if (bk) {
+    try {
+      const r = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': bk } })
+      const j = await r.json()
+      const p = (j.plan || []).find((x) => x.creditsType === 'sendLimit') || (j.plan || [])[0]
+      if (p) out.brevo = { restante: typeof p.credits === 'number' ? p.credits : null, plano: p.type || null, limite: p.type === 'free' ? 300 : null }
+    } catch { /* segue sem brevo */ }
+  }
+
+  const wt = process.env.WA_TOKEN
+  const wp = process.env.WA_PHONE_ID
+  if (wt && wp) {
+    try {
+      const r = await fetch(`https://graph.facebook.com/v22.0/${wp}?fields=display_phone_number,quality_rating,messaging_limit_tier,throughput&access_token=${wt}`)
+      const j = await r.json()
+      if (!j.error) out.whatsapp = { numero: j.display_phone_number || null, qualidade: j.quality_rating || null, nivel: j.messaging_limit_tier || j.throughput?.level || null }
+    } catch { /* segue sem whatsapp */ }
+  }
+
+  return res.json(out)
+}
+
 export default async function handler(req, res) {
   const fn = String(req.query.fn || '')
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)
-  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe)' })
+  if (fn === 'limites') return limites(req, res)
+  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites)' })
 }

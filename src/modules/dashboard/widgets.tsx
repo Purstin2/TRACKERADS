@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -141,6 +141,7 @@ export const WIDGETS: WidgetDef[] = [
   { id: 'gasto', category: 'Geral', title: 'Gastos com anúncios', w: 3, h: 2, render: (d) => kpiBody(BRL(d.gastoAds)) },
   { id: 'despesas', category: 'Geral', title: 'Despesas adicionais', w: 3, h: 2, render: (d) => kpiBody(BRL(d.despesasAdicionais)) },
   { id: 'reembolso', category: 'Geral', title: 'Taxa de Reembolso', w: 3, h: 2, render: (d) => kpiBody(PCT(d.reembolsoPct)) },
+  { id: 'limites_envio', category: 'Geral', title: 'Limites de Envio', w: 3, h: 3, render: () => <LimitesEnvio /> },
   { id: 'chargeback', category: 'Geral', title: 'Chargeback', w: 3, h: 2, render: (d) => kpiBody(PCT(d.chargebackPct)) },
   { id: 'vendas_pendentes', category: 'Geral', title: 'Vendas Pendentes', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasPendentes)) },
   { id: 'vendas_reembolsadas', category: 'Geral', title: 'Vendas Reembolsadas', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasReembolsadas)) },
@@ -476,6 +477,59 @@ export const WIDGET_MAP = Object.fromEntries(WIDGETS.map((w) => [w.id, w])) as R
   WidgetDef
 >
 
+/* ── Limites de envio (cotas COMPARTILHADAS entre os produtos) ──
+ * Brevo: e-mails restantes no dia (o plano free zera em 300 e derruba a entrega
+ * de TODOS os produtos). WhatsApp: qualidade/nível do número.
+ * Busca sozinho em /api/mobile?fn=limites — não depende do DashboardData. */
+interface LimitesData {
+  brevo: { restante: number | null; plano: string | null; limite: number | null } | null
+  whatsapp: { numero: string | null; qualidade: string | null; nivel: string | null } | null
+}
+function LimitesEnvio() {
+  const [d, setD] = useState<LimitesData | null>(null)
+  const [erro, setErro] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    const puxa = () => fetch('/api/mobile?fn=limites').then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setErro(true))
+    puxa()
+    const t = setInterval(puxa, 5 * 60000) // re-checa a cada 5 min
+    return () => { vivo = false; clearInterval(t) }
+  }, [])
+  if (erro) return <div className="flex h-full items-center justify-center text-[12px] text-muted2">falha ao ler cotas</div>
+  if (!d) return <div className="flex h-full items-center justify-center text-[12px] text-muted2">carregando…</div>
+
+  const rest = d.brevo?.restante ?? null
+  const lim = d.brevo?.limite ?? null
+  const cor = rest === null ? 'text-ink' : rest <= 50 ? 'text-danger' : rest <= 120 ? 'text-warn' : 'text-ok'
+  const pct = rest !== null && lim ? Math.max(0, Math.min(100, (rest / lim) * 100)) : null
+  const q = d.whatsapp?.qualidade || null
+  const qCor = q === 'GREEN' ? 'text-ok' : q === 'YELLOW' ? 'text-warn' : q === 'RED' ? 'text-danger' : 'text-muted2'
+
+  return (
+    <div className="flex h-full flex-col justify-center gap-2">
+      <div>
+        <div className="flex items-baseline gap-1.5">
+          <span className={`text-[22px] font-extrabold leading-tight ${cor}`}>{rest ?? '—'}</span>
+          <span className="text-[11px] text-muted2">e-mails restantes hoje{lim ? ` / ${lim}` : ''}</span>
+        </div>
+        {pct !== null && (
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface2">
+            <div className={`h-full rounded-full ${rest !== null && rest <= 50 ? 'bg-danger' : rest !== null && rest <= 120 ? 'bg-warn' : 'bg-ok'}`} style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        <div className="mt-0.5 text-[10px] text-muted2">Brevo {d.brevo?.plano || '—'} · cota compartilhada entre os produtos</div>
+      </div>
+      <div className="border-t border-border pt-1.5">
+        <div className="flex items-baseline gap-1.5">
+          <span className={`text-[13px] font-bold ${qCor}`}>{q || '—'}</span>
+          <span className="text-[11px] text-muted2">qualidade do WhatsApp</span>
+        </div>
+        <div className="mt-0.5 text-[10px] text-muted2">{d.whatsapp?.numero || '—'}{d.whatsapp?.nivel ? ` · ${d.whatsapp.nivel}` : ''}</div>
+      </div>
+    </div>
+  )
+}
+
 export const CATEGORIES = ['Geral', 'Gráficos Avançados', 'Impostos']
 
 /* layout padrão (12 colunas) */
@@ -514,6 +568,7 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'lucro_horario', x: 4, y: 24, w: 8, h: 4 },
   { i: 'funil_conversao', x: 0, y: 28, w: 12, h: 5 },
   { i: 'fat_inv_lucro', x: 0, y: 33, w: 12, h: 4 },
+  { i: 'limites_envio', x: 0, y: 37, w: 3, h: 3 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
