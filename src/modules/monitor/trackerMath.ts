@@ -73,20 +73,29 @@ export function buildCards(incs: ActionEntry[], eod: Win | null, day: string, to
     .reverse()
 }
 
-export interface Verdict { ok: boolean | null; txt: string }
+export interface Verdict {
+  ok: boolean | null
+  vendas: number // vendas que ENTRARAM depois do aumento
+  lucro: number  // lucro real da janela depois (já com taxas)
+  txt: string
+}
 
-/** Verde/vermelho do aumento: compara o ROAS da janela depois com o da janela antes.
- *  Sem "antes" (não gastou nada antes do aumento) cai no breakeven. */
-export function verdictOf(c: TrackCard, roasBe: number): Verdict | null {
-  const rb = roasOf(c.before), ra = roasOf(c.after)
-  if (ra == null) return null // ainda não gastou depois do aumento
-  if (rb != null) {
-    const d = ((ra - rb) / rb) * 100
-    if (d >= 5) return { ok: true, txt: `Aguentou o aumento — ROAS ${rb.toFixed(2)} → ${ra.toFixed(2)} (+${d.toFixed(0)}%)` }
-    if (d <= -10) return { ok: false, txt: `Caiu depois do aumento — ROAS ${rb.toFixed(2)} → ${ra.toFixed(2)} (${d.toFixed(0)}%)` }
-    return { ok: null, txt: `Estável — ROAS ${rb.toFixed(2)} → ${ra.toFixed(2)} (${d >= 0 ? '+' : ''}${d.toFixed(0)}%)` }
-  }
-  return ra >= roasBe
-    ? { ok: true, txt: `ROAS ${ra.toFixed(2)} depois do aumento (acima do breakeven ${roasBe})` }
-    : { ok: false, txt: `ROAS ${ra.toFixed(2)} depois do aumento (abaixo do breakeven ${roasBe})` }
+/** Verde/vermelho do aumento: decide por VENDAS TRAZIDAS e LUCRO REAL — não por % de ROAS.
+ *
+ *  Por que não ROAS: aumentar orçamento quase sempre derruba o ROAS um pouco (você
+ *  compra tráfego mais caro na margem). Julgar por isso marcava como ❌ aumento que
+ *  trouxe venda e deu lucro — que é exatamente o que a gente queria que acontecesse.
+ *  A pergunta certa é: "o que gastei DEPOIS do aumento voltou com lucro?".
+ *  O ROAS continua visível no painel, mas como contexto, não como juiz.
+ *
+ *  `lucroDepois` vem de fora (rowFin da conta) pra bater com o número que o painel mostra. */
+export function verdictOf(c: TrackCard, lucroDepois: number): Verdict | null {
+  const a = c.after
+  if (a.spend <= 0) return null // ainda não gastou depois do aumento
+  const base = { vendas: a.sales, lucro: lucroDepois }
+  if (a.sales === 0) return { ...base, ok: false, txt: 'Gastou depois do aumento e ainda não vendeu' }
+  const v = `${a.sales} venda${a.sales > 1 ? 's' : ''}`
+  if (lucroDepois > 0.005) return { ...base, ok: true, txt: `Trouxe ${v} e deu lucro depois do aumento` }
+  if (lucroDepois < -0.005) return { ...base, ok: false, txt: `Trouxe ${v}, mas o gasto não se pagou` }
+  return { ...base, ok: null, txt: `Trouxe ${v} e empatou` }
 }

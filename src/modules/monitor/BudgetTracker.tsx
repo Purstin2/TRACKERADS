@@ -108,8 +108,11 @@ function WinPanel({
 }
 
 /* ── card de um aumento ── */
-function Card({ c, sym, accId, roasBe, loading }: { c: TrackCard; sym: string; accId: string; roasBe: number; loading: boolean }) {
-  const v = verdictOf(c, roasBe)
+function Card({ c, sym, accId, loading }: { c: TrackCard; sym: string; accId: string; loading: boolean }) {
+  // mesmo rowFin do painel → o lucro do veredito é o MESMO número mostrado embaixo
+  const { lucro: lucroDepois } = rowFin(c.after.spend, c.after.revenue, c.after.sales, loadFinParamsForAccount(accId))
+  const v = verdictOf(c, lucroDepois)
+  const rb = roasOf(c.before), ra = roasOf(c.after)
   const e = c.e
   return (
     <div className={`rounded-xl2 border ${c.live ? 'border-brand/40' : 'border-border'} overflow-hidden`}>
@@ -128,8 +131,22 @@ function Card({ c, sym, accId, roasBe, loading }: { c: TrackCard; sym: string; a
       </div>
 
       {v ? (
-        <div className={`px-3 py-2 text-center text-[12px] font-bold ${VCLS(v.ok)}`}>
-          {v.ok == null ? '➖' : v.ok ? '✅' : '❌'} {v.txt}
+        /* O que decide: VENDAS trazidas + LUCRO. ROAS fica embaixo, como contexto. */
+        <div className={`px-3 py-2.5 text-center ${VCLS(v.ok)}`}>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5">
+            <span className="text-[13px] font-extrabold">
+              {v.ok == null ? '➖' : v.ok ? '✅' : '❌'} {v.vendas > 0 ? `+${v.vendas} venda${v.vendas > 1 ? 's' : ''}` : 'nenhuma venda'}
+            </span>
+            <span className="text-[15px] font-extrabold">
+              {v.lucro >= 0 ? '+' : '−'}{sym}{Math.abs(v.lucro).toFixed(2)} <span className="text-[11px] font-semibold opacity-80">de lucro</span>
+            </span>
+          </div>
+          <div className="mt-0.5 text-[11px] font-medium opacity-80">{v.txt}</div>
+          {(rb != null || ra != null) && (
+            <div className="mt-1 text-[10.5px] font-normal opacity-70">
+              ROAS {rb != null ? rb.toFixed(2) : '—'} → {ra != null ? ra.toFixed(2) : '—'} · contexto, não é o veredito
+            </div>
+          )}
         </div>
       ) : (
         <div className="px-3 py-2 text-center text-[11.5px] text-muted2">
@@ -200,7 +217,7 @@ export function BudgetTrackerModal({ accId, name, campId, cur, onClose }: { accI
           </p>
 
           {cards.map((c) => (
-            <Card key={c.e.id} c={c} sym={sym} accId={accId} roasBe={m.settings.roasBe} loading={loading} />
+            <Card key={c.e.id} c={c} sym={sym} accId={accId} loading={loading} />
           ))}
 
           {!incs.length && (
@@ -254,24 +271,33 @@ export function TrackerCell({ accId, name, campId, cur, empty = null }: { accId:
 
   const cards = buildCards(incs, win, day, todayBR())
   const c = cards[0] // o aumento mais recente do dia
-  const v = verdictOf(c, m.settings.roasBe)
-  const rb = roasOf(c.before), ra = roasOf(c.after)
+  const { lucro: lucroDepois } = rowFin(c.after.spend, c.after.revenue, c.after.sales, loadFinParamsForAccount(accId))
+  const v = verdictOf(c, lucroDepois)
+  const ra = roasOf(c.after)
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        title={`${v ? v.txt + ' · ' : ''}clique pra abrir o tracker completo`}
+        title={`${v ? v.txt + ` · ROAS depois ${ra != null ? ra.toFixed(2) : '—'} · ` : ''}clique pra abrir o tracker completo`}
         className="whitespace-nowrap text-left text-[10.5px] leading-tight hover:opacity-70"
       >
         <div className="font-mono font-semibold text-ink">
           {sym}{(c.e.budgetBefore ?? 0).toFixed(0)}<span className="text-ok"> → </span>{sym}{(c.e.budgetAfter ?? 0).toFixed(0)}
           {incs.length > 1 && <span className="text-muted2"> ({incs.length}×)</span>}
         </div>
-        <div className="flex items-center gap-1 font-mono">
-          <span className="text-muted2">{rb != null ? rb.toFixed(2) : '—'}</span>
-          <span className={VTXT(v?.ok ?? null)}>→ {ra != null ? ra.toFixed(2) : loading ? '…' : '—'}</span>
-          {v && <span>{v.ok == null ? '➖' : v.ok ? '✅' : '❌'}</span>}
+        {/* o que o aumento TROUXE: vendas e lucro (ROAS só no tooltip) */}
+        <div className={`flex items-center gap-1 font-mono font-semibold ${VTXT(v?.ok ?? null)}`}>
+          {v ? (
+            <>
+              <span>+{v.vendas}v</span>
+              <span>·</span>
+              <span>{v.lucro >= 0 ? '+' : '−'}{sym}{Math.abs(v.lucro).toFixed(0)}</span>
+              <span>{v.ok == null ? '➖' : v.ok ? '✅' : '❌'}</span>
+            </>
+          ) : (
+            <span className="text-muted2">{loading ? '…' : 'aguardando'}</span>
+          )}
         </div>
         <div className="text-[9.5px] text-muted2">{hourBR(c.e.ts)} · {c.live ? 'ao vivo' : 'fechado'}</div>
       </button>
