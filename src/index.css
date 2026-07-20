@@ -41,12 +41,15 @@
   }
 
   ::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 12px; /* horizontal mais grossa: é a que some em tabela larga */
   }
   ::-webkit-scrollbar-thumb {
-    background: #2b3052;
+    background: #3d4470; /* era #2b3052 — quase invisível no fundo escuro */
     border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4e5690;
   }
   ::-webkit-scrollbar-track {
     background: transparent;

@@ -716,6 +716,29 @@ function useColCfg(): ColCfg {
   return useSyncExternalStore((f) => { colSubs.add(f); return () => { colSubs.delete(f) } }, getColCfg, getColCfg)
 }
 
+/* Larguras padrão das colunas FIXAS (nome/status/aumento). Elas moram no mesmo
+ * colCfg das métricas, então "↺ resetar colunas" também as devolve ao padrão. */
+const FIXED_W: Record<string, number> = { name: 300, status: 78, aumento: 118 }
+export const colW = (cfg: ColCfg, key: string) => cfg.w[key] || FIXED_W[key] || DEF_W
+
+/** Alça de redimensionar: arrasta a borda direita da coluna. Vale pras métricas
+ *  e (agora) também pras colunas fixas — antes só as métricas esticavam. */
+function ResizeHandle({ colKey }: { colKey: string }) {
+  const start = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX
+    const startW = colW(getColCfg(), colKey)
+    const move = (ev: MouseEvent) => {
+      const cur = getColCfg()
+      setColCfg({ ...cur, w: { ...cur.w, [colKey]: Math.max(54, startW + (ev.clientX - startX)) } })
+    }
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up) }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+  }
+  return <span onMouseDown={start} title="arraste pra redimensionar" className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-brand/50" />
+}
+
 /* cabeçalho das métricas — ARRASTAR pra reordenar, PUXAR a borda direita pra redimensionar */
 function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) {
   const cfg = useColCfg()
@@ -815,15 +838,18 @@ function sortRows(rows: ListaRow[], sort: Sort): ListaRow[] {
   })
 }
 
-function SortTh({ label, sortKey, sort, onSort, align = 'right' }: { label: string; sortKey: string; sort: Sort; onSort: (k: string) => void; align?: 'left' | 'right' }) {
+function SortTh({ label, sortKey, sort, onSort, align = 'right', width }: { label: string; sortKey: string; sort: Sort; onSort: (k: string) => void; align?: 'left' | 'right'; width?: number }) {
   const active = sort?.key === sortKey
   return (
     <th
-      onClick={() => onSort(sortKey)}
-      className={`cursor-pointer select-none whitespace-nowrap py-2 hover:text-ink ${align === 'left' ? 'pl-3 text-left' : 'px-2 text-right'} ${active ? 'text-brand-2' : ''}`}
+      style={width ? { width, minWidth: width, maxWidth: width } : undefined}
+      className={`relative select-none whitespace-nowrap py-2 ${align === 'left' ? 'pl-3 text-left' : 'px-2 text-right'} ${active ? 'text-brand-2' : ''}`}
     >
-      {label}
-      {active ? (sort!.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+      <span onClick={() => onSort(sortKey)} className="cursor-pointer hover:text-ink">
+        {label}
+        {active ? (sort!.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+      </span>
+      {width != null && <ResizeHandle colKey={sortKey} />}
     </th>
   )
 }
@@ -844,6 +870,7 @@ export function statusPill(st?: string) {
 
 export function ListaView({ items }: { items: CacheItem[] }) {
   const m = useMonitor()
+  const cfg = useColCfg() // larguras das colunas (métricas + fixas)
   const s = m.settings
   const [nameFilter, setNameFilter] = useState('')
   const [sort, setSort] = useState<Sort>(null)
@@ -922,17 +949,24 @@ export function ListaView({ items }: { items: CacheItem[] }) {
               <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold text-ok">{gc} ✅</span>
               <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
             </div>
-            <div className="-mx-4 overflow-x-auto lg:-mx-6">
+            {/* caixa com teto de altura: a barra de rolagem horizontal fica no rodapé da
+                CAIXA (sempre à vista), não no fim de uma tabela de 13 linhas — antes
+                era preciso descer a página inteira pra achar a barra. */}
+            <div className="-mx-4 max-h-[74vh] overflow-auto lg:-mx-6">
               <table className="w-full border-collapse text-[12px] [&_td]:border-border2/40 [&_th]:border-border2/40 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
                 <thead>
-                  <tr className="border-b border-border bg-surface2/40 uppercase tracking-wide text-muted2">
+                  <tr className="sticky top-0 z-20 border-b border-border bg-[#151827] uppercase tracking-wide text-muted2">
                     <th className="w-9 py-2.5 text-center">
                       <Checkbox checked={allSel} onChange={(next) => m.selectMany(rowKeys, next)} title="Selecionar todas visíveis" />
                     </th>
                     <th className="w-8 py-2.5 text-center" />
-                    <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" />
-                    <th className="px-2 py-2.5 text-center">Status</th>
-                    <th className="px-2 py-2.5 text-center text-[10.5px]" title="Antes → depois do aumento de orçamento de hoje">📈 Aumento</th>
+                    <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" width={colW(cfg, 'name')} />
+                    <th style={{ width: colW(cfg, 'status'), minWidth: colW(cfg, 'status') }} className="relative px-2 py-2.5 text-center">
+                      Status<ResizeHandle colKey="status" />
+                    </th>
+                    <th style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className="relative px-2 py-2.5 text-center text-[10.5px]" title="Antes → depois do aumento de orçamento de hoje">
+                      📈 Aumento<ResizeHandle colKey="aumento" />
+                    </th>
                     <MetHead sort={sort} onSort={onSort} />
                     <th className="py-2.5 pl-3 text-left">Ação</th>
                   </tr>
@@ -1040,6 +1074,7 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
 
 function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sym: string }) {
   const m = useMonitor()
+  const cfg = useColCfg() // as células precisam da MESMA largura do cabeçalho
   const [open, setOpen] = useState(false)
   const [scaleOpen, setScaleOpen] = useState(false)
   const [ads, setAds] = useState<ListaRow[] | null>(null)
@@ -1104,9 +1139,9 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
           <Checkbox checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} />
         </td>
         <td className="py-2 text-center"><ClsDot cls={r.cls} /></td>
-        <td className="py-2 pl-3 pr-2">
+        <td style={{ width: colW(cfg, 'name'), minWidth: colW(cfg, 'name'), maxWidth: colW(cfg, 'name') }} className="py-2 pl-3 pr-2">
           <div className="flex items-center gap-1">
-            <span className="inline-block max-w-[230px] truncate align-middle" title={r.name}>
+            <span className="inline-block max-w-full truncate align-middle" title={r.name}>
               {r.name}
             </span>
             <a href={m.level === 'ad' ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acc.id}&selected_ad_ids=${r.id}` : m.level === 'adset' ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${acc.id}&selected_adset_ids=${r.id}` : campUrl(acc.id, r.id)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
@@ -1136,8 +1171,8 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
             </div>
           )}
         </td>
-        <td className="px-2 py-2 text-center">{statusPill(r.status)}</td>
-        <td className="px-2 py-2">
+        <td style={{ width: colW(cfg, 'status'), minWidth: colW(cfg, 'status') }} className="px-2 py-2 text-center">{statusPill(r.status)}</td>
+        <td style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className="px-2 py-2">
           {m.level === 'campaign' ? (
             <TrackerCell accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} empty={<span className="text-[11px] text-muted2">—</span>} />
           ) : (
