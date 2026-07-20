@@ -151,11 +151,81 @@ async function recupMelodify(req, res) {
   }
 }
 
+/* Recuperação por E-MAIL de todas as ofertas: cruza os envios do Brevo com as
+ * vendas aprovadas (quem recebeu e comprou DEPOIS). Agrupa por assunto — cada
+ * assunto é, na prática, uma campanha de recuperação de uma oferta. */
+async function recupEmail(req, res) {
+  res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=300')
+  const bk = process.env.BREVO_API_KEY
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!bk) return res.json({ ok: false, reason: 'BREVO_API_KEY não configurado' })
+  const dias = Math.max(1, Math.min(30, Number(req.query.dias) || 7))
+  const desde = new Date(Date.now() - dias * 86400000)
+  const dISO = desde.toISOString().slice(0, 10)
+  const hoje = new Date().toISOString().slice(0, 10)
+
+  // só assuntos de RECUPERAÇÃO (não confirmação/entrega)
+  const ehRecup = (s) => /pix ainda|ainda d[áa] tempo|ficou pronta|te esperando|esquec|carrinho|n[ãa]o foi confirmad/i.test(s || '')
+  const camp = (s) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, 42)
+
+  const puxa = async (evento) => {
+    try {
+      const r = await fetch(`https://api.brevo.com/v3/smtp/statistics/events?limit=2500&startDate=${dISO}&endDate=${hoje}&event=${evento}`, { headers: { 'api-key': bk } })
+      const j = await r.json()
+      return Array.isArray(j.events) ? j.events : []
+    } catch { return [] }
+  }
+  const [envios, aberturas, cliques] = await Promise.all([puxa('requests'), puxa('opened'), puxa('clicks')])
+
+  // vendas aprovadas no período (pra saber quem comprou depois de receber)
+  const aprovadas = {}
+  if (url && key) {
+    try {
+      const r = await fetch(`${url}/rest/v1/kirvano_orders?status=eq.APPROVED&created_at=gte.${desde.toISOString()}&select=customer_email,value,created_at&limit=5000`, { headers: sbHeaders(key) })
+      const rows = await r.json()
+      if (Array.isArray(rows)) rows.forEach((o) => {
+        const e = String(o.customer_email || '').toLowerCase().trim()
+        if (!e) return
+        ;(aprovadas[e] = aprovadas[e] || []).push({ t: Date.parse(o.created_at), v: Number(o.value) || 0 })
+      })
+    } catch { /* segue sem conversão */ }
+  }
+
+  const abriu = new Set(aberturas.filter((e) => ehRecup(e.subject)).map((e) => `${e.email}|${camp(e.subject)}`))
+  const clicou = new Set(cliques.filter((e) => ehRecup(e.subject)).map((e) => `${e.email}|${camp(e.subject)}`))
+
+  const porCamp = {}
+  const jaContado = new Set()
+  for (const ev of envios) {
+    if (!ehRecup(ev.subject)) continue
+    const c = camp(ev.subject)
+    const em = String(ev.email || '').toLowerCase().trim()
+    const chave = `${em}|${c}`
+    if (jaContado.has(chave)) continue // 1 pessoa por campanha
+    jaContado.add(chave)
+    const g = (porCamp[c] = porCamp[c] || { campanha: c, enviados: 0, abertos: 0, cliques: 0, converteram: 0, receita: 0 })
+    g.enviados++
+    if (abriu.has(chave)) g.abertos++
+    if (clicou.has(chave)) g.cliques++
+    const tEnvio = Date.parse(ev.date)
+    const compras = aprovadas[em] || []
+    const depois = compras.find((x) => x.t > tEnvio)
+    if (depois) { g.converteram++; g.receita += depois.v }
+  }
+
+  const lista = Object.values(porCamp)
+    .map((g) => ({ ...g, receita: +g.receita.toFixed(2), taxa: g.enviados ? +((g.converteram / g.enviados) * 100).toFixed(1) : 0, aberturaPct: g.enviados ? +((g.abertos / g.enviados) * 100).toFixed(1) : 0 }))
+    .sort((a, b) => b.enviados - a.enviados)
+  return res.json({ ok: true, dias, campanhas: lista })
+}
+
 export default async function handler(req, res) {
   const fn = String(req.query.fn || '')
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)
   if (fn === 'limites') return limites(req, res)
   if (fn === 'recup-melodify') return recupMelodify(req, res)
-  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites | recup-melodify)' })
+  if (fn === 'recup-email') return recupEmail(req, res)
+  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
 }

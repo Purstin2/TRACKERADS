@@ -6,6 +6,7 @@ import {
   UploadCloud,
   Crosshair,
   Percent,
+  LifeBuoy,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -46,6 +47,12 @@ export const NAV: NavItem[] = [
       { label: 'Funil Manual', to: '/monitor/funman' },
       { label: 'Ações', to: '/monitor/acoes' },
     ],
+  },
+  {
+    id: 'recuperacao',
+    label: 'Recuperação',
+    icon: LifeBuoy,
+    to: '/recuperacao',
   },
   {
     id: 'taxas',
