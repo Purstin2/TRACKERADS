@@ -4,7 +4,7 @@ import { campUrl } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
 import type { CacheItem } from './MonitorContext'
 import { fetchRecentSales, type LiveSale } from './realRoas'
-import { ActionsMenu } from './MonitorViews'
+import { ActionsMenu, Checkbox } from './MonitorViews'
 import { curSym } from './config'
 
 /**
@@ -146,6 +146,19 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
 
   const totalVendas = linhas.reduce((s, l) => s + l.sales, 0)
   const totalRev = linhas.reduce((s, l) => s + l.revenue, 0)
+  // seleção: só campanhas que o Meta trouxe (precisam de accId pra formar a chave)
+  const chaves = useMemo(() => linhas.filter((l) => l.accId).map((l) => `${l.accId}::${l.campId}`), [linhas])
+  const todasSel = chaves.length > 0 && chaves.every((k) => m.campSel.has(k))
+  const nSel = m.campSel.size
+
+  /** Leva a seleção pra outra aba já filtrada. Precisa do viewOverride no
+   *  loadMonitor: a Lista busca um formato diferente do Ao vivo, e o setView do
+   *  React só valeria no próximo render (o fetch sairia com a aba antiga). */
+  function irPara(v: 'historico' | 'lista') {
+    m.setOnlySelected(true)
+    m.setView(v)
+    if (v === 'lista') m.loadMonitor(undefined, 'lista') // Histórico usa os mesmos dados; Lista não
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -183,6 +196,21 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
         </span>
       </div>
 
+      {/* selecionou? leva pras outras abas já filtrado */}
+      {nSel > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-[9px] border border-brand/30 bg-brand/[0.07] px-3 py-1.5 text-[12px]">
+          <span className="font-bold text-brand-2">{nSel} selecionada{nSel > 1 ? 's' : ''}</span>
+          <span className="text-muted2">ver só elas em:</span>
+          <button onClick={() => irPara('historico')} className="rounded-[7px] border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11.5px] font-bold text-brand-2 hover:bg-brand/20">
+            Histórico →
+          </button>
+          <button onClick={() => irPara('lista')} className="rounded-[7px] border border-brand/40 bg-brand/10 px-2.5 py-1 text-[11.5px] font-bold text-brand-2 hover:bg-brand/20">
+            Lista →
+          </button>
+          <button onClick={m.clearCampSel} className="ml-auto text-muted2 hover:text-ink">✕ limpar</button>
+        </div>
+      )}
+
       {!m.token.trim() && (
         <div className="rounded-xl2 border border-warn/30 bg-warn/[0.07] px-4 py-3 text-[12px] text-warn">
           Cole o token e clique Atualizar pra casar as vendas com nome/conta/gasto das campanhas.
@@ -203,14 +231,16 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted2">
-                <th className="py-2.5 pl-3 text-left">Vendeu</th>
+                <th className="w-9 py-2.5 text-center">
+                  <Checkbox checked={todasSel} onChange={(next) => m.selectMany(chaves, next)} title="Selecionar todas as conhecidas" />
+                </th>
+                <th className="py-2.5 pl-1 text-left">Vendeu</th>
                 <th className="py-2.5 text-left">Campanha</th>
                 <th className="py-2.5 text-left">Conta</th>
                 <th className="py-2.5 text-right">Vendas</th>
                 <th className="py-2.5 text-right">Faturou</th>
                 <th className="py-2.5 text-right">ROAS hoje</th>
-                <th className="py-2.5 text-right">Gasto hoje</th>
-                <th className="py-2.5 pr-3 text-right">Ação</th>
+                <th className="py-2.5 pr-3 text-right">Gasto hoje</th>
               </tr>
             </thead>
             <tbody>
@@ -218,24 +248,42 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                 const min = (Date.now() - new Date(l.lastAt).getTime()) / MIN
                 const quente = min <= 15 // vendeu nos últimos 15 min → é o embalo
                 const sym = curSym(l.cur)
+                const chave = l.accId ? `${l.accId}::${l.campId}` : ''
+                const sel = !!chave && m.campSel.has(chave)
                 return (
-                  <tr key={l.campId} className={`border-b border-border/40 ${quente ? 'bg-ok/[0.07]' : 'hover:bg-surface2/25'}`}>
-                    <td className="whitespace-nowrap py-2.5 pl-3">
+                  <tr key={l.campId} className={`border-b border-border/40 ${sel ? 'bg-brand/[0.07]' : quente ? 'bg-ok/[0.07]' : 'hover:bg-surface2/25'}`}>
+                    <td className="py-2.5 text-center">
+                      {chave ? (
+                        <Checkbox checked={sel} onChange={() => m.toggleCamp(chave)} />
+                      ) : (
+                        <span className="text-[10px] text-muted2" title="Campanha fora do fetch do Meta — não dá pra levar pras outras abas">–</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap py-2.5 pl-1">
                       <span className="flex items-center gap-1.5">
                         {quente && <Zap className="h-3.5 w-3.5 shrink-0 text-ok" />}
                         <span className={`font-semibold ${quente ? 'text-ok' : 'text-muted'}`}>{haQuantoTempo(l.lastAt)}</span>
                         <span className="font-mono text-[10px] text-muted2">{horaBR(l.lastAt)}</span>
                       </span>
                     </td>
-                    <td className="py-2.5 pr-2">
-                      <span className="flex items-center gap-1">
+                    {/* Ações ficam DEBAIXO do nome (padrão do Gerenciador do Facebook):
+                        a ação mora junto do objeto, não numa coluna longe no fim da linha. */}
+                    <td className="py-2 pr-2">
+                      <div className="flex items-center gap-1">
                         <span className="max-w-[380px] truncate text-ink" title={l.nome}>{l.nome}</span>
                         {l.accId && (
                           <a href={campUrl(l.accId, l.campId)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         )}
-                      </span>
+                      </div>
+                      <div className="mt-1">
+                        {l.accId ? (
+                          <ActionsMenu accId={l.accId} name={l.nome} campId={l.campId} roas={l.roasHoje} cur={l.cur} spend={l.gastoHoje} sales={l.sales} />
+                        ) : (
+                          <span className="text-[10px] text-muted2" title="Campanha não veio no fetch do Meta (pausada ou fora do filtro de status)">fora do filtro</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5">
                       <span className="rounded-full bg-surface2 px-2 py-0.5 text-[10.5px] font-semibold text-muted2">{l.accName || '—'}</span>
@@ -250,16 +298,7 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                     <td className={`py-2.5 text-right font-mono font-bold tabular-nums ${l.roasHoje == null ? 'text-muted2' : l.roasHoje >= m.settings.roasGood ? 'text-ok' : l.roasHoje >= m.settings.roasBe ? 'text-warn' : 'text-danger'}`}>
                       {l.roasHoje != null ? l.roasHoje.toFixed(2) : '—'}
                     </td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-muted2">{l.conhecida ? `${sym}${l.gastoHoje.toFixed(2)}` : '—'}</td>
-                    <td className="py-2.5 pr-3">
-                      <div className="flex justify-end">
-                        {l.accId ? (
-                          <ActionsMenu accId={l.accId} name={l.nome} campId={l.campId} roas={l.roasHoje} cur={l.cur} spend={l.gastoHoje} sales={l.sales} />
-                        ) : (
-                          <span className="text-[10.5px] text-muted2" title="Campanha não veio no fetch do Meta (pausada ou fora do filtro de status)">fora do filtro</span>
-                        )}
-                      </div>
-                    </td>
+                    <td className="py-2.5 pr-3 text-right font-mono tabular-nums text-muted2">{l.conhecida ? `${sym}${l.gastoHoje.toFixed(2)}` : '—'}</td>
                   </tr>
                 )
               })}

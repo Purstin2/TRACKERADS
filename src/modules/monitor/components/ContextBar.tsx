@@ -93,7 +93,7 @@ export default function ContextBar() {
 
       <TouchedFilter />
 
-      <button className="btn btn-primary btn-sm ml-auto" onClick={m.loadMonitor} disabled={m.loading}>
+      <button className="btn btn-primary btn-sm ml-auto" onClick={() => m.loadMonitor()} disabled={m.loading}>
         <RefreshCw className={`h-3.5 w-3.5 ${m.loading ? 'animate-spin' : ''}`} />
         {m.loading ? 'Carregando...' : 'Atualizar'}
       </button>

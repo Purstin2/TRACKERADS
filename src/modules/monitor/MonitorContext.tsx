@@ -111,7 +111,7 @@ interface Ctx {
   neonKeys: Set<string>
   compareDuplication: (accId: string, origId: string, copyId: string) => void
   realMap: Record<string, RealAgg>
-  loadMonitor: () => Promise<void>
+  loadMonitor: (lvl?: AdLevel, viewOverride?: MonitorView) => Promise<void>
 }
 
 const MonitorCtx = createContext<Ctx | null>(null)
@@ -254,9 +254,13 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     if (token.trim() && cache.length) loadMonitor(l) // re-busca no novo nível se já tem dados
   }
 
-  async function loadMonitor(lvl?: AdLevel) {
+  // `viewOverride`: quem troca de aba e recarrega no mesmo clique (ex.: 'ver na Lista'
+  // vindo do Ao vivo) precisa disso — o setView do React só vale no próximo render,
+  // então sem o override o fetch sairia com a aba ANTIGA e a tela ficaria vazia.
+  async function loadMonitor(lvl?: AdLevel, viewOverride?: MonitorView) {
     // guarda: o botão Atualizar chama isto como handler (passa o evento) → só aceita level válido
     const useLevel: AdLevel = lvl === 'campaign' || lvl === 'adset' || lvl === 'ad' ? lvl : level
+    const useView: MonitorView = viewOverride || view
     if (!token.trim()) {
       alert('Cole o access token primeiro.')
       return
@@ -274,7 +278,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     const out: CacheItem[] = await Promise.all(
       accs.map(async (acc): Promise<CacheItem> => {
         try {
-          if (view === 'lista') {
+          if (useView === 'lista') {
             const [rows, cm] = await Promise.all([
               fetchAggregate(acc.id, datePreset, tok, statuses, useLevel),
               useLevel === 'campaign' ? fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]) : Promise.resolve([] as any[]),
@@ -290,7 +294,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
             return { acc, kind: 'lista', rows, meta }
           }
           const rows = await fetchTimeSeries(acc.id, datePreset, tok, statuses)
-          return { acc, kind: view, campMap: processTS(rows), dates: [...new Set(rows.map((r) => r.date_start!))].sort() }
+          return { acc, kind: useView, campMap: processTS(rows), dates: [...new Set(rows.map((r) => r.date_start!))].sort() }
         } catch (e: any) {
           return { acc, kind: 'err', msg: e.message }
         }
