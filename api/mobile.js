@@ -133,10 +133,29 @@ async function limites(req, res) {
   return res.json(out)
 }
 
+// ROI da recuperação de venda do Melodify (quem recebeu WhatsApp/e-mail e pagou
+// depois). Proxy server-side: o secret fica aqui no env, nunca no navegador.
+async function recupMelodify(req, res) {
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=120')
+  const base = process.env.MELODIFY_URL || 'https://melodify.bibliotecando.com'
+  const sec = process.env.MELODIFY_SECRET
+  if (!sec) return res.json({ ok: false, reason: 'MELODIFY_SECRET não configurado' })
+  try {
+    const dias = Math.max(1, Math.min(90, Number(req.query.dias) || 7))
+    const r = await fetch(`${base}/api/admin?secret=${encodeURIComponent(sec)}&recup=1&dias=${dias}`)
+    const j = await r.json()
+    if (!j || !j.ok) return res.json({ ok: false, reason: 'melodify não respondeu' })
+    return res.json({ ok: true, ...j.recup })
+  } catch {
+    return res.json({ ok: false, reason: 'falha ao consultar' })
+  }
+}
+
 export default async function handler(req, res) {
   const fn = String(req.query.fn || '')
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)
   if (fn === 'limites') return limites(req, res)
-  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites)' })
+  if (fn === 'recup-melodify') return recupMelodify(req, res)
+  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites | recup-melodify)' })
 }

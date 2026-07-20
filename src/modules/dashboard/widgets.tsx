@@ -142,6 +142,7 @@ export const WIDGETS: WidgetDef[] = [
   { id: 'despesas', category: 'Geral', title: 'Despesas adicionais', w: 3, h: 2, render: (d) => kpiBody(BRL(d.despesasAdicionais)) },
   { id: 'reembolso', category: 'Geral', title: 'Taxa de Reembolso', w: 3, h: 2, render: (d) => kpiBody(PCT(d.reembolsoPct)) },
   { id: 'limites_envio', category: 'Geral', title: 'Limites de Envio', w: 3, h: 3, render: () => <LimitesEnvio /> },
+  { id: 'recup_melodify', category: 'Geral', title: 'Recuperação Melodify (7d)', w: 3, h: 4, render: () => <RecupMelodify /> },
   { id: 'chargeback', category: 'Geral', title: 'Chargeback', w: 3, h: 2, render: (d) => kpiBody(PCT(d.chargebackPct)) },
   { id: 'vendas_pendentes', category: 'Geral', title: 'Vendas Pendentes', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasPendentes)) },
   { id: 'vendas_reembolsadas', category: 'Geral', title: 'Vendas Reembolsadas', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasReembolsadas)) },
@@ -535,6 +536,48 @@ function LimitesEnvio() {
   )
 }
 
+/* ── Recuperação de venda do Melodify (7 dias) ──
+ * Quem fez a letra grátis, não comprou, recebeu WhatsApp/e-mail — e pagou depois.
+ * Atribuição de carrinho abandonado: parte compraria mesmo sem a mensagem, então
+ * é TETO, não causalidade. Serve pra decidir escalar ou desligar o WhatsApp pago. */
+interface RecupData {
+  ok: boolean; reason?: string
+  dias?: number; enviados?: number; zaps?: number; emails?: number
+  pagaram?: number; taxa?: number; receita?: number; custo?: number; roi?: number | null
+}
+function RecupMelodify() {
+  const [d, setD] = useState<RecupData | null>(null)
+  useEffect(() => {
+    let vivo = true
+    const puxa = () => fetch('/api/mobile?fn=recup-melodify&dias=7').then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setD({ ok: false, reason: 'erro' }))
+    puxa()
+    const t = setInterval(puxa, 10 * 60000)
+    return () => { vivo = false; clearInterval(t) }
+  }, [])
+  if (!d) return <div className="flex h-full items-center justify-center text-[12px] text-muted2">carregando…</div>
+  if (!d.ok) return <div className="flex h-full items-center justify-center text-center text-[11px] text-muted2">{d.reason || 'indisponível'}</div>
+
+  const roi = d.roi ?? null
+  const lucro = (d.receita || 0) - (d.custo || 0)
+  const cor = roi === null ? 'text-ink' : roi >= 2 ? 'text-ok' : roi >= 1 ? 'text-warn' : 'text-danger'
+  return (
+    <div className="flex h-full flex-col justify-center gap-1.5">
+      <div className="flex items-baseline gap-1.5">
+        <span className={`text-[22px] font-extrabold leading-tight ${cor}`}>{roi !== null ? `${roi}x` : '—'}</span>
+        <span className="text-[11px] text-muted2">ROI da recuperação · {d.dias}d</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+        <span className="text-muted2">Receberam</span><span className="text-right font-semibold">{d.enviados ?? 0}</span>
+        <span className="text-muted2">Pagaram depois</span><span className="text-right font-semibold text-ok">{d.pagaram ?? 0} ({d.taxa ?? 0}%)</span>
+        <span className="text-muted2">Recuperado</span><span className="text-right font-semibold">{BRL(d.receita || 0)}</span>
+        <span className="text-muted2">Custo zap</span><span className="text-right font-semibold text-muted">{BRL(d.custo || 0)}</span>
+        <span className="text-muted2">Saldo</span><span className={`text-right font-bold ${lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{BRL(lucro)}</span>
+      </div>
+      <div className="text-[9.5px] leading-tight text-muted2">{d.zaps ?? 0} zaps · {d.emails ?? 0} e-mails. Teto de atribuição (parte compraria sem a msg).</div>
+    </div>
+  )
+}
+
 export const CATEGORIES = ['Geral', 'Gráficos Avançados', 'Impostos']
 
 /* layout padrão (12 colunas) */
@@ -574,6 +617,7 @@ export const DEFAULT_LAYOUT: GridItem[] = [
   { i: 'funil_conversao', x: 0, y: 28, w: 12, h: 5 },
   { i: 'fat_inv_lucro', x: 0, y: 33, w: 12, h: 4 },
   { i: 'limites_envio', x: 0, y: 37, w: 3, h: 3 },
+  { i: 'recup_melodify', x: 3, y: 37, w: 3, h: 4 },
 ]
 
 export const DEFAULT_ENABLED = DEFAULT_LAYOUT.map((l) => l.i)
