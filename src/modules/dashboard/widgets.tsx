@@ -482,7 +482,7 @@ export const WIDGET_MAP = Object.fromEntries(WIDGETS.map((w) => [w.id, w])) as R
  * de TODOS os produtos). WhatsApp: qualidade/nível do número.
  * Busca sozinho em /api/mobile?fn=limites — não depende do DashboardData. */
 interface LimitesData {
-  brevo: { restante: number | null; plano: string | null; limite: number | null } | null
+  brevo: { restante: number | null; plano: string | null; limite: number | null; ciclo?: string | null; renova?: string | null } | null
   whatsapp: { numero: string | null; qualidade: string | null; nivel: string | null } | null
 }
 function LimitesEnvio() {
@@ -500,8 +500,13 @@ function LimitesEnvio() {
 
   const rest = d.brevo?.restante ?? null
   const lim = d.brevo?.limite ?? null
-  const cor = rest === null ? 'text-ink' : rest <= 50 ? 'text-danger' : rest <= 120 ? 'text-warn' : 'text-ok'
+  const ciclo = d.brevo?.ciclo || 'dia'
+  // alerta proporcional ao ciclo: no plano diário (300) aperta cedo; no mensal (5k) só no fim
+  const alerta = ciclo === 'mês' ? 500 : 120
+  const critico = ciclo === 'mês' ? 200 : 50
+  const cor = rest === null ? 'text-ink' : rest <= critico ? 'text-danger' : rest <= alerta ? 'text-warn' : 'text-ok'
   const pct = rest !== null && lim ? Math.max(0, Math.min(100, (rest / lim) * 100)) : null
+  const renova = d.brevo?.renova ? new Date(d.brevo.renova + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : null
   const q = d.whatsapp?.qualidade || null
   const qCor = q === 'GREEN' ? 'text-ok' : q === 'YELLOW' ? 'text-warn' : q === 'RED' ? 'text-danger' : 'text-muted2'
 
@@ -510,14 +515,14 @@ function LimitesEnvio() {
       <div>
         <div className="flex items-baseline gap-1.5">
           <span className={`text-[22px] font-extrabold leading-tight ${cor}`}>{rest ?? '—'}</span>
-          <span className="text-[11px] text-muted2">e-mails restantes hoje{lim ? ` / ${lim}` : ''}</span>
+          <span className="text-[11px] text-muted2">e-mails restantes {ciclo === 'mês' ? 'no ciclo' : 'hoje'}{lim ? ` / ${lim}` : ''}</span>
         </div>
         {pct !== null && (
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface2">
-            <div className={`h-full rounded-full ${rest !== null && rest <= 50 ? 'bg-danger' : rest !== null && rest <= 120 ? 'bg-warn' : 'bg-ok'}`} style={{ width: `${pct}%` }} />
+            <div className={`h-full rounded-full ${rest !== null && rest <= critico ? 'bg-danger' : rest !== null && rest <= alerta ? 'bg-warn' : 'bg-ok'}`} style={{ width: `${pct}%` }} />
           </div>
         )}
-        <div className="mt-0.5 text-[10px] text-muted2">Brevo {d.brevo?.plano || '—'} · cota compartilhada entre os produtos</div>
+        <div className="mt-0.5 text-[10px] text-muted2">Brevo {d.brevo?.plano || '—'}{renova ? ` · renova ${renova}` : ''} · cota compartilhada</div>
       </div>
       <div className="border-t border-border pt-1.5">
         <div className="flex items-baseline gap-1.5">

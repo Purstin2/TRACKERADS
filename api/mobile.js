@@ -109,7 +109,14 @@ async function limites(req, res) {
       const r = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': bk } })
       const j = await r.json()
       const p = (j.plan || []).find((x) => x.creditsType === 'sendLimit') || (j.plan || [])[0]
-      if (p) out.brevo = { restante: typeof p.credits === 'number' ? p.credits : null, plano: p.type || null, limite: p.type === 'free' ? 300 : null }
+      // free = cota DIÁRIA (300). subscription = cota do CICLO (renova em endDate).
+      if (p) out.brevo = {
+        restante: typeof p.credits === 'number' ? p.credits : null,
+        plano: p.type || null,
+        limite: p.type === 'free' ? 300 : null,
+        ciclo: p.type === 'free' ? 'dia' : 'mês',
+        renova: p.endDate || null,
+      }
     } catch { /* segue sem brevo */ }
   }
 
