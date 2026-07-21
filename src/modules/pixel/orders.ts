@@ -73,17 +73,36 @@ export function waNumber(phone?: string | null): string {
   return d
 }
 
+/** Pedido de TESTE/SANDBOX do gateway (não é venda real → não pode entrar em métrica).
+ *  Ex.: postback de teste da Hotmart ("Produto test postback2", email @example.com,
+ *  comprador "Teste"). Como não dá pra apagar do banco pela chave anon (RLS só deixa
+ *  a service key escrever), filtramos aqui na leitura — vale pra sempre e pega
+ *  qualquer teste futuro sem precisar mexer no banco. */
+export function isTestOrder(o: KirvanoOrder): boolean {
+  const email = (o.customer_email || '').toLowerCase()
+  const prod = (o.product || '').toLowerCase()
+  const name = (o.customer_name || '').toLowerCase()
+  return (
+    email.endsWith('@example.com') ||
+    prod.includes('test postback') ||
+    prod === 'produto test' ||
+    (name === 'teste comprador' && email.includes('postman'))
+  )
+}
+
 /** Pedidos do gateway no período — PAGINADO (ver `fetchAll`: o servidor corta em
- *  1000 e ignora .limit maior, então o que passava disso sumia em silêncio). */
+ *  1000 e ignora .limit maior, então o que passava disso sumia em silêncio).
+ *  Já remove pedidos de teste/sandbox pra não sujar faturamento/ROAS. */
 export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
-  return fetchAll<KirvanoOrder>((from, to) => {
+  const rows = await fetchAll<KirvanoOrder>((from, to) => {
     let q = sb.from('kirvano_orders').select('*').order('created_at', { ascending: false }).range(from, to)
     if (sinceISO) q = q.gte('created_at', sinceISO)
     if (untilISO) q = q.lt('created_at', untilISO)
     return q
   })
+  return rows.filter((o) => !isTestOrder(o))
 }
 
 /** Reembolsos/chargebacks que ACONTECERAM no período (por data do estorno = updated_at),
