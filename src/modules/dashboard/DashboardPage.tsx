@@ -352,8 +352,16 @@ export default function DashboardPage() {
         })
       }),
     )
+    // preserva a seleção do usuário: mantém desmarcadas as que ele tirou e já inclui
+    // as campanhas NOVAS do período (senão o gasto delas sumia). Na 1ª carga (camps
+    // vazio) tudo conta como "novo" → seleciona todas, como era antes.
+    const prevKeys = new Set(camps.map((c) => c.key))
     setCamps(cs)
-    setSelCamps(new Set(cs.map((c) => c.key)))
+    setSelCamps((prevSel) => {
+      const next = new Set<string>()
+      cs.forEach((c) => { if (prevSel.has(c.key) || !prevKeys.has(c.key)) next.add(c.key) })
+      return next
+    })
     setFunnelByCamp(fByCamp)
     setHourlyByName(hByName)
     setDailyByCamp(dByCamp)
@@ -367,11 +375,12 @@ export default function DashboardPage() {
         const t = Date.parse(o.ordered_at || o.created_at || '')
         return !isNaN(t) && t >= since && t <= until
       })
-      // dropdowns de produto/fonte saem só das vendas do período
+      // dropdowns de produto/fonte saem só das vendas do período. NÃO reseto a seleção
+      // (selProducts/selSources) — o auto-refresh dispara a cada filtro, e resetar aqui
+      // apagava o que o usuário já tinha escolhido. Filtro por nome: se um produto
+      // selecionado não existir no novo período, ele só não casa (inofensivo).
       setProducts(distinctProducts(periodSales))
-      setSelProducts(null)
       setSources(distinctSources(periodSales))
-      setSelSources(null)
       // + estornos que ACONTECERAM no período (por data do estorno = updated_at), mesmo de
       // vendas antigas — senão os estornos manuais somem do "Vendas Reembolsadas" (igual UTMify)
       const refunds = await fetchRefundsByRefundDate(sinceISO, untilISO)
