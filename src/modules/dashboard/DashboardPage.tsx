@@ -110,10 +110,21 @@ function MultiDropdown({
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar" className="w-full rounded-[7px] border border-border bg-[#0a0c19] py-1.5 pl-8 pr-3 text-[12px] text-ink" />
               </div>
-              <button onClick={() => onChange(null)} className="mb-1 flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] hover:bg-surface2">
-                <span className={`flex h-4 w-4 items-center justify-center rounded border text-[9px] ${selected === null ? 'border-brand bg-brand text-white' : 'border-border'}`}>{selected === null ? '✓' : ''}</span>
-                Selecionar todos
-              </button>
+              {/* ações rápidas: Todos (null = sem filtro) · Nenhum (Set vazio). Antes só
+                  existia "selecionar todos" e ele NUNCA desmarcava — parecia quebrado
+                  quando já estava tudo marcado. Agora marca/limpa instantâneo. */}
+              <div className="mb-1 flex items-center gap-1.5 border-b border-border px-1 pb-2 text-[11.5px]">
+                <button onClick={() => onChange(null)} className="rounded-[6px] bg-brand/10 px-2 py-1 font-bold text-brand-2 hover:bg-brand/20">Todos</button>
+                <button onClick={() => onChange(new Set())} className="rounded-[6px] bg-surface2 px-2 py-1 font-bold text-muted hover:text-ink">Nenhum</button>
+                {q && vis.length > 0 && (
+                  <button
+                    onClick={() => { const b = selected === null ? new Set(options) : new Set(selected); vis.forEach((o) => b.add(o)); onChange(b.size === options.length ? null : b) }}
+                    title="marca só os que a busca está mostrando"
+                    className="rounded-[6px] bg-surface2 px-2 py-1 font-medium text-muted2 hover:text-ink"
+                  >+ visíveis</button>
+                )}
+                <span className="ml-auto text-muted2">{onCount}/{options.length}</span>
+              </div>
               {groupLabel && <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted2">{groupLabel}</div>}
               <div className="max-h-[260px] overflow-y-auto">
                 {vis.map((o) => (
@@ -411,6 +422,19 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // AUTO-REFRESH: mudou Período / Conta / datas / status → re-busca sozinho (sem
+  // botão Atualizar). Produto/Fonte/Plataforma NÃO entram aqui — são filtros de
+  // cliente (o data useMemo já recalcula na hora, sem novo fetch). O ref pula a 1ª
+  // execução (o efeito de montagem acima já carrega). Debounce cobre digitar datas.
+  const autoRef = useRef(true)
+  useEffect(() => {
+    if (autoRef.current) { autoRef.current = false; return }
+    if (!token.trim()) return
+    const t = setTimeout(() => load(true), 350)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, cSince, cUntil, accSel, campStatus])
+
   // agregações dependentes da seleção (sem refetch)
   const selectedCamps = useMemo(() => camps.filter((c) => selCamps.has(c.key)), [camps, selCamps])
   const spend = useMemo(() => selectedCamps.reduce((s, c) => s + c.spend, 0), [selectedCamps])
@@ -539,7 +563,13 @@ export default function DashboardPage() {
           <div className="ml-auto flex items-end gap-2">
             <button className="btn btn-ghost btn-sm" onClick={() => setCampDrawer(true)} title="Refino por campanha (status, on/off)"><ListFilter className="h-3.5 w-3.5" /> Campanhas {camps.length ? `${selCamps.size}/${camps.length}` : ''}</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowParams(true)}><Settings className="h-3.5 w-3.5" /> Parâmetros</button>
-            <button className="btn btn-primary btn-sm" onClick={() => load()} disabled={loading}><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />{loading ? 'Carregando...' : 'Atualizar'}</button>
+            {/* sem botão Atualizar — os filtros re-buscam sozinhos. Este indicador só
+                mostra que está sincronizando e deixa forçar um pull novo pro MESMO
+                período (quando entrou venda nova), já que trocar filtro é o gatilho normal. */}
+            <button onClick={() => load()} disabled={loading} title="Puxar dados novos agora" className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11px] font-semibold text-muted2 hover:border-brand hover:text-ink disabled:opacity-60">
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin text-brand-2' : ''}`} />
+              {loading ? 'atualizando…' : updatedAt ? `atualizado ${updatedAt}` : 'sincronizar'}
+            </button>
           </div>
         </div>
         <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; taxas/impostos/custos por produto na aba <Link to="/taxas" className="font-semibold text-brand-2 underline underline-offset-2">Taxas</Link>.</p>
