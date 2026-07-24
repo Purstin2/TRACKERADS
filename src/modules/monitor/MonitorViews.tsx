@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ResponsiveContainer,
   LineChart,
@@ -548,12 +549,22 @@ export function ActionsBar({ accId, name, campId, roas, cur, spend, sales, compa
         )}
       </div>
 
-      {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
-      {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
-      {modal === 'vendas' && <SalesTimelineModal name={name} campId={campId} onClose={() => setModal(null)} />}
-      {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
-      {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
-      {modal === 'track' && <BudgetTrackerModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
+      {/* PORTAL pro <body>: estes modais são `fixed inset-0`, e basta UM ancestral
+          com transform/filter pra que "fixed" passe a se ancorar nesse ancestral em
+          vez da tela — foi o que aconteceu quando a tira de ações ganhou
+          -translate-y-1/2 e os popups saíram espremidos numa faixa de 180px.
+          Saindo pro body, nenhum estilo de linha da tabela alcança mais eles. */}
+      {modal && createPortal(
+        <>
+          {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
+          {modal === 'hist' && <CampHistoryModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
+          {modal === 'vendas' && <SalesTimelineModal name={name} campId={campId} onClose={() => setModal(null)} />}
+          {modal === 'dup' && <DuplicateModal accId={accId} name={name} campId={campId} roas={roas} cur={cur} spend={spend} sales={sales} onClose={() => setModal(null)} />}
+          {modal === 'proof' && <DupProofModal dups={dups} cur={cur} onClose={() => setModal(null)} />}
+          {modal === 'track' && <BudgetTrackerModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
+        </>,
+        document.body,
+      )}
     </>
   )
 }
@@ -1474,7 +1485,11 @@ function RowWithExpand({ r, sym, leftStatus, leftName, showAumento }: { r: Table
               Compacto: a faixa some e as ações viram uma tira flutuante no hover,
               que não ocupa altura nenhuma. */}
           {m.level === 'campaign' && m.compact ? (
-            <div className={`absolute right-2 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-[7px] px-1 opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${neon ? 'bg-[#231e1e]' : sel ? 'bg-[#16182d]' : 'bg-surface2'}`}>
+            /* right-7 (não right-2): em right-2 a tira cobria o ↗ de "abrir no
+               Gerenciador" e roubava o clique dele — agora ela para antes do ícone.
+               Centralizo com inset-y-0 + my-auto e NÃO com -translate-y-1/2: qualquer
+               transform aqui vira containing block e prende os modais `fixed`. */
+            <div className={`absolute inset-y-0 right-7 z-10 my-auto flex h-[26px] items-center gap-0.5 rounded-[7px] px-1 opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${neon ? 'bg-[#231e1e]' : sel ? 'bg-[#16182d]' : 'bg-surface2'}`}>
               <button onClick={() => setScaleOpen((v) => !v)} title="Escala — lucro de hoje e dos últimos dias" className={`rounded p-1 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}>
                 <BarChart3 className="h-3.5 w-3.5" />
               </button>
