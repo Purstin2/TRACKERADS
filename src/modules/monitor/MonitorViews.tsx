@@ -745,7 +745,9 @@ const MET_COLS: MetCol[] = [
   // colunas REAIS: faturamento do gateway casado por ID de campanha (o que o Meta não vê)
   { key: 'realRoas', label: 'ROAS real', render: (r) => (r.realRoas != null ? r.realRoas.toFixed(2) : '—'), cls: (r, s) => (r.realRoas == null ? 'text-muted2' : 'font-bold ' + VAL_CLS[roasCls(r.realRoas, s)]), total: (T) => { const v = T.spendBRL > 0 && T.realRevenue > 0 ? T.realRevenue / T.spendBRL : null; return v != null ? v.toFixed(2) : '—' }, totalCls: (T, s) => VAL_CLS[roasCls(T.spendBRL > 0 && T.realRevenue > 0 ? T.realRevenue / T.spendBRL : null, s)] },
   { key: 'realSales', label: 'V. reais', render: (r) => r.realSales ?? '—', cls: (r) => (r.realSales != null && r.realSales !== r.sales ? 'text-brand-2 font-semibold' : ''), total: (T) => T.realSales || '—' },
-  { key: 'lucroReal', label: 'Lucro real', render: (r) => (r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '-') + 'R$' + Math.abs(r.lucroReal).toFixed(2)), cls: (r) => (r.lucroReal == null ? 'text-muted2' : r.lucroReal >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T) => (T.lucroReal >= 0 ? '' : '-') + 'R$' + Math.abs(T.lucroReal).toFixed(2), totalCls: (T) => (T.lucroReal >= 0 ? 'text-ok' : 'text-danger') },
+  // sym, não 'R$' fixo: com contas de moedas diferentes o valor é convertido e o
+  // símbolo tem que acompanhar, senão a coluna mostra dólar escrito como real
+  { key: 'lucroReal', label: 'Lucro real', render: (r, sym) => (r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '-') + sym + Math.abs(r.lucroReal).toFixed(2)), cls: (r) => (r.lucroReal == null ? 'text-muted2' : r.lucroReal >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T, sym) => (T.lucroReal >= 0 ? '' : '-') + sym + Math.abs(T.lucroReal).toFixed(2), totalCls: (T) => (T.lucroReal >= 0 ? 'text-ok' : 'text-danger') },
   { key: 'cpaIC', label: 'CPI', render: (r, sym) => m2(r.cpaIC, sym), cls: () => 'text-muted2' },
   { key: 'cpc', label: 'CPC', render: (r, sym) => (r.cpc ? m2(r.cpc, sym) : '—'), cls: () => 'text-muted2' },
   { key: 'ctr', label: 'CTR', render: (r) => (r.ctr ? r.ctr.toFixed(2) + '%' : '—'), cls: () => 'text-muted2' },
@@ -856,7 +858,10 @@ function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) 
         return (
           <th key={key} draggable onDragStart={() => setDragKey(key)} onDragOver={(e) => e.preventDefault()} onDrop={() => drop(key)}
             style={{ width: w, minWidth: w, maxWidth: w }}
-            className={`relative select-none px-3 py-2.5 text-right text-[10.5px] ${dragKey === key ? 'opacity-40' : ''}`}>
+            /* sticky/borda IGUAIS às colunas fixas: sem isto o cabeçalho das
+               métricas rolava embora e as linhas de dados apareciam na altura
+               do cabeçalho, que é o que dava a impressão de tabela quebrada. */
+            className={`sticky top-0 z-30 select-none border-b border-r border-border px-3 py-2.5 text-right text-[10.5px] ${HEAD_BG} ${dragKey === key ? 'opacity-40' : ''}`}>
             <span onClick={() => onSort(key)} title="clique = ordenar · arraste = mover" className="cursor-move hover:text-ink">
               {c.label}{active ? (sort!.dir === 'desc' ? ' ▼' : ' ▲') : ''}
             </span>
@@ -878,7 +883,7 @@ function MetCells({ r, sym, s }: { r: ListaRow; sym: string; s: Settings }) {
         const w = cfg.w[key] || defW(key)
         return (
           <td key={key} style={{ width: w, minWidth: w, maxWidth: w }}
-            className={`overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums ${c.cls ? c.cls(r, s) : ''}`}>
+            className={`overflow-hidden text-ellipsis whitespace-nowrap border-b border-r border-border2/70 px-3 py-2.5 text-right font-mono tabular-nums ${c.cls ? c.cls(r, s) : ''}`}>
             {c.render(r, sym, s)}
           </td>
         )
@@ -896,7 +901,7 @@ function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
         if (!c) return null
         const w = cfg.w[key] || defW(key)
         return (
-          <td key={key} style={{ width: w }} className={`px-3 py-2.5 text-right font-mono tabular-nums ${c.total ? (c.totalCls ? c.totalCls(T, s) : '') : 'text-muted2'}`}>
+          <td key={key} style={{ width: w }} className={`sticky bottom-0 z-30 border-r border-t-2 border-border px-3 py-2.5 text-right font-mono tabular-nums ${FOOT_BG} ${c.total ? (c.totalCls ? c.totalCls(T, s) : '') : 'text-muted2'}`}>
             {c.total ? c.total(T, sym) : '—'}
           </td>
         )
