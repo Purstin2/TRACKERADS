@@ -4,12 +4,13 @@ import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import {
   RefreshCw, Info, SlidersHorizontal, Check, X, Plus, Save, RotateCcw, Pencil, Eye, Settings,
-  ChevronDown, Search, ListFilter,
+  ChevronDown, Search, ListFilter, ShieldCheck,
 } from 'lucide-react'
 import { type DashboardData } from './data'
 import { buildRealDashboard, distinctProducts, distinctSources, normSource, type FunnelMeta } from './realbuild'
+import { saveSnapshot, readSnapshot, agregar, type DailySpendRow } from '@/lib/adsDaily'
 import { WIDGET_MAP, WIDGETS, CATEGORIES, DEFAULT_LAYOUT, DEFAULT_ENABLED, withNewWidgets, type GridItem } from './widgets'
-import { fetchFin, fetchFunil, fetchFinHourly, fetchFinDaily, getRevenue, getSales, findVal } from '@/lib/meta'
+import { fetchFin, fetchFunil, fetchFinHourly, fetchFinDaily, getRevenue, getSales, findVal, dateRange } from '@/lib/meta'
 import { fetchOrders, fetchRefundsByRefundDate, type KirvanoOrder } from '@/modules/pixel/orders'
 import { getStoredAccounts, STATUS_FILTERS, DEFAULT_SETTINGS, trunc } from '@/modules/monitor/config'
 import { loadFinParams, saveFinParams, syncFinParams, type FinParams } from '@/modules/monitor/finance'
@@ -272,6 +273,12 @@ export default function DashboardPage() {
   const [cSince, setCSince] = useState(todayISO())
   const [cUntil, setCUntil] = useState(todayISO())
   const [campStatus, setCampStatus] = useState('active_paused')
+  // TRACKER PADRÃO: gasto vem do histórico salvo (ads_daily), não da API filtrada
+  // por status. O dinheiro saiu naquele dia — pausar/excluir campanha depois não
+  // pode "devolver" o gasto e inflar a margem.
+  const [trackerPadrao, setTrackerPadrao] = useState(() => localStorage.getItem('tracker_padrao') === '1')
+  const [snapRows, setSnapRows] = useState<DailySpendRow[]>([])
+  const [snapInfo, setSnapInfo] = useState<{ salvas: number; lidas: number } | null>(null)
   const [platform, setPlatform] = useState('Qualquer')
   const [fin, setFin] = useState<FinParams>(loadFinParams)
   const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
@@ -311,18 +318,32 @@ export default function DashboardPage() {
     const fByCamp: Record<string, FunnelMeta> = {}
     const hByName: Record<string, number[]> = {}
     const dByCamp: Record<string, Record<string, number>> = {}
+    const snapAll: DailySpendRow[] = [] // foto do gasto real, SEM filtro de status
+    const ALL_ST = STATUS_FILTERS.all?.values || ['ACTIVE', 'PAUSED']
     const tok = token.trim()
     // PARALELO: todas as contas de uma vez, e as 4 chamadas de cada conta juntas
     // (antes era tudo em fila → ~18 chamadas sequenciais com 6 contas)
     await Promise.all(
       accs.map(async (acc) => {
         const toBRL = acc.cur === 'BRL' ? 1 : fx
-        const [rows, fn, hr, dy] = await Promise.all([
+        const [rows, fn, hr, dy, dyAll] = await Promise.all([
           fetchFin(acc.id, preset, tok, statuses).catch(() => [] as any[]),
           fetchFunil(acc.id, preset, tok, statuses).catch(() => [] as any[]),
           fetchFinHourly(acc.id, preset, tok, statuses).catch(() => [] as any[]),
           fetchFinDaily(acc.id, preset, tok, statuses).catch(() => [] as any[]),
+          // sem filtro de status: é esta que alimenta o Tracker Padrão
+          fetchFinDaily(acc.id, preset, tok, ALL_ST).catch(() => [] as any[]),
         ])
+        ;(dyAll as any[]).forEach((r) => {
+          if (!r.campaign_id || !r.date_start) return
+          snapAll.push({
+            dia: String(r.date_start).slice(0, 10),
+            acc_id: acc.id,
+            camp_id: String(r.campaign_id),
+            camp_name: r.campaign_name || '',
+            spend_brl: parseFloat(r.spend || '0') * toBRL,
+          })
+        })
         // gasto por dia, por campanha (mesma chave do CampMetric → respeita a seleção)
         ;(dy as any[]).forEach((r) => {
           if (!r.campaign_id || !r.date_start) return
@@ -352,6 +373,16 @@ export default function DashboardPage() {
         })
       }),
     )
+    // TRACKER PADRÃO: grava a foto do período e relê o histórico inteiro. É o que
+    // segura o custo de campanha excluída — na API ela some, aqui ela continua.
+    try {
+      const salvas = await saveSnapshot(snapAll)
+      const { since, until } = dateRange(eff)
+      const lidas = await readSnapshot(since, until, accIds)
+      setSnapRows(lidas)
+      setSnapInfo({ salvas, lidas: lidas.length })
+    } catch { /* best-effort: snapshot nunca pode derrubar a dashboard */ }
+
     // preserva a seleção do usuário: mantém desmarcadas as que ele tirou e já inclui
     // as campanhas NOVAS do período (senão o gasto delas sumia). Na 1ª carga (camps
     // vazio) tudo conta como "novo" → seleciona todas, como era antes.
@@ -446,7 +477,17 @@ export default function DashboardPage() {
 
   // agregações dependentes da seleção (sem refetch)
   const selectedCamps = useMemo(() => camps.filter((c) => selCamps.has(c.key)), [camps, selCamps])
-  const spend = useMemo(() => selectedCamps.reduce((s, c) => s + c.spend, 0), [selectedCamps])
+  // histórico salvo, agregado (fonte do Tracker Padrão)
+  const snapAgg = useMemo(
+    () => agregar(snapRows, Object.fromEntries(accountsList.map((a) => [a.id, a.name]))),
+    [snapRows, accountsList],
+  )
+  // Com o Tracker Padrão ligado o gasto NÃO depende do status nem da seleção de
+  // campanhas: é o que saiu da conta naqueles dias, ponto.
+  const spend = useMemo(
+    () => (trackerPadrao ? snapAgg.total : selectedCamps.reduce((s, c) => s + c.spend, 0)),
+    [trackerPadrao, snapAgg, selectedCamps],
+  )
   const funnelMeta = useMemo<FunnelMeta>(() => {
     const acc = { clicks: 0, lpv: 0, ic: 0 }
     selectedCamps.forEach((c) => {
@@ -462,23 +503,25 @@ export default function DashboardPage() {
   }, [selectedCamps, hourlyByName])
   // gasto por dia das campanhas selecionadas (pro Lucro por Dia)
   const dailySpend = useMemo(() => {
+    if (trackerPadrao) return snapAgg.porDia
     const m: Record<string, number> = {}
     selectedCamps.forEach((c) => {
       const d = dailyByCamp[c.key]
       if (d) Object.entries(d).forEach(([day, v]) => { m[day] = (m[day] || 0) + v })
     })
     return m
-  }, [selectedCamps, dailyByCamp])
+  }, [trackerPadrao, snapAgg, selectedCamps, dailyByCamp])
   // gasto BRL por conta + mapa campanha→conta (pro widget "Performance por Conta")
   // a key do CampMetric é `accId::campId` — separo os dois aqui.
   const accountSpend = useMemo(() => {
+    if (trackerPadrao) return snapAgg.accountSpend
     const m: Record<string, { id: string; name: string; spend: number }> = {}
     selectedCamps.forEach((c) => {
       const a = (m[c.accId] ||= { id: c.accId, name: c.accName, spend: 0 })
       a.spend += c.spend
     })
     return Object.values(m)
-  }, [selectedCamps])
+  }, [trackerPadrao, snapAgg, selectedCamps])
   const campToAccount = useMemo(() => {
     const m: Record<string, string> = {}
     selectedCamps.forEach((c) => { const campId = c.key.split('::')[1]; if (campId) m[campId] = c.accId })
@@ -570,6 +613,17 @@ export default function DashboardPage() {
           </div>
           <MultiDropdown label="Produto" options={products} selected={selProducts} onChange={setSelProducts} width="w-[200px]" />
           <div className="ml-auto flex items-end gap-2">
+            <button
+              onClick={() => { const v = !trackerPadrao; setTrackerPadrao(v); localStorage.setItem('tracker_padrao', v ? '1' : '0') }}
+              title={
+                trackerPadrao
+                  ? `Gasto real do período, como saiu da conta — ignora status e seleção de campanha.${snapInfo ? ` ${snapInfo.lidas} registros salvos.` : ''}`
+                  : 'Ligar: usa o histórico salvo de gasto (campanha pausada ou excluída continua contando no dia em que gastou)'
+              }
+              className={`btn btn-sm ${trackerPadrao ? 'btn-primary' : 'btn-ghost'}`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Tracker Padrão{trackerPadrao ? ' ✓' : ''}
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setCampDrawer(true)} title="Refino por campanha (status, on/off)"><ListFilter className="h-3.5 w-3.5" /> Campanhas {camps.length ? `${selCamps.size}/${camps.length}` : ''}</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowParams(true)}><Settings className="h-3.5 w-3.5" /> Parâmetros</button>
             {/* sem botão Atualizar — os filtros re-buscam sozinhos. Este indicador só
