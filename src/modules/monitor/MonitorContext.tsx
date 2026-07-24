@@ -120,6 +120,9 @@ interface Ctx {
   setOnlySelected: (b: boolean) => void
   touchedOnly: boolean
   setTouchedOnly: (b: boolean) => void
+  /** Modo compacto: esconde chips e filtros pra sobrar altura de tabela. */
+  compact: boolean
+  setCompact: (b: boolean) => void
   neonKeys: Set<string>
   compareDuplication: (accId: string, origId: string, copyId: string) => void
   realMap: Record<string, RealAgg>
@@ -149,6 +152,11 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [campSel, setCampSel] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
   const [touchedOnly, setTouchedOnly] = useState(false)
+  const [compact, setCompactState] = useState(() => localStorage.getItem('monitor_compact') === '1')
+  const setCompact = (b: boolean) => {
+    setCompactState(b)
+    localStorage.setItem('monitor_compact', b ? '1' : '0')
+  }
   const [neonKeys, setNeonKeys] = useState<Set<string>>(new Set())
   const [realMap, setRealMap] = useState<Record<string, RealAgg>>({})
   const toggleCamp = (key: string) =>
@@ -373,6 +381,8 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setOnlySelected,
     touchedOnly,
     setTouchedOnly,
+    compact,
+    setCompact,
     neonKeys,
     compareDuplication,
     realMap,

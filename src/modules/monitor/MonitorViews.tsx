@@ -1100,8 +1100,9 @@ export function ListaView({ items }: { items: CacheItem[] }) {
         </div>
       ) : (
         /* altura amarrada à janela pra que a linha de TOTAIS (sticky no rodapé da
-           caixa) caia dentro da tela — com vh fixo ela vivia abaixo da dobra */
-        <div className="max-h-[calc(100vh-370px)] min-h-[300px] overflow-auto">
+           caixa) caia dentro da tela — com vh fixo ela vivia abaixo da dobra.
+           No compacto o topo encolhe, então a tabela ganha o espaço de volta. */
+        <div className={`${m.compact ? 'max-h-[calc(100vh-215px)]' : 'max-h-[calc(100vh-370px)]'} min-h-[300px] overflow-auto`}>
           <table className="w-full border-separate border-spacing-0 text-[12px]">
             <thead>
               <tr className={`${HEAD_BG} text-[10.5px] font-semibold uppercase tracking-wide text-muted2`}>
@@ -1425,13 +1426,16 @@ function RowWithExpand({ r, sym, leftStatus, leftName, showAumento }: { r: Table
   const bg = stickyBg(sel, neon)
   const nameW = colW(cfg, 'name')
   const statusW = colW(cfg, 'status')
+  const multiAcc = m.cache.filter((c) => c.kind === 'lista').length > 1
   const adsUrl =
     m.level === 'ad'
       ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acc.id}&selected_ad_ids=${r.id}`
       : m.level === 'adset'
         ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${acc.id}&selected_adset_ids=${r.id}`
         : campUrl(acc.id, r.id)
-  const cellBase = 'border-b border-border2/70 py-2.5'
+  // no compacto a linha perde ~35px de altura (nome em 1 linha, sem faixa de
+  // conta/ações) — é o que realmente faz caber mais campanha na tela
+  const cellBase = `border-b border-border2/70 ${m.compact ? 'py-1.5' : 'py-2.5'}`
 
   return (
     <>
@@ -1449,42 +1453,62 @@ function RowWithExpand({ r, sym, leftStatus, leftName, showAumento }: { r: Table
           </div>
         </td>
 
-        <td style={{ width: nameW, minWidth: nameW, maxWidth: nameW, left: leftName }} className={`sticky z-20 border-r border-border2/70 px-3 ${cellBase} ${bg}`}>
+        <td style={{ width: nameW, minWidth: nameW, maxWidth: nameW, left: leftName }} className={`sticky z-20 border-r border-border2/70 px-3 ${cellBase} ${bg} ${m.compact ? 'relative' : ''}`}>
           <div className="flex items-start gap-1.5">
-            <span className="line-clamp-2 min-w-0 flex-1 break-words leading-snug text-ink" title={r.name}>
+            <span className={`${m.compact ? 'line-clamp-1' : 'line-clamp-2'} min-w-0 flex-1 break-words leading-snug text-ink`} title={m.compact ? `${r.name}\n${acc.name}` : r.name}>
               {r.name}
             </span>
+            {/* No compacto o selo da conta só entra se houver MAIS DE UMA conta na
+                tabela: com uma só ele é ruído e ainda rouba largura do nome, que é
+                justamente onde mora a parte que distingue a campanha. */}
+            {m.compact && multiAcc && (
+              <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted2" title={acc.name}>{acc.name}</span>
+            )}
             <a href={adsUrl} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Gerenciador de Anúncios">
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
-          {/* Conta de origem à esquerda e ações à direita, na MESMA faixa: a linha
-              não cresce por causa dos botões, e eles só acendem no hover — no
-              repouso a tabela é só nome e número, que é o que se lê de relance. */}
-          <div className="mt-0.5 flex h-[22px] items-center gap-2">
-            <span className="min-w-0 shrink truncate text-[10px] uppercase tracking-wide text-muted2" title={acc.name}>
-              {acc.name}
-            </span>
-            {m.level === 'campaign' && (
-              <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                <button
-                  onClick={() => setScaleOpen((v) => !v)}
-                  title="Escala — lucro de hoje e dos últimos dias"
-                  className={`rounded p-1 transition-colors hover:bg-surface2 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}
-                >
-                  <BarChart3 className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={toggle}
-                  title="Criativos — anúncios desta campanha"
-                  className={`rounded p-1 transition-colors hover:bg-surface2 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                </button>
-                <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} compact />
-              </div>
-            )}
-          </div>
+
+          {/* Normal: conta à esquerda e ações à direita, na MESMA faixa — a linha não
+              cresce por causa dos botões e eles só acendem no hover.
+              Compacto: a faixa some e as ações viram uma tira flutuante no hover,
+              que não ocupa altura nenhuma. */}
+          {m.level === 'campaign' && m.compact ? (
+            <div className={`absolute right-2 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-[7px] px-1 opacity-0 shadow-card transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${neon ? 'bg-[#231e1e]' : sel ? 'bg-[#16182d]' : 'bg-surface2'}`}>
+              <button onClick={() => setScaleOpen((v) => !v)} title="Escala — lucro de hoje e dos últimos dias" className={`rounded p-1 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}>
+                <BarChart3 className="h-3.5 w-3.5" />
+              </button>
+              <button onClick={toggle} title="Criativos — anúncios desta campanha" className={`rounded p-1 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}>
+                <Layers className="h-3.5 w-3.5" />
+              </button>
+              <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} compact />
+            </div>
+          ) : (
+            <div className="mt-0.5 flex h-[22px] items-center gap-2">
+              <span className="min-w-0 shrink truncate text-[10px] uppercase tracking-wide text-muted2" title={acc.name}>
+                {acc.name}
+              </span>
+              {m.level === 'campaign' && (
+                <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <button
+                    onClick={() => setScaleOpen((v) => !v)}
+                    title="Escala — lucro de hoje e dos últimos dias"
+                    className={`rounded p-1 transition-colors hover:bg-surface2 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={toggle}
+                    title="Criativos — anúncios desta campanha"
+                    className={`rounded p-1 transition-colors hover:bg-surface2 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                  </button>
+                  <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} compact />
+                </div>
+              )}
+            </div>
+          )}
         </td>
 
         {showAumento && (

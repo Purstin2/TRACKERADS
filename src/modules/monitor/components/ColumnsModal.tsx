@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { GripVertical, RotateCcw, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, GripVertical, RotateCcw, Search, X } from 'lucide-react'
 import { COL_CATALOG, getColCfg, setColCfg, visibleCols } from '../MonitorViews'
 import { Checkbox } from '../MonitorViews'
 
@@ -33,6 +33,17 @@ export default function ColumnsModal({ onClose }: { onClose: () => void }) {
     setDrag(null)
   }
 
+  /** Setas ↑/↓: arrastar não é óbvio (e é chato em lista longa), então a ordem
+   *  também muda no clique. Move dentro da lista de visíveis. */
+  const move = (key: string, dir: -1 | 1) => {
+    const vis = [...active]
+    const i = vis.indexOf(key)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= vis.length) return
+    ;[vis[i], vis[j]] = [vis[j], vis[i]]
+    setOrder([...vis, ...order.filter((k) => hidden.includes(k))])
+  }
+
   const save = () => {
     setColCfg({ ...getColCfg(), order, hidden })
     onClose()
@@ -58,9 +69,11 @@ export default function ColumnsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 border-y border-border sm:grid-cols-[1fr_340px]">
+        {/* [1fr_320px] sem breakpoint: o painel de ordem NUNCA cai pra baixo do
+            catálogo (empilhado ele ficava fora da dobra do modal e sumia). */}
+        <div className="grid min-h-0 flex-1 grid-cols-[1fr_320px] border-y border-border">
           {/* esquerda: catálogo com busca */}
-          <div className="flex min-h-0 flex-col border-border sm:border-r">
+          <div className="flex min-h-0 flex-col border-r border-border">
             <div className="relative px-4 py-3">
               <Search className="pointer-events-none absolute left-[26px] top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted2" />
               <input
@@ -93,15 +106,18 @@ export default function ColumnsModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {/* direita: o que está na tabela, na ordem */}
-          <div className="flex min-h-0 flex-col">
-            <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex min-h-0 flex-col bg-surface2/20">
+            <div className="flex items-center justify-between px-4 pb-1 pt-3">
               <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted2">
-                Na tabela ({active.length + 1})
+                Ordem na tabela ({active.length + 1})
               </span>
               <button onClick={restore} className="flex items-center gap-1 text-[11px] text-muted2 hover:text-ink" title="Voltar ao padrão">
                 <RotateCcw className="h-3 w-3" /> padrão
               </button>
             </div>
+            <p className="px-4 pb-2 text-[11px] leading-snug text-muted2">
+              Arraste, ou use <b className="text-muted">↑ ↓</b>, para mudar a ordem das colunas.
+            </p>
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
               {/* Campanha é âncora da tabela: não sai nem muda de lugar */}
               <div className="flex items-center gap-2 rounded-[8px] border border-border/60 bg-surface2/40 px-2 py-1.5 text-[12.5px] text-muted">
@@ -110,7 +126,7 @@ export default function ColumnsModal({ onClose }: { onClose: () => void }) {
                 <span className="text-[10px] text-muted2">fixa</span>
               </div>
 
-              {active.map((key) => (
+              {active.map((key, i) => (
                 <div
                   key={key}
                   draggable
@@ -118,13 +134,28 @@ export default function ColumnsModal({ onClose }: { onClose: () => void }) {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => drop(key)}
                   onDragEnd={() => setDrag(null)}
-                  title="Arraste para reordenar"
-                  className={`flex cursor-grab items-center gap-2 rounded-[8px] border border-border bg-surface2/60 px-2 py-1.5 text-[12.5px] transition-opacity active:cursor-grabbing ${
+                  className={`group/i flex cursor-grab items-center gap-1.5 rounded-[8px] border border-border bg-surface px-2 py-1.5 text-[12.5px] transition-opacity active:cursor-grabbing ${
                     drag === key ? 'opacity-40' : ''
                   }`}
                 >
                   <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted2" />
-                  <span className="flex-1 truncate">{label[key] || key}</span>
+                  <span className="flex-1 truncate" title={label[key] || key}>{label[key] || key}</span>
+                  <button
+                    onClick={() => move(key, -1)}
+                    disabled={i === 0}
+                    title="Subir"
+                    className="shrink-0 rounded p-0.5 text-muted2 hover:bg-surface2 hover:text-ink disabled:opacity-25 disabled:hover:bg-transparent"
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => move(key, 1)}
+                    disabled={i === active.length - 1}
+                    title="Descer"
+                    className="shrink-0 rounded p-0.5 text-muted2 hover:bg-surface2 hover:text-ink disabled:opacity-25 disabled:hover:bg-transparent"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     onClick={() => toggle(key)}
                     title="Tirar da tabela"

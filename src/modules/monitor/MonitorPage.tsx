@@ -112,14 +112,16 @@ function MonitorInner() {
 
       {tab === 'monitor' ? (
         <>
-          {hasData && <SummaryStrip counts={counts} />}
+          {/* No modo compacto some tudo que não é a tabela (chips, abas, filtros):
+              são ~150px que viram linhas de campanha na tela. */}
+          {hasData && !m.compact && <SummaryStrip counts={counts} />}
 
           {/* Abas grudadas no card, filtros rotulados, tabela — o desenho do
               gerenciador que ele já usa no dia a dia. */}
-          <LevelTabs />
-          <div className="card !rounded-t-none">
+          {!m.compact && <LevelTabs />}
+          <div className={`card ${m.compact ? '' : '!rounded-t-none'}`}>
             <Toolbar onSettings={() => setShowSettings(true)} />
-            <FilterBar />
+            {!m.compact && <FilterBar />}
             <ContextBar />
 
             {!hasData && !m.loading && (

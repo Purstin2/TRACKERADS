@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Activity,
-  BarChart3,
   CheckCircle2,
   ChevronDown,
+  ChevronsDown,
+  ChevronsUp,
   Clipboard,
   Columns3,
   Filter,
@@ -189,11 +190,14 @@ export default function Toolbar({ onSettings }: { onSettings: () => void }) {
           >
             <Zap className="h-[17px] w-[17px]" />
           </IconBtn>
-          <IconBtn title="Vendas do dia ao vivo" active={m.view === 'aovivo'} onClick={() => m.setView('aovivo')}>
-            <Activity className="h-[17px] w-[17px]" />
-          </IconBtn>
-          <IconBtn title="Evolução dia a dia" active={m.view === 'grafico'} onClick={() => m.setView('grafico')}>
-            <BarChart3 className="h-[17px] w-[17px]" />
+          {/* Gráfico e Ao vivo NÃO entram aqui: já são botões nas visões ao lado,
+              e ter o mesmo comando em dois lugares só confunde. */}
+          <IconBtn
+            title={m.compact ? 'Mostrar chips e filtros' : 'Compactar o topo — mais linhas na tela'}
+            active={m.compact}
+            onClick={() => m.setCompact(!m.compact)}
+          >
+            {m.compact ? <ChevronsDown className="h-[17px] w-[17px]" /> : <ChevronsUp className="h-[17px] w-[17px]" />}
           </IconBtn>
         </div>
 
