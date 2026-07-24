@@ -82,7 +82,11 @@ export function getCampNome(
   return buildNomeEstrutura(form, paises, budgetType, `11${totalCriativos}`)
 }
 
-export function buildUTMString(form: FormState): string {
+/** Prefixo estático colado no INÍCIO do utm_campaign. Sobrevive ao
+ *  compartilhamento orgânico (onde as macros {{}} não resolvem) sem afetar o
+ *  casamento por id — o dashboard pesca "|<id>" do FIM (regex ancorada em $),
+ *  então texto no começo é ignorado no pago e recuperável no viral. */
+export function buildUTMString(form: FormState, staticCamp?: string): string {
   const fields: (keyof FormState)[] = [
     'utm_source',
     'utm_medium',
@@ -90,19 +94,22 @@ export function buildUTMString(form: FormState): string {
     'utm_content',
     'utm_term',
   ]
+  const sc = (staticCamp || '').trim()
   const params: string[] = []
   for (const f of fields) {
-    const v = gv(form, f)
-    if (v) params.push(`${f}=${v}`)
+    let v = gv(form, f)
+    if (!v) continue
+    if (f === 'utm_campaign' && sc) v = `${sc}~~${v}`
+    params.push(`${f}=${v}`)
   }
   const xcod = gv(form, 'utm_xcod')
   if (xcod) params.push(`xcod=${xcod}`)
   return params.join('&')
 }
 
-export function buildURL(form: FormState): string {
+export function buildURL(form: FormState, staticCamp?: string): string {
   const base = gv(form, 'url_destino')
-  const utms = buildUTMString(form)
+  const utms = buildUTMString(form, staticCamp)
   return utms ? base + (base.includes('?') ? '&' : '?') + utms : base
 }
 

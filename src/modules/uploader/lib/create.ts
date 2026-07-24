@@ -48,13 +48,14 @@ function buildCreativeBody(
   v: CreateItem,
   urlBase: string,
   nomeCriativo: string,
+  campNome?: string,
 ): Record<string, unknown> {
   const { form } = ctx
   // catálogo tem prioridade (esconde na biblioteca); precisa do product_set
   if (gv(form, 'tipo_anuncio') === 'catalogo' && gv(form, 'product_set_id'))
-    return buildCreativeBodyCatalogo(ctx, conta, v, urlBase, nomeCriativo)
+    return buildCreativeBodyCatalogo(ctx, conta, v, urlBase, nomeCriativo, campNome)
   if (ctx.searchPlacementActive && ctx.searchVideoSel)
-    return buildCreativeBodyPesquisa(ctx, conta, v, urlBase, nomeCriativo)
+    return buildCreativeBodyPesquisa(ctx, conta, v, urlBase, nomeCriativo, campNome)
 
   const vd: Record<string, unknown> = {
     video_id: v.id,
@@ -70,7 +71,7 @@ function buildCreativeBody(
   const ig = eff(conta, form, 'instagram_id')
   if (ig) spec.instagram_user_id = ig
   const body: Record<string, unknown> = { name: nomeCriativo, object_story_spec: spec }
-  const utms = buildUTMString(form)
+  const utms = buildUTMString(form, campNome)
   if (utms) body.url_tags = utms
   return body
 }
@@ -81,6 +82,7 @@ function buildCreativeBodyPesquisa(
   v: CreateItem,
   urlBase: string,
   nomeCriativo: string,
+  campNome?: string,
 ): Record<string, unknown> {
   const { form } = ctx
   const L_MAIN = { name: 'asset_main' }
@@ -158,7 +160,7 @@ function buildCreativeBodyPesquisa(
     object_story_spec: spec,
     asset_feed_spec: afs,
   }
-  const utms = buildUTMString(form)
+  const utms = buildUTMString(form, campNome)
   if (utms) body.url_tags = utms
   return body
 }
@@ -173,6 +175,7 @@ function buildCreativeBodyCatalogo(
   v: CreateItem,
   urlBase: string,
   nomeCriativo: string,
+  campNome?: string,
 ): Record<string, unknown> {
   const { form } = ctx
   const vd: Record<string, unknown> = {
@@ -193,7 +196,7 @@ function buildCreativeBodyCatalogo(
     object_story_spec: spec,
     product_set_id: gv(form, 'product_set_id'),
   }
-  const utms = buildUTMString(form)
+  const utms = buildUTMString(form, campNome)
   if (utms) body.url_tags = utms
   return body
 }
@@ -282,7 +285,7 @@ async function criarN11(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, vr1, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr1, urlFinal, nome, nome),
       )
       ctx.onLog(`  ✓ Criativo: ${creative.id}`, 'ok')
 
@@ -317,8 +320,8 @@ async function criar1N1(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
   const total = lista.length
   ctx.onLog('[1/3] Criando campanha única...', 'info')
   let camp: any
+  const nomeCamp = getCampNome(form, paises, budgetType, estrutura, lista[0].nome, total)
   try {
-    const nomeCamp = getCampNome(form, paises, budgetType, estrutura, lista[0].nome, total)
     camp = await fbPost(token, `${acc}/campaigns`, campaignBody(ctx, nomeCamp))
     ctx.onLog(`✓ Campanha: ${camp.id}`, 'ok')
   } catch (e: any) {
@@ -341,7 +344,7 @@ async function criar1N1(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, vr2, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr2, urlFinal, nome, nomeCamp),
       )
       const ad = await fbPost(token, `${acc}/ads`, {
         name: nome,
@@ -404,7 +407,7 @@ async function criar11N(ctx: CreateCtx, conta: ContaExtra, urlFinal: string) {
       const creative = await fbPost(
         token,
         `${acc}/adcreatives`,
-        buildCreativeBody(ctx, conta, vr3, urlFinal, nome),
+        buildCreativeBody(ctx, conta, vr3, urlFinal, nome, nomeEstrutura),
       )
       const ad = await fbPost(token, `${acc}/ads`, {
         name: nome,
