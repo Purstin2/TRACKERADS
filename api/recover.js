@@ -182,6 +182,15 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
+  // ── Tracker Padrão: captura do gasto em anúncios (?job=ads) ──
+  // Pega carona aqui porque o Hobby limita a 12 funções serverless e o projeto
+  // já está no teto. Sai antes de qualquer lógica de WhatsApp — não interfere.
+  if ((req.query.job || '') === 'ads') {
+    const { rodarSnapshot } = await import('./_adsSnapshot.js')
+    const out = await rodarSnapshot({ dias: req.query.dias })
+    return res.status(out.erro ? (out.http || 500) : 200).json(out)
+  }
+
   // config (template/delay/janela editáveis na tela; credenciais só na env)
   let cfg = {}
   try {
