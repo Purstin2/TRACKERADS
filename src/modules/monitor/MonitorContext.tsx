@@ -9,7 +9,7 @@ import { cacheGet, cacheSet, remoteGet, remoteSet, loadState } from '@/lib/appSt
 import {
   fetchAggregate,
   fetchTimeSeries,
-  fetchCampaignMeta,
+  fetchEntityMeta,
   fetchAdAccounts,
   getRoas,
   getCpa,
@@ -30,6 +30,9 @@ import {
 import { fetchRealByCampaign, type RealAgg } from './realRoas'
 
 export type MonitorView = 'lista' | 'historico' | 'grafico' | 'aovivo'
+
+/** Aba da tabela: as três da Meta + "Contas" (agregado por conta, não vem da API). */
+export type TableLevel = 'account' | AdLevel
 
 export interface CampMap {
   [campId: string]: { name: string; dates: Record<string, DayData> }
@@ -94,10 +97,19 @@ interface Ctx {
   setView: (v: MonitorView) => void
   level: AdLevel
   setLevel: (l: AdLevel) => void
+  tableLevel: TableLevel
+  setTableLevel: (t: TableLevel) => void
+  nameFilter: string
+  setNameFilter: (s: string) => void
+  offerFilter: string
+  setOfferFilter: (s: string) => void
   settings: Settings
   saveSettings: (s: Settings) => void
   cache: CacheItem[]
   loading: boolean
+  lastLoad: number | null
+  /** Reflete na tela o status novo depois de ligar/desligar, sem refazer o fetch. */
+  patchStatus: (accId: string, entityId: string, status: string) => void
   actionFilter: string | null
   setActionFilter: (c: string | null) => void
   campSel: Set<string>
@@ -126,9 +138,13 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
   const [datePreset, setDatePreset] = useState('last_14d')
   const [view, setView] = useState<MonitorView>('lista')
   const [level, setLevelState] = useState<AdLevel>('campaign')
+  const [tableLevel, setTableLevelState] = useState<TableLevel>('campaign')
+  const [nameFilter, setNameFilter] = useState('')
+  const [offerFilter, setOfferFilter] = useState('')
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [cache, setCache] = useState<CacheItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [lastLoad, setLastLoad] = useState<number | null>(null)
   const [actionFilter, setActionFilter] = useState<string | null>(null)
   const [campSel, setCampSel] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
@@ -253,6 +269,20 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setLevelState(l)
     if (token.trim() && cache.length) loadMonitor(l) // re-busca no novo nível se já tem dados
   }
+  /** "Contas" é um agregado das linhas de campanha — muda só a exibição, não a busca. */
+  const setTableLevel = (t: TableLevel) => {
+    setTableLevelState(t)
+    const dataLevel: AdLevel = t === 'account' ? 'campaign' : t
+    if (dataLevel !== level) setLevel(dataLevel)
+  }
+  const patchStatus = (accId: string, entityId: string, status: string) =>
+    setCache((prev) =>
+      prev.map((item) => {
+        if (item.acc.id !== accId) return item
+        const prevMeta = item.meta?.[entityId] || { budget: null }
+        return { ...item, meta: { ...item.meta, [entityId]: { ...prevMeta, status } } }
+      }),
+    )
 
   // `viewOverride`: quem troca de aba e recarrega no mesmo clique (ex.: 'ver na Lista'
   // vindo do Ao vivo) precisa disso — o setView do React só vale no próximo render,
@@ -281,7 +311,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
           if (useView === 'lista') {
             const [rows, cm] = await Promise.all([
               fetchAggregate(acc.id, datePreset, tok, statuses, useLevel),
-              useLevel === 'campaign' ? fetchCampaignMeta(acc.id, tok).catch(() => [] as any[]) : Promise.resolve([] as any[]),
+              fetchEntityMeta(acc.id, tok, useLevel).catch(() => [] as any[]),
             ])
             const meta: Record<string, CampMeta> = {}
             ;(cm as any[]).forEach((c) => {
@@ -301,6 +331,7 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
       }),
     )
     setCache(out)
+    setLastLoad(Date.now())
     setLoading(false)
   }
 
@@ -320,10 +351,18 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
     setView,
     level,
     setLevel,
+    tableLevel,
+    setTableLevel,
+    nameFilter,
+    setNameFilter,
+    offerFilter,
+    setOfferFilter,
     settings,
     saveSettings,
     cache,
     loading,
+    lastLoad,
+    patchStatus,
     actionFilter,
     setActionFilter,
     campSel,

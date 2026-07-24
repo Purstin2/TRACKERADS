@@ -4,12 +4,17 @@ import { Construction, X } from 'lucide-react'
 import { MonitorProvider, useMonitor } from './MonitorContext'
 import ContextBar from './components/ContextBar'
 import SharedBar from './components/SharedBar'
+import LevelTabs from './components/LevelTabs'
+import Toolbar from './components/Toolbar'
+import FilterBar from './components/FilterBar'
 import {
   ListaView,
+  ContasView,
   HistoricoView,
   GraficoView,
   SummaryStrip,
   tallyCounts,
+  resetColCfg,
 } from './MonitorViews'
 import AoVivoView from './AoVivoView'
 import RegrasView from './RegrasView'
@@ -104,33 +109,43 @@ function MonitorInner() {
 
   return (
     <div>
-      <SharedBar onSettings={() => setShowSettings(true)} />
+      <SharedBar onSettings={() => setShowSettings(true)} showFilters={tab !== 'monitor'} />
 
       {tab === 'monitor' ? (
         <>
-          <ContextBar />
           {hasData && <SummaryStrip counts={counts} />}
-          {!hasData && !m.loading && (
-            <div className="rounded-xl2 border border-dashed border-border bg-surface/50 px-6 py-12 text-center">
-              <h3 className="text-lg font-bold">Monitor de Campanhas</h3>
-              <p className="mt-1 text-[13px] text-muted">
-                Cole o token, selecione as contas e clique em Atualizar.
-              </p>
-            </div>
-          )}
-          {m.loading && (
-            <div className="flex items-center justify-center py-16">
-              <div className="h-7 w-7 animate-spin rounded-full border-2 border-border border-t-brand" />
-            </div>
-          )}
-          {hasData && !m.loading && (
-            <>
-              {m.view === 'lista' && <ListaView items={m.cache} />}
-              {m.view === 'historico' && <HistoricoView items={m.cache} />}
-              {m.view === 'grafico' && <GraficoView items={m.cache} />}
-              {m.view === 'aovivo' && <AoVivoView items={m.cache} />}
-            </>
-          )}
+
+          {/* Abas grudadas no card, filtros rotulados, tabela — o desenho do
+              gerenciador que ele já usa no dia a dia. */}
+          <LevelTabs />
+          <div className="card !rounded-t-none">
+            <Toolbar onSettings={() => setShowSettings(true)} onResetCols={resetColCfg} />
+            <FilterBar />
+            <ContextBar />
+
+            {!hasData && !m.loading && (
+              <div className="px-6 py-14 text-center">
+                <h3 className="text-[15px] font-bold">Monitor de Campanhas</h3>
+                <p className="mt-1 text-[13px] text-muted">
+                  Cole o token, escolha as contas e clique em <b className="text-ink">Atualizar</b>.
+                </p>
+              </div>
+            )}
+            {m.loading && (
+              <div className="flex items-center justify-center py-16">
+                <div className="h-7 w-7 animate-spin rounded-full border-2 border-border border-t-brand" />
+              </div>
+            )}
+            {hasData && !m.loading && (
+              <>
+                {m.view === 'lista' &&
+                  (m.tableLevel === 'account' ? <ContasView items={m.cache} /> : <ListaView items={m.cache} />)}
+                {m.view === 'historico' && <div className="p-4"><HistoricoView items={m.cache} /></div>}
+                {m.view === 'grafico' && <div className="p-4"><GraficoView items={m.cache} /></div>}
+                {m.view === 'aovivo' && <div className="p-4"><AoVivoView items={m.cache} /></div>}
+              </>
+            )}
+          </div>
         </>
       ) : tab === 'regras' ? (
         <RegrasView />

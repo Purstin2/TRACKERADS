@@ -10,7 +10,19 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts'
-import { ExternalLink, Search, X, TrendingUp, Check as CheckIcon } from 'lucide-react'
+import {
+  ExternalLink,
+  Search,
+  X,
+  TrendingUp,
+  Check as CheckIcon,
+  DollarSign,
+  Clock,
+  Copy,
+  History,
+  Link2,
+  PenLine,
+} from 'lucide-react'
 import {
   fetchAds,
   fetchCampDaily,
@@ -32,6 +44,8 @@ import {
 } from '@/lib/meta'
 import { loadFinParamsForAccount, rowFin } from './finance'
 import { useMonitor } from './MonitorContext'
+import StatusSwitch from './components/StatusSwitch'
+import { offerMemberSet } from './offers'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
 import type { RealAgg } from './realRoas'
@@ -484,7 +498,7 @@ function CampHistoryModal({ accId, name, campId, cur, onClose }: { accId: string
  *  dá pra ver de relance o que existe pra fazer. Itens contextuais (Tracker,
  *  Prova) só aparecem quando há registro pra eles.
  *  Os modais vivem AQUI, fora dos botões, pra não fecharem junto. */
-export function ActionsBar({ accId, name, campId, roas, cur, spend, sales }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number }) {
+export function ActionsBar({ accId, name, campId, roas, cur, spend, sales, compact }: { accId: string; name: string; campId: string; roas: number | null; cur: string; spend?: number; sales?: number; compact?: boolean }) {
   useLog() // reage ao log: tracker/prova surgem conforme há registro
   const [modal, setModal] = useState<null | 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas'>(null)
 
@@ -492,14 +506,14 @@ export function ActionsBar({ accId, name, campId, roas, cur, spend, sales }: { a
   const impDays = impactDays(campId)
   const trackHoje = impDays[0] === todayBR()
 
-  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas' | 'log'; icon: string; label: string; title: string; show: boolean; accent: string }[] = [
-    { key: 'budget', icon: '💰', label: 'Orçamento', title: 'Ajustar orçamento (aumentar ou diminuir)', show: true, accent: 'hover:text-ok' },
-    { key: 'vendas', icon: '🕒', label: 'Vendas', title: 'Vendas por horário — a hora exata de cada venda', show: true, accent: 'hover:text-ok' },
-    { key: 'track', icon: '📈', label: 'Tracker', title: trackHoje ? 'Tracker do aumento — medindo o de hoje, ao vivo' : 'Tracker do aumento — antes × depois', show: impDays.length > 0, accent: 'hover:text-brand-2' },
-    { key: 'dup', icon: '📋', label: 'Duplicar', title: 'Duplicar campanha — cópia idêntica + prova 7d', show: true, accent: 'hover:text-warn' },
-    { key: 'hist', icon: '🕐', label: 'Histórico', title: 'Histórico da campanha — o que já fiz nela + cópias', show: true, accent: 'hover:text-brand-2' },
-    { key: 'proof', icon: '🔗', label: 'Prova', title: 'Prova da duplicação — cópia × original', show: dups.length > 0, accent: 'hover:text-warn' },
-    { key: 'log', icon: '✎', label: 'Log', title: 'Registrar ação — anotar no log', show: true, accent: 'hover:text-ink' },
+  const items: { key: 'budget' | 'dup' | 'proof' | 'track' | 'hist' | 'vendas' | 'log'; icon: string; Icon: typeof DollarSign; label: string; title: string; show: boolean; accent: string }[] = [
+    { key: 'budget', icon: '💰', Icon: DollarSign, label: 'Orçamento', title: 'Ajustar orçamento (aumentar ou diminuir)', show: true, accent: 'hover:text-ok' },
+    { key: 'vendas', icon: '🕒', Icon: Clock, label: 'Vendas', title: 'Vendas por horário — a hora exata de cada venda', show: true, accent: 'hover:text-ok' },
+    { key: 'track', icon: '📈', Icon: TrendingUp, label: 'Tracker', title: trackHoje ? 'Tracker do aumento — medindo o de hoje, ao vivo' : 'Tracker do aumento — antes × depois', show: impDays.length > 0, accent: 'hover:text-brand-2' },
+    { key: 'dup', icon: '📋', Icon: Copy, label: 'Duplicar', title: 'Duplicar campanha — cópia idêntica + prova 7d', show: true, accent: 'hover:text-warn' },
+    { key: 'hist', icon: '🕐', Icon: History, label: 'Histórico', title: 'Histórico da campanha — o que já fiz nela + cópias', show: true, accent: 'hover:text-brand-2' },
+    { key: 'proof', icon: '🔗', Icon: Link2, label: 'Prova', title: 'Prova da duplicação — cópia × original', show: dups.length > 0, accent: 'hover:text-warn' },
+    { key: 'log', icon: '✎', Icon: PenLine, label: 'Log', title: 'Registrar ação — anotar no log', show: true, accent: 'hover:text-ink' },
   ]
 
   function pick(k: (typeof items)[number]['key']) {
@@ -510,16 +524,28 @@ export function ActionsBar({ accId, name, campId, roas, cur, spend, sales }: { a
   return (
     <>
       <div className="flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-        {items.filter((it) => it.show).map((it) => (
-          <button
-            key={it.key}
-            onClick={() => pick(it.key)}
-            title={it.title}
-            className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold text-muted2 transition-colors hover:bg-surface2 ${it.accent}`}
-          >
-            <span className="mr-0.5">{it.icon}</span>{it.label}
-          </button>
-        ))}
+        {items.filter((it) => it.show).map((it) =>
+          compact ? (
+            // linha da tabela: só o ícone (o rótulo virava um muro de texto em 40 linhas)
+            <button
+              key={it.key}
+              onClick={() => pick(it.key)}
+              title={it.title}
+              className={`rounded p-1 text-muted2 transition-colors hover:bg-surface2 ${it.accent}`}
+            >
+              <it.Icon className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              key={it.key}
+              onClick={() => pick(it.key)}
+              title={it.title}
+              className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold text-muted2 transition-colors hover:bg-surface2 ${it.accent}`}
+            >
+              <span className="mr-0.5">{it.icon}</span>{it.label}
+            </button>
+          ),
+        )}
       </div>
 
       {modal === 'budget' && <BudgetModal accId={accId} name={name} campId={campId} cur={cur} onClose={() => setModal(null)} />}
@@ -540,12 +566,14 @@ interface ListaRow {
   revenue: number
   lucro: number
   margem: number
+  roi: number | null
   roas: number | null
   cpa: number | null
   sales: number
   freq: number
   cpm: number
   impr: number
+  clicks: number
   ctr: number
   cpc: number
   cpaIC: number | null
@@ -559,6 +587,15 @@ interface ListaRow {
   realRevenue: number | null
   realRoas: number | null
   lucroReal: number | null
+}
+
+/** Linha da tabela unificada: a mesma ListaRow + de que conta ela veio.
+ *  Todos os valores em dinheiro já vêm convertidos pra moeda de exibição. */
+export interface TableRow extends ListaRow {
+  accId: string
+  accName: string
+  accCur: string
+  key: string // `${accId}::${id}` — é a chave da seleção e das ofertas
 }
 
 export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<string, CampMeta>, level: AdLevel = 'campaign', realMap?: Record<string, RealAgg>, cur?: string, accId?: string): ListaRow[] {
@@ -588,12 +625,14 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
         revenue,
         lucro,
         margem,
+        roi: spend > 0 ? lucro / spend : null,
         roas,
         cpa,
         sales,
         freq: getFreq(r),
         cpm: getCpm(r),
         impr: getImpr(r),
+        clicks: parseInt((r.inline_link_clicks as string) || '0') || 0,
         ctr: getCtr(r),
         cpc: getCpc(r),
         cpaIC: getCpaIC(r),
@@ -636,34 +675,44 @@ const SUM_ITEMS: [string, string, string, string][] = [
   ['perto', 'Perto de escalar', '📈', 'border-brand/30'],
   ['monitorar', 'Monitorando', '👁', 'border-border'],
 ]
+/** Faixa de status como CHIPS numa linha só — os cinco cards grandes comiam ~90px
+ *  de altura útil e empurravam a linha de totais da tabela pra fora da tela. */
 export function SummaryStrip({ counts }: { counts: Counts }) {
   const m = useMonitor()
   return (
-    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="mb-2 flex flex-wrap items-center gap-1.5">
       {SUM_ITEMS.map(([code, label, icon, border]) => {
         const sel = m.actionFilter === code
+        const n = counts[code]
         return (
           <button
             key={code}
             onClick={() => m.setActionFilter(sel ? null : code)}
-            className={`rounded-xl2 border bg-surface px-3 py-2.5 text-left transition-all ${border} ${
-              sel ? 'ring-2 ring-brand' : ''
-            }`}
+            title={`Filtrar: ${label}`}
+            className={`flex items-center gap-1.5 rounded-full border bg-surface px-3 py-1 text-[11.5px] transition-all ${border} ${
+              sel ? 'ring-2 ring-brand' : 'hover:border-brand/50'
+            } ${n === 0 ? 'opacity-50' : ''}`}
           >
-            <div className="text-[20px] font-extrabold">{counts[code]}</div>
-            <div className="text-[11px] text-muted2">
-              {icon} {label}
-            </div>
+            <span className="text-[12px] leading-none">{icon}</span>
+            <span className="font-extrabold tabular-nums">{n}</span>
+            <span className="text-muted2">{label}</span>
           </button>
         )
       })}
+      {m.actionFilter && (
+        <button onClick={() => m.setActionFilter(null)} className="ml-1 text-[11px] text-muted2 hover:text-ink">
+          ✕ limpar filtro
+        </button>
+      )}
     </div>
   )
 }
 
 /* ── Lista (gerenciador estilo Facebook) ── */
-interface TotAgg { spend: number; sales: number; revenue: number; lucro: number; budget: number; realSales: number; realRevenue: number; lucroReal: number; spendBRL: number }
+interface TotAgg { spend: number; sales: number; revenue: number; lucro: number; budget: number; realSales: number; realRevenue: number; lucroReal: number; spendBRL: number; impr: number; clicks: number }
 const m2 = (v: number | null, sym: string) => (v == null ? '—' : sym + v.toFixed(2))
+const int = (v: number) => (v ? v.toLocaleString('pt-BR') : '—')
+const pct = (v: number | null) => (v == null ? '—' : (v * 100).toFixed(0) + '%')
 
 interface MetCol {
   key: string
@@ -674,8 +723,21 @@ interface MetCol {
   totalCls?: (T: TotAgg, s: Settings) => string
 }
 const MET_COLS: MetCol[] = [
+  { key: 'updatedTime', label: 'Últ. Atualização', render: (r) => fmtEdit(r.updatedTime), cls: () => 'text-muted2 whitespace-nowrap' },
   { key: 'sales', label: 'Vendas', render: (r) => r.sales || '—', total: (T) => T.sales || '—' },
-  { key: 'budget', label: 'Orçam.', render: (r, sym) => (r.budget != null ? sym + (r.budget / 100).toFixed(2) : '—'), total: (T, sym) => (T.budget > 0 ? sym + (T.budget / 100).toFixed(2) : '—') },
+  {
+    key: 'budget',
+    label: 'Orçamento',
+    // valor + "Diário" embaixo, como no gerenciador que ele usa
+    render: (r, sym) =>
+      r.budget == null ? '—' : (
+        <span className="flex flex-col items-end leading-tight">
+          <span>{sym}{(r.budget / 100).toFixed(2)}</span>
+          <span className="text-[9.5px] font-normal text-muted2">Diário</span>
+        </span>
+      ),
+    total: (T, sym) => (T.budget > 0 ? sym + (T.budget / 100).toFixed(2) : '—'),
+  },
   { key: 'cpa', label: 'CPA', render: (r, sym) => m2(r.cpa, sym), cls: (r, s) => (r.cpa == null ? 'text-muted2' : r.cpa <= s.cpaMax ? 'text-ok' : 'text-danger'), total: (T, sym) => (T.sales > 0 ? sym + (T.spend / T.sales).toFixed(2) : '—') },
   { key: 'spend', label: 'Gasto', render: (r, sym) => sym + r.spend.toFixed(2), total: (T, sym) => sym + T.spend.toFixed(2) },
   { key: 'lucro', label: 'Lucro', render: (r, sym) => (r.spend <= 0 ? '—' : (r.lucro >= 0 ? '' : '-') + sym + Math.abs(r.lucro).toFixed(2)), cls: (r) => (r.spend <= 0 ? 'text-muted2' : r.lucro >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'), total: (T, sym) => (T.lucro >= 0 ? '' : '-') + sym + Math.abs(T.lucro).toFixed(2), totalCls: (T) => (T.lucro >= 0 ? 'text-ok' : 'text-danger') },
@@ -687,16 +749,38 @@ const MET_COLS: MetCol[] = [
   { key: 'cpaIC', label: 'CPI', render: (r, sym) => m2(r.cpaIC, sym), cls: () => 'text-muted2' },
   { key: 'cpc', label: 'CPC', render: (r, sym) => (r.cpc ? m2(r.cpc, sym) : '—'), cls: () => 'text-muted2' },
   { key: 'ctr', label: 'CTR', render: (r) => (r.ctr ? r.ctr.toFixed(2) + '%' : '—'), cls: () => 'text-muted2' },
-  { key: 'freq', label: 'Freq', render: (r, _sym, s) => (r.freq ? r.freq.toFixed(1) : '—') + (r.freq >= s.freqWarn ? '🔥' : ''), cls: (r, s) => (r.freq >= s.freqWarn ? 'text-warn' : 'text-muted2') },
+  { key: 'freq', label: 'Frequência', render: (r, _sym, s) => (r.freq ? r.freq.toFixed(2) : '—') + (r.freq >= s.freqWarn ? ' 🔥' : ''), cls: (r, s) => (r.freq >= s.freqWarn ? 'text-warn' : 'text-muted2') },
   { key: 'margem', label: 'Margem', render: (r) => (r.revenue > 0 ? (r.margem * 100).toFixed(0) + '%' : '—'), cls: (r) => (r.spend <= 0 || r.revenue <= 0 ? 'text-muted2' : r.margem >= 0 ? 'text-muted' : 'text-danger') },
-  { key: 'updatedTime', label: 'Últ.', render: (r) => fmtEdit(r.updatedTime), cls: () => 'text-muted2 whitespace-nowrap' },
+  { key: 'revenue', label: 'Faturamento', render: (r, sym) => (r.revenue > 0 ? sym + r.revenue.toFixed(2) : '—'), total: (T, sym) => sym + T.revenue.toFixed(2) },
+  { key: 'roi', label: 'ROI', render: (r) => (r.spend > 0 ? pct(r.roi) : '—'), cls: (r) => (r.spend <= 0 || r.roi == null ? 'text-muted2' : r.roi >= 0 ? 'text-ok' : 'text-danger'), total: (T) => (T.spend > 0 ? pct(T.lucro / T.spend) : '—'), totalCls: (T) => (T.spend > 0 && T.lucro >= 0 ? 'text-ok' : 'text-danger') },
+  { key: 'cpm', label: 'CPM', render: (r, sym) => (r.cpm ? sym + r.cpm.toFixed(2) : '—'), cls: () => 'text-muted2', total: (T, sym) => (T.impr > 0 ? sym + ((T.spend / T.impr) * 1000).toFixed(2) : '—') },
+  { key: 'impr', label: 'Impressões', render: (r) => int(r.impr), cls: () => 'text-muted2', total: (T) => int(T.impr) },
+  { key: 'clicks', label: 'Cliques', render: (r) => int(r.clicks), cls: () => 'text-muted2', total: (T) => int(T.clicks) },
 ]
 const MET_BY_KEY: Record<string, MetCol> = Object.fromEntries(MET_COLS.map((c) => [c.key, c]))
 
 /* config de colunas (ordem + largura) salva no navegador */
-const COLCFG_KEY = 'monitor_colcfg_v1'
+/* v2: a ordem padrão passou a ser a do gerenciador (Últ. Atualização → Vendas →
+   Orçamento → CPA → Gastos → Lucro → ROAS…). Chave nova pra não herdar a ordem
+   antiga salva, que jogaria as colunas novas pro fim da tabela. */
+const COLCFG_KEY = 'monitor_colcfg_v2'
 const DEF_ORDER = MET_COLS.map((c) => c.key)
 const DEF_W = 96
+/* Larguras padrão por coluna: 96px cortava data/hora e faturamento no meio. */
+const COL_DEF_W: Record<string, number> = {
+  updatedTime: 118,
+  revenue: 110,
+  lucroReal: 110,
+  impr: 104,
+  clicks: 86,
+  budget: 104,
+  margem: 84,
+  ctr: 78,
+  roi: 78,
+  freq: 100,
+  sales: 80,
+}
+const defW = (key: string) => COL_DEF_W[key] || DEF_W
 interface ColCfg { order: string[]; w: Record<string, number> }
 let colCfgCache: ColCfg | null = null
 const colSubs = new Set<() => void>()
@@ -718,8 +802,8 @@ function useColCfg(): ColCfg {
 
 /* Larguras padrão das colunas FIXAS (nome/status/aumento). Elas moram no mesmo
  * colCfg das métricas, então "↺ resetar colunas" também as devolve ao padrão. */
-const FIXED_W: Record<string, number> = { name: 300, status: 78, aumento: 118 }
-export const colW = (cfg: ColCfg, key: string) => cfg.w[key] || FIXED_W[key] || DEF_W
+const FIXED_W: Record<string, number> = { name: 330, status: 92, aumento: 96 }
+export const colW = (cfg: ColCfg, key: string) => cfg.w[key] || FIXED_W[key] || defW(key)
 
 /** Alça de redimensionar: arrasta a borda direita da coluna. Vale pras métricas
  *  e (agora) também pras colunas fixas — antes só as métricas esticavam. */
@@ -753,7 +837,7 @@ function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) 
   }
   const startResize = (key: string, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
-    const startX = e.clientX, startW = getColCfg().w[key] || DEF_W
+    const startX = e.clientX, startW = getColCfg().w[key] || defW(key)
     const move = (ev: MouseEvent) => {
       const cur = getColCfg()
       setColCfg({ ...cur, w: { ...cur.w, [key]: Math.max(54, startW + (ev.clientX - startX)) } })
@@ -767,7 +851,7 @@ function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) 
       {cfg.order.map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
-        const w = cfg.w[key] || DEF_W
+        const w = cfg.w[key] || defW(key)
         const active = sort?.key === key
         return (
           <th key={key} draggable onDragStart={() => setDragKey(key)} onDragOver={(e) => e.preventDefault()} onDrop={() => drop(key)}
@@ -791,7 +875,7 @@ function MetCells({ r, sym, s }: { r: ListaRow; sym: string; s: Settings }) {
       {cfg.order.map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
-        const w = cfg.w[key] || DEF_W
+        const w = cfg.w[key] || defW(key)
         return (
           <td key={key} style={{ width: w, minWidth: w, maxWidth: w }}
             className={`overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums ${c.cls ? c.cls(r, s) : ''}`}>
@@ -810,7 +894,7 @@ function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
       {cfg.order.map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
-        const w = cfg.w[key] || DEF_W
+        const w = cfg.w[key] || defW(key)
         return (
           <td key={key} style={{ width: w }} className={`px-3 py-2.5 text-right font-mono tabular-nums ${c.total ? (c.totalCls ? c.totalCls(T, s) : '') : 'text-muted2'}`}>
             {c.total ? c.total(T, sym) : '—'}
@@ -868,126 +952,316 @@ export function statusPill(st?: string) {
   return <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${active ? 'bg-ok/15 text-ok' : 'bg-surface2 text-muted2'}`}>{label}</span>
 }
 
+/* ── Colunas fixas da esquerda ──
+ * Checkbox · Status · Campanha ficam grudadas enquanto a tabela rola pro lado.
+ * Elas precisam de fundo SÓLIDO próprio: com position:sticky o fundo da <tr> não
+ * pinta embaixo delas e o conteúdo passaria por trás. */
+const STICKY_W = 38
+const stickyBg = (sel: boolean, neon: boolean) =>
+  neon ? 'bg-[#231e1e]' : sel ? 'bg-[#16182d]' : 'bg-surface group-hover:bg-surface2'
+const HEAD_BG = 'bg-[#151827]'
+const FOOT_BG = 'bg-[#171a28]'
+
+const LEVEL_NOUN: Record<AdLevel, [string, string]> = {
+  campaign: ['campanha', 'campanhas'],
+  adset: ['conjunto', 'conjuntos'],
+  ad: ['anúncio', 'anúncios'],
+}
+
 export function ListaView({ items }: { items: CacheItem[] }) {
   const m = useMonitor()
   const cfg = useColCfg() // larguras das colunas (métricas + fixas)
   const s = m.settings
-  const [nameFilter, setNameFilter] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const onSort = (key: string) => setSort((p) => (p?.key === key ? (p.dir === 'desc' ? { key, dir: 'asc' } : null) : { key, dir: 'desc' }))
   useLog() // "Mexidas hoje" reage assim que eu aumento/duplico
   const touched = m.touchedOnly ? touchedIds() : null
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-[9px] border border-border bg-[#0a0c19] p-0.5 text-[12px]">
-          {([['campaign', 'Campanhas'], ['adset', 'Conjuntos'], ['ad', 'Anúncios']] as const).map(([lv, lb]) => (
-            <button key={lv} onClick={() => m.setLevel(lv)} disabled={m.loading}
-              className={`rounded-[7px] px-3 py-1 font-semibold transition-colors ${m.level === lv ? 'bg-brand text-white' : 'text-muted2 hover:text-ink'}`}>
-              {lb}
-            </button>
-          ))}
-        </div>
-        <input
-          value={nameFilter}
-          onChange={(e) => setNameFilter(e.target.value)}
-          placeholder="🔎 Filtrar por nome / nomenclatura..."
-          className="w-[240px] rounded-[9px] border border-border bg-[#0a0c19] px-3 py-1.5 text-[12px] text-ink"
-        />
-        {sort && (
-          <button onClick={() => setSort(null)} className="text-[11px] text-muted2 hover:text-ink">
-            ✕ limpar ordenação ({sort.key})
-          </button>
-        )}
-        <span className="text-[11px] text-muted2">arraste os títulos pra reordenar · puxe a borda direita pra redimensionar · clique pra ordenar</span>
-        <button onClick={resetColCfg} className="ml-auto rounded border border-border px-2 py-0.5 text-[11px] text-muted2 hover:border-brand hover:text-brand-2">↺ resetar colunas</button>
-      </div>
+  const errs = items.filter((i) => i.kind === 'err')
+  const lists = items.filter((i) => i.kind === 'lista' && i.rows)
 
-      {items.map((item, idx) => {
-        if (item.kind === 'err')
-          return (
-            <div key={idx} className="rounded-lg border border-danger/30 bg-danger/[0.07] px-4 py-3 text-[13px]">
-              ❌ <b>{item.acc.name}:</b> {item.msg}
-            </div>
-          )
-        if (item.kind !== 'lista' || !item.rows) return null
-        const sym = curSym(item.acc.cur)
-        const all = analyzeListaRows(item.rows, s, item.meta, m.level, m.realMap, item.acc.cur, item.acc.id)
-        let rows = all.filter(
-          (r) =>
-            (!m.actionFilter || r.action.code === m.actionFilter) &&
-            (!nameFilter || r.name.toLowerCase().includes(nameFilter.toLowerCase())) &&
-            (!touched || touched.has(r.id)) &&
-            (!m.onlySelected || !m.campSel.size || m.campSel.has(`${item.acc.id}::${r.id}`)),
-        )
-        rows = sortRows(rows, sort)
-        if (!rows.length) return null
-        const rowKeys = rows.map((r) => `${item.acc.id}::${r.id}`)
-        const allSel = rowKeys.length > 0 && rowKeys.every((k) => m.campSel.has(k))
-        const totSpend = all.reduce((acc, r) => acc + r.spend, 0)
-        const totSales = all.reduce((acc, r) => acc + r.sales, 0)
-        const gc = all.filter((r) => r.cls === 'good').length
-        const bc = all.filter((r) => r.cls === 'bad').length
-        // total da tabela (linha de baixo, estilo UTMify) — sobre as linhas visíveis
-        const T = rows.reduce(
-          (a, r) => ({
-            spend: a.spend + r.spend, sales: a.sales + r.sales, revenue: a.revenue + r.revenue, lucro: a.lucro + r.lucro, budget: a.budget + (r.budget || 0),
-            realSales: a.realSales + (r.realSales || 0), realRevenue: a.realRevenue + (r.realRevenue || 0), lucroReal: a.lucroReal + (r.lucroReal || 0),
-            spendBRL: a.spendBRL + r.spend * (item.acc.cur === 'USD' ? s.fx || 1 : 1),
-          }),
-          { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0, realSales: 0, realRevenue: 0, lucroReal: 0, spendBRL: 0 },
-        )
-        return (
-          <div key={idx}>
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]">
-              <span className="h-2 w-2 rounded-full bg-brand" />
-              <span className="font-bold">{item.acc.name}</span>
-              <span className="text-muted2">
-                {totSales} vendas · {sym}{totSpend.toFixed(2)}
-              </span>
-              <span className="rounded-full bg-ok/15 px-2 py-0.5 text-[11px] font-bold text-ok">{gc} ✅</span>
-              <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-bold text-danger">{bc} ❌</span>
-            </div>
-            {/* caixa com teto de altura: a barra de rolagem horizontal fica no rodapé da
-                CAIXA (sempre à vista), não no fim de uma tabela de 13 linhas — antes
-                era preciso descer a página inteira pra achar a barra. */}
-            <div className="-mx-4 max-h-[74vh] overflow-auto lg:-mx-6">
-              <table className="w-full border-collapse text-[12px] [&_td]:border-border2/40 [&_th]:border-border2/40 [&>tbody>tr>td:not(:first-child)]:border-l [&>thead>tr>th:not(:first-child)]:border-l [&>tfoot>tr>td:not(:first-child)]:border-l">
-                <thead>
-                  <tr className="sticky top-0 z-20 border-b border-border bg-[#151827] uppercase tracking-wide text-muted2">
-                    <th className="w-9 py-2.5 text-center">
-                      <Checkbox checked={allSel} onChange={(next) => m.selectMany(rowKeys, next)} title="Selecionar todas visíveis" />
-                    </th>
-                    <th className="w-8 py-2.5 text-center" />
-                    <SortTh label="Campanha" sortKey="name" sort={sort} onSort={onSort} align="left" width={colW(cfg, 'name')} />
-                    <th style={{ width: colW(cfg, 'status'), minWidth: colW(cfg, 'status') }} className="relative px-2 py-2.5 text-center">
-                      Status<ResizeHandle colKey="status" />
-                    </th>
-                    <th style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className="relative px-2 py-2.5 text-center text-[10.5px]" title="Antes → depois do aumento de orçamento de hoje">
-                      📈 Aumento<ResizeHandle colKey="aumento" />
-                    </th>
-                    <MetHead sort={sort} onSort={onSort} />
-                    <th className="py-2.5 pl-3 text-left">Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <RowWithExpand key={r.id} r={r} acc={item.acc} sym={sym} />
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-surface2/60 text-[11px] font-bold">
-                    <td colSpan={5} className="px-3 py-2.5 text-left text-muted">{rows.length} campanha{rows.length > 1 ? 's' : ''}</td>
-                    <MetFoot T={T} sym={sym} s={s} />
-                    <td className="px-3 py-2.5" />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )
-      })}
+  /* Moeda de exibição: uma tabela só, várias contas. Se as contas misturam moeda,
+     tudo é convertido pra US$ pelo câmbio dos parâmetros — mesma regra da aba Por
+     Oferta, pra não somar real com dólar na linha de total. */
+  const curs = [...new Set(lists.map((i) => i.acc.cur))]
+  const mixed = curs.length > 1
+  const dispCur = mixed ? 'USD' : curs[0] || 'USD'
+  const sym = curSym(dispCur)
+  const fxTo = (c: string) => (mixed && c === 'BRL' ? 1 / (s.fx || 1) : 1)
+  const realFx = dispCur === 'BRL' ? 1 : 1 / (s.fx || 1) // gateway devolve BRL
+
+  const all: TableRow[] = useMemo(() => {
+    const out: TableRow[] = []
+    lists.forEach((item) => {
+      const f = fxTo(item.acc.cur)
+      const scale = (v: number | null) => (v == null ? null : v * f)
+      analyzeListaRows(item.rows!, s, item.meta, m.level, m.realMap, item.acc.cur, item.acc.id).forEach((r) => {
+        out.push({
+          ...r,
+          spend: r.spend * f,
+          revenue: r.revenue * f,
+          lucro: r.lucro * f,
+          cpa: scale(r.cpa),
+          cpc: r.cpc * f,
+          cpm: r.cpm * f,
+          cpaIC: scale(r.cpaIC),
+          budget: scale(r.budget),
+          realRevenue: r.realRevenue == null ? null : r.realRevenue * realFx,
+          lucroReal: r.lucroReal == null ? null : r.lucroReal * realFx,
+          accId: item.acc.id,
+          accName: item.acc.name,
+          accCur: item.acc.cur,
+          key: `${item.acc.id}::${r.id}`,
+        })
+      })
+    })
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, s, m.level, m.realMap, mixed])
+
+  // Ofertas são grupos de CAMPANHAS — em conjuntos/anúncios o filtro não se aplica.
+  const offerSet = useMemo(
+    () => (m.level === 'campaign' ? offerMemberSet(m.offerFilter) : null),
+    [m.offerFilter, m.level],
+  )
+  const nf = m.nameFilter.trim().toLowerCase()
+
+  let rows = all.filter(
+    (r) =>
+      (!m.actionFilter || r.action.code === m.actionFilter) &&
+      (!nf || r.name.toLowerCase().includes(nf)) &&
+      (!touched || touched.has(r.id)) &&
+      (!offerSet || offerSet.has(r.key)) &&
+      (!m.onlySelected || !m.campSel.size || m.campSel.has(r.key)),
+  )
+  rows = sortRows(rows, sort) as TableRow[]
+
+  const rowKeys = rows.map((r) => r.key)
+  const allSel = rowKeys.length > 0 && rowKeys.every((k) => m.campSel.has(k))
+  const T = rows.reduce<TotAgg>(
+    (a, r) => ({
+      spend: a.spend + r.spend,
+      sales: a.sales + r.sales,
+      revenue: a.revenue + r.revenue,
+      lucro: a.lucro + r.lucro,
+      budget: a.budget + (r.budget || 0),
+      realSales: a.realSales + (r.realSales || 0),
+      realRevenue: a.realRevenue + (r.realRevenue || 0),
+      lucroReal: a.lucroReal + (r.lucroReal || 0),
+      spendBRL: a.spendBRL + r.spend * (dispCur === 'BRL' ? 1 : s.fx || 1),
+      impr: a.impr + r.impr,
+      clicks: a.clicks + r.clicks,
+    }),
+    { spend: 0, sales: 0, revenue: 0, lucro: 0, budget: 0, realSales: 0, realRevenue: 0, lucroReal: 0, spendBRL: 0, impr: 0, clicks: 0 },
+  )
+
+  // A coluna "Aumento" só existe quando ALGUMA linha tem aumento registrado —
+  // fora isso é uma coluna de traços ocupando espaço à toa.
+  const showAumento = m.level === 'campaign' && rows.some((r) => impactDays(r.id).length > 0)
+
+  const [noun, nounPl] = LEVEL_NOUN[m.level]
+  const nameW = colW(cfg, 'name')
+  const statusW = colW(cfg, 'status')
+  const L2 = STICKY_W // onde começa a coluna Status
+  const L3 = STICKY_W + statusW // onde começa a coluna Campanha
+
+  return (
+    <div>
+      {errs.map((item, idx) => (
+        <div key={idx} className="mx-4 mb-3 rounded-lg border border-danger/30 bg-danger/[0.07] px-4 py-3 text-[13px]">
+          ❌ <b>{item.acc.name}:</b> {item.msg}
+        </div>
+      ))}
+
+      {mixed && (
+        <div className="border-b border-border bg-warn/[0.06] px-4 py-2 text-[11.5px] text-warn">
+          Contas com moedas diferentes na mesma tabela — os valores em real foram convertidos pra US$ pelo câmbio {s.fx} dos parâmetros.
+        </div>
+      )}
+
+      {!rows.length ? (
+        <div className="px-4 py-14 text-center">
+          <p className="text-[13px] font-semibold text-muted">Nenhum resultado com esses filtros</p>
+          <p className="mt-1 text-[12px] text-muted2">Afrouxe o nome, o status ou o período e clique em Atualizar.</p>
+        </div>
+      ) : (
+        /* altura amarrada à janela pra que a linha de TOTAIS (sticky no rodapé da
+           caixa) caia dentro da tela — com vh fixo ela vivia abaixo da dobra */
+        <div className="max-h-[calc(100vh-370px)] min-h-[300px] overflow-auto">
+          <table className="w-full border-separate border-spacing-0 text-[12px]">
+            <thead>
+              <tr className={`${HEAD_BG} text-[10.5px] font-semibold uppercase tracking-wide text-muted2`}>
+                <th style={{ width: STICKY_W, minWidth: STICKY_W, left: 0 }} className={`sticky top-0 z-40 border-b border-r border-border py-2.5 text-center ${HEAD_BG}`}>
+                  <Checkbox checked={allSel} onChange={(next) => m.selectMany(rowKeys, next)} title="Selecionar todas visíveis" />
+                </th>
+                <th style={{ width: statusW, minWidth: statusW, left: L2 }} className={`sticky top-0 z-40 border-b border-r border-border px-2 py-2.5 text-left ${HEAD_BG}`}>
+                  <span className="relative">Status<ResizeHandle colKey="status" /></span>
+                </th>
+                <th style={{ width: nameW, minWidth: nameW, left: L3 }} className={`sticky top-0 z-40 border-b border-r border-border px-3 py-2.5 text-left ${HEAD_BG}`}>
+                  <span onClick={() => onSort('name')} className="cursor-pointer hover:text-ink">
+                    {m.level === 'campaign' ? 'Campanha' : m.level === 'adset' ? 'Conjunto' : 'Anúncio'}
+                    {sort?.key === 'name' ? (sort.dir === 'desc' ? ' ▼' : ' ▲') : ''}
+                  </span>
+                  <ResizeHandle colKey="name" />
+                </th>
+                {showAumento && (
+                  <th style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className={`sticky top-0 z-30 border-b border-r border-border px-2 py-2.5 text-center ${HEAD_BG}`} title="Antes → depois do aumento de orçamento de hoje">
+                    <span className="relative">Aumento<ResizeHandle colKey="aumento" /></span>
+                  </th>
+                )}
+                <MetHead sort={sort} onSort={onSort} />
+                <th className={`sticky top-0 z-30 border-b border-border px-3 py-2.5 text-left ${HEAD_BG}`}>Veredito</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <RowWithExpand key={r.key} r={r} sym={sym} leftStatus={L2} leftName={L3} showAumento={showAumento} />
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className={`text-[11px] font-bold ${FOOT_BG}`}>
+                <td style={{ left: 0 }} className={`sticky bottom-0 left-0 z-40 border-r border-t-2 border-border px-3 py-2.5 ${FOOT_BG}`} />
+                <td style={{ left: L2 }} className={`sticky bottom-0 z-40 border-r border-t-2 border-border px-2 py-2.5 ${FOOT_BG}`} />
+                <td style={{ left: L3 }} className={`sticky bottom-0 z-40 whitespace-nowrap border-r border-t-2 border-border px-3 py-2.5 text-left text-muted ${FOOT_BG}`}>
+                  {rows.length} {rows.length > 1 ? nounPl : noun}
+                </td>
+                {showAumento && <td className={`sticky bottom-0 z-30 border-r border-t-2 border-border px-2 py-2.5 ${FOOT_BG}`} />}
+                <MetFoot T={T} sym={sym} s={s} />
+                <td className={`sticky bottom-0 z-30 border-t-2 border-border px-3 py-2.5 ${FOOT_BG}`} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-4 py-2 text-[11px] text-muted2">
+        <span>Arraste os títulos pra reordenar · puxe a borda direita pra redimensionar · clique pra ordenar</span>
+        {sort && (
+          <button onClick={() => setSort(null)} className="text-muted hover:text-ink">✕ limpar ordenação ({sort.key})</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Aba "Contas": as mesmas métricas somadas por conta de anúncio ──
+ * Vem do mesmo cache das campanhas (nenhuma chamada extra) — é o resumo de
+ * "onde estou gastando e o que está voltando" antes de abrir campanha por campanha. */
+export function ContasView({ items }: { items: CacheItem[] }) {
+  const m = useMonitor()
+  const s = m.settings
+  const lists = items.filter((i) => i.kind === 'lista' && i.rows)
+  const curs = [...new Set(lists.map((i) => i.acc.cur))]
+  const mixed = curs.length > 1
+  const dispCur = mixed ? 'USD' : curs[0] || 'USD'
+  const sym = curSym(dispCur)
+  const realFx = dispCur === 'BRL' ? 1 : 1 / (s.fx || 1)
+
+  const accs = lists
+    .map((item) => {
+      const f = mixed && item.acc.cur === 'BRL' ? 1 / (s.fx || 1) : 1
+      const rows = analyzeListaRows(item.rows!, s, item.meta, m.level, m.realMap, item.acc.cur, item.acc.id)
+      const t = rows.reduce(
+        (a, r) => ({
+          spend: a.spend + r.spend * f,
+          revenue: a.revenue + r.revenue * f,
+          lucro: a.lucro + r.lucro * f,
+          sales: a.sales + r.sales,
+          budget: a.budget + (r.budget || 0) * f,
+          realSales: a.realSales + (r.realSales || 0),
+          realRevenue: a.realRevenue + (r.realRevenue || 0) * realFx,
+          impr: a.impr + r.impr,
+          ativas: a.ativas + (r.status === 'ACTIVE' ? 1 : 0),
+        }),
+        { spend: 0, revenue: 0, lucro: 0, sales: 0, budget: 0, realSales: 0, realRevenue: 0, impr: 0, ativas: 0 },
+      )
+      return { acc: item.acc, n: rows.length, ...t }
+    })
+    .sort((a, b) => b.spend - a.spend)
+
+  const G = accs.reduce(
+    (a, x) => ({
+      spend: a.spend + x.spend, revenue: a.revenue + x.revenue, lucro: a.lucro + x.lucro, sales: a.sales + x.sales,
+      budget: a.budget + x.budget, realSales: a.realSales + x.realSales, realRevenue: a.realRevenue + x.realRevenue, n: a.n + x.n, ativas: a.ativas + x.ativas,
+    }),
+    { spend: 0, revenue: 0, lucro: 0, sales: 0, budget: 0, realSales: 0, realRevenue: 0, n: 0, ativas: 0 },
+  )
+
+  if (!accs.length)
+    return <div className="px-4 py-14 text-center text-[13px] text-muted">Sem dados — clique em Atualizar.</div>
+
+  const money = (v: number) => (v < 0 ? '-' : '') + sym + Math.abs(v).toFixed(2)
+  const cell = 'border-b border-border2 px-3 py-3 text-right font-mono tabular-nums'
+
+  return (
+    <div className="overflow-x-auto">
+      {mixed && (
+        <div className="border-b border-border bg-warn/[0.06] px-4 py-2 text-[11.5px] text-warn">
+          Moedas diferentes — real convertido pra US$ pelo câmbio {s.fx}.
+        </div>
+      )}
+      <table className="w-full border-separate border-spacing-0 text-[12px]">
+        <thead>
+          <tr className={`${HEAD_BG} text-[10.5px] font-semibold uppercase tracking-wide text-muted2`}>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-left ${HEAD_BG}`}>Conta</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Campanhas</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Orçamento</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Gastos</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Vendas</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Faturamento</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>Lucro</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>ROAS</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>CPA</th>
+            <th className={`sticky top-0 z-20 border-b border-border px-3 py-2.5 text-right ${HEAD_BG}`}>V. reais</th>
+          </tr>
+        </thead>
+        <tbody>
+          {accs.map((a) => {
+            const roas = a.spend > 0 ? a.revenue / a.spend : null
+            return (
+              <tr key={a.acc.id} className="transition-colors hover:bg-surface2/40">
+                <td className="border-b border-border2 px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+                    <span className="font-semibold text-ink">{a.acc.name}</span>
+                    <span className="text-[10px] text-muted2">{a.acc.cur}</span>
+                  </div>
+                </td>
+                <td className={`${cell} text-muted`}>
+                  {a.n}
+                  {a.ativas > 0 && <span className="ml-1 text-[10px] text-ok">({a.ativas} ativas)</span>}
+                </td>
+                <td className={`${cell} text-muted`}>{a.budget > 0 ? money(a.budget / 100) : '—'}</td>
+                <td className={cell}>{money(a.spend)}</td>
+                <td className={cell}>{a.sales || '—'}</td>
+                <td className={`${cell} text-muted`}>{a.revenue > 0 ? money(a.revenue) : '—'}</td>
+                <td className={`${cell} font-semibold ${a.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{money(a.lucro)}</td>
+                <td className={`${cell} font-bold ${VAL_CLS[roasCls(roas, s)]}`}>{roas != null ? roas.toFixed(2) : '—'}</td>
+                <td className={`${cell} ${a.sales > 0 && a.spend / a.sales <= s.cpaMax ? 'text-ok' : a.sales > 0 ? 'text-danger' : 'text-muted2'}`}>
+                  {a.sales > 0 ? money(a.spend / a.sales) : '—'}
+                </td>
+                <td className={`${cell} ${a.realSales ? 'text-brand-2' : 'text-muted2'}`}>{a.realSales || '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className={`text-[11px] font-bold ${FOOT_BG}`}>
+            <td className="border-t-2 border-border px-3 py-2.5 text-muted">{accs.length} conta{accs.length > 1 ? 's' : ''}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono text-muted">{G.n}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono text-muted">{G.budget > 0 ? money(G.budget / 100) : '—'}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono">{money(G.spend)}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono">{G.sales || '—'}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono text-muted">{money(G.revenue)}</td>
+            <td className={`border-t-2 border-border px-3 py-2.5 text-right font-mono ${G.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{money(G.lucro)}</td>
+            <td className={`border-t-2 border-border px-3 py-2.5 text-right font-mono ${VAL_CLS[roasCls(G.spend > 0 ? G.revenue / G.spend : null, s)]}`}>
+              {G.spend > 0 ? (G.revenue / G.spend).toFixed(2) : '—'}
+            </td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono">{G.sales > 0 ? money(G.spend / G.sales) : '—'}</td>
+            <td className="border-t-2 border-border px-3 py-2.5 text-right font-mono text-brand-2">{G.realSales || '—'}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   )
 }
@@ -1072,9 +1346,10 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
   )
 }
 
-function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sym: string }) {
+function RowWithExpand({ r, sym, leftStatus, leftName, showAumento }: { r: TableRow; sym: string; leftStatus: number; leftName: number; showAumento: boolean }) {
   const m = useMonitor()
   const cfg = useColCfg() // as células precisam da MESMA largura do cabeçalho
+  const acc = { id: r.accId, name: r.accName, cur: r.accCur }
   const [open, setOpen] = useState(false)
   const [scaleOpen, setScaleOpen] = useState(false)
   const [ads, setAds] = useState<ListaRow[] | null>(null)
@@ -1109,9 +1384,11 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
             roas,
             cpa,
             sales,
+            roi: spend > 0 ? lucro / spend : null,
             freq: 0,
             cpm: 0,
             impr: 0,
+            clicks: 0,
             ctr: 0,
             cpc: 0,
             cpaIC: null,
@@ -1128,60 +1405,82 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
     setLoading(false)
   }
 
-  const money = (v: number | null) => (v == null ? '—' : sym + v.toFixed(2))
-  const key = `${acc.id}::${r.id}`
+  const key = r.key
   const neon = m.neonKeys.has(key)
+  const sel = m.campSel.has(key)
+  const bg = stickyBg(sel, neon)
+  const nameW = colW(cfg, 'name')
+  const statusW = colW(cfg, 'status')
+  const adsUrl =
+    m.level === 'ad'
+      ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acc.id}&selected_ad_ids=${r.id}`
+      : m.level === 'adset'
+        ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${acc.id}&selected_adset_ids=${r.id}`
+        : campUrl(acc.id, r.id)
+  const cellBase = 'border-b border-border2/70 py-2.5'
 
   return (
     <>
-      <tr style={neon ? NEON_STYLE : undefined} className={`border-b border-border2 align-middle ${neon ? 'bg-warn/[0.08]' : `${ROW_BG[r.cls]} ${m.campSel.has(key) ? 'bg-brand/[0.06]' : 'hover:bg-surface2/20'}`}`}>
-        <td className="py-2 text-center">
-          <Checkbox checked={m.campSel.has(key)} onChange={() => m.toggleCamp(key)} />
+      <tr style={neon ? NEON_STYLE : undefined} className="group align-middle transition-colors hover:bg-surface2">
+        <td style={{ left: 0 }} className={`sticky left-0 z-20 border-r border-border2/70 text-center ${cellBase} ${bg}`}>
+          <Checkbox checked={sel} onChange={() => m.toggleCamp(key)} />
         </td>
-        <td className="py-2 text-center"><ClsDot cls={r.cls} /></td>
-        <td style={{ width: colW(cfg, 'name'), minWidth: colW(cfg, 'name'), maxWidth: colW(cfg, 'name') }} className="py-2 pl-3 pr-2">
-          <div className="flex items-center gap-1">
-            <span className="inline-block max-w-full truncate align-middle" title={r.name}>
+
+        {/* STATUS: o switch liga/desliga na Meta, e a bolinha ao lado é o veredito
+            de performance (verde/vermelho) — duas coisas diferentes, lado a lado. */}
+        <td style={{ width: statusW, minWidth: statusW, left: leftStatus }} className={`sticky z-20 border-r border-border2/70 px-2 ${cellBase} ${bg}`}>
+          <div className="flex items-center gap-2">
+            <StatusSwitch accId={acc.id} entityId={r.id} name={r.name} status={r.status} cur={acc.cur} level={m.level} />
+            <span title={`Performance: ${r.action.detail || r.cls}`}><ClsDot cls={r.cls} /></span>
+          </div>
+        </td>
+
+        <td style={{ width: nameW, minWidth: nameW, maxWidth: nameW, left: leftName }} className={`sticky z-20 border-r border-border2/70 px-3 ${cellBase} ${bg}`}>
+          <div className="flex items-start gap-1.5">
+            <span className="line-clamp-2 min-w-0 flex-1 break-words leading-snug text-ink" title={r.name}>
               {r.name}
             </span>
-            <a href={m.level === 'ad' ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${acc.id}&selected_ad_ids=${r.id}` : m.level === 'adset' ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${acc.id}&selected_adset_ids=${r.id}` : campUrl(acc.id, r.id)} target="_blank" className="shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Ads Manager">
+            <a href={adsUrl} target="_blank" className="mt-0.5 shrink-0 text-muted2 hover:text-brand-2" title="Abrir no Gerenciador de Anúncios">
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
-          {/* TODAS as ações embaixo do nome (padrão do Gerenciador) — inclusive
-              escala/criativos, que expandem a linha. Tirar isso da direita encurtou
-              a tabela em ~3 colunas de botão e matou boa parte da rolagem lateral. */}
-          {m.level === 'campaign' && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-              <button
-                onClick={() => setScaleOpen((v) => !v)}
-                title="Lucro de hoje + últimos dias (pra decidir escalar)"
-                className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold transition-colors hover:bg-surface2 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}
-              >
-                <BarChart3 className="mr-0.5 inline h-3 w-3" />escala{scaleOpen ? ' ▴' : ' ▾'}
-              </button>
-              <button
-                onClick={toggle}
-                title="Ver criativos/anúncios desta campanha"
-                className={`whitespace-nowrap rounded px-1 py-0.5 text-[10.5px] font-semibold transition-colors hover:bg-surface2 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}
-              >
-                <Layers className="mr-0.5 inline h-3 w-3" />criativos{open ? ' ▴' : ' ▾'}
-              </button>
-              <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} />
-            </div>
-          )}
+          {/* Conta de origem à esquerda e ações à direita, na MESMA faixa: a linha
+              não cresce por causa dos botões, e eles só acendem no hover — no
+              repouso a tabela é só nome e número, que é o que se lê de relance. */}
+          <div className="mt-0.5 flex h-[22px] items-center gap-2">
+            <span className="min-w-0 shrink truncate text-[10px] uppercase tracking-wide text-muted2" title={acc.name}>
+              {acc.name}
+            </span>
+            {m.level === 'campaign' && (
+              <div className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                <button
+                  onClick={() => setScaleOpen((v) => !v)}
+                  title="Escala — lucro de hoje e dos últimos dias"
+                  className={`rounded p-1 transition-colors hover:bg-surface2 ${scaleOpen ? 'text-ok' : 'text-muted2 hover:text-ok'}`}
+                >
+                  <BarChart3 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={toggle}
+                  title="Criativos — anúncios desta campanha"
+                  className={`rounded p-1 transition-colors hover:bg-surface2 ${open ? 'text-brand-2' : 'text-muted2 hover:text-brand-2'}`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </button>
+                <ActionsBar accId={acc.id} name={r.name} campId={r.id} roas={r.roas} cur={acc.cur} spend={r.spend} sales={r.sales} compact />
+              </div>
+            )}
+          </div>
         </td>
-        <td style={{ width: colW(cfg, 'status'), minWidth: colW(cfg, 'status') }} className="px-2 py-2 text-center">{statusPill(r.status)}</td>
-        <td style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className="px-2 py-2">
-          {m.level === 'campaign' ? (
+
+        {showAumento && (
+          <td style={{ width: colW(cfg, 'aumento'), minWidth: colW(cfg, 'aumento') }} className={`border-r border-border2/70 px-2 ${cellBase}`}>
             <TrackerCell accId={acc.id} name={r.name} campId={r.id} cur={acc.cur} empty={<span className="text-[11px] text-muted2">—</span>} />
-          ) : (
-            <span className="text-[11px] text-muted2">—</span>
-          )}
-        </td>
+          </td>
+        )}
         <MetCells r={r} sym={sym} s={m.settings} />
         {/* só o veredito fica na direita — os botões migraram pra baixo do nome */}
-        <td className="py-2 pl-3 pr-3">
+        <td className={`px-3 ${cellBase}`}>
           <div className="flex items-center gap-1.5">
             <Badge a={r.action} />
             {m.level === 'campaign' && <ScaleBadge campId={r.id} />}
@@ -1190,14 +1489,14 @@ function RowWithExpand({ r, acc, sym }: { r: ListaRow; acc: CacheItem['acc']; sy
       </tr>
       {scaleOpen && (
         <tr className="bg-bg/40">
-          <td colSpan={18} className="border-b border-border p-0">
+          <td colSpan={30} className="border-b border-border p-0">
             <ScalePanel accId={acc.id} campId={r.id} name={r.name} sym={sym} cur={acc.cur} />
           </td>
         </tr>
       )}
       {open && (
         <tr className="bg-bg/40">
-          <td colSpan={18} className="p-0">
+          <td colSpan={30} className="p-0">
             {loading && <div className="px-4 py-3 text-[12px] text-muted">Carregando criativos...</div>}
             {err && <div className="px-4 py-3 text-[12px] text-danger">{err}</div>}
             {ads && !ads.length && <div className="px-4 py-3 text-[12px] text-muted">Sem dados no período</div>}

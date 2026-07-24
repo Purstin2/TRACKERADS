@@ -174,6 +174,18 @@ export async function fetchCampaignMeta(accId: string, t: string): Promise<any[]
   })
   return paginate(`${BASE}/act_${accId}/campaigns?${p}`) as unknown as any[]
 }
+/** Mesma coisa nos três níveis — o switch de status e a coluna Orçamento precisam
+ *  disso também em Conjuntos e Anúncios (insights não devolve status nem verba). */
+const META_EDGE: Record<AdLevel, string> = { campaign: 'campaigns', adset: 'adsets', ad: 'ads' }
+const META_FIELDS: Record<AdLevel, string> = {
+  campaign: 'id,name,daily_budget,lifetime_budget,updated_time,effective_status,status',
+  adset: 'id,name,daily_budget,lifetime_budget,updated_time,effective_status,status',
+  ad: 'id,name,updated_time,effective_status,status',
+}
+export async function fetchEntityMeta(accId: string, t: string, level: AdLevel = 'campaign'): Promise<any[]> {
+  const p = new URLSearchParams({ fields: META_FIELDS[level], limit: '500', access_token: t })
+  return paginate(`${BASE}/act_${accId}/${META_EDGE[level]}?${p}`) as unknown as any[]
+}
 export function fetchTimeSeries(id: string, val: string, t: string, statuses: string[]) {
   const { since, until } = dateRange(val)
   const p = new URLSearchParams({
@@ -363,6 +375,16 @@ export async function pauseCampaign(campId: string, t: string) {
   const r = await fetch(`${BASE}/${campId}`, {
     method: 'POST',
     body: new URLSearchParams({ status: 'PAUSED', access_token: t }),
+  })
+  const j = await r.json()
+  if (j.error) throw new Error(j.error.message)
+  return j
+}
+/** Liga/desliga qualquer entidade (campanha, conjunto ou anúncio) — o switch da tabela. */
+export async function setEntityStatus(id: string, status: 'ACTIVE' | 'PAUSED', t: string) {
+  const r = await fetch(`${BASE}/${id}`, {
+    method: 'POST',
+    body: new URLSearchParams({ status, access_token: t }),
   })
   const j = await r.json()
   if (j.error) throw new Error(j.error.message)
