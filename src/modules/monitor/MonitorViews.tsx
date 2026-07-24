@@ -783,24 +783,33 @@ const COL_DEF_W: Record<string, number> = {
   sales: 80,
 }
 const defW = (key: string) => COL_DEF_W[key] || DEF_W
-interface ColCfg { order: string[]; w: Record<string, number> }
+/* `order` guarda TODAS as colunas (inclusive as desligadas) pra que religar uma
+ * devolva ela ao lugar de antes; `hidden` é quem some da tabela. Config antiga
+ * sem `hidden` vira lista vazia = tudo visível, então nada quebra. */
+export interface ColCfg { order: string[]; w: Record<string, number>; hidden: string[] }
 let colCfgCache: ColCfg | null = null
 const colSubs = new Set<() => void>()
 function readColCfg(): ColCfg {
   try {
     const c = JSON.parse(localStorage.getItem(COLCFG_KEY) || '{}')
     let order: string[] = Array.isArray(c.order) ? c.order.filter((k: string) => MET_BY_KEY[k]) : []
-    DEF_ORDER.forEach((k) => { if (!order.includes(k)) order.push(k) })
+    DEF_ORDER.forEach((k) => { if (!order.includes(k)) order.push(k) }) // coluna nova do app entra no fim
     if (!order.length) order = [...DEF_ORDER]
-    return { order, w: c.w && typeof c.w === 'object' ? c.w : {} }
-  } catch { return { order: [...DEF_ORDER], w: {} } }
+    const hidden: string[] = Array.isArray(c.hidden) ? c.hidden.filter((k: string) => MET_BY_KEY[k]) : []
+    return { order, w: c.w && typeof c.w === 'object' ? c.w : {}, hidden }
+  } catch { return { order: [...DEF_ORDER], w: {}, hidden: [] } }
 }
 function getColCfg(): ColCfg { if (!colCfgCache) colCfgCache = readColCfg(); return colCfgCache }
-function setColCfg(next: ColCfg) { colCfgCache = next; localStorage.setItem(COLCFG_KEY, JSON.stringify(next)); colSubs.forEach((f) => f()) }
-export function resetColCfg() { setColCfg({ order: [...DEF_ORDER], w: {} }) }
-function useColCfg(): ColCfg {
+export function setColCfg(next: ColCfg) { colCfgCache = next; localStorage.setItem(COLCFG_KEY, JSON.stringify(next)); colSubs.forEach((f) => f()) }
+export function resetColCfg() { setColCfg({ order: [...DEF_ORDER], w: {}, hidden: [] }) }
+export function useColCfg(): ColCfg {
   return useSyncExternalStore((f) => { colSubs.add(f); return () => { colSubs.delete(f) } }, getColCfg, getColCfg)
 }
+export { getColCfg }
+/** Colunas que aparecem na tabela, na ordem — a lista que o modal edita. */
+export const visibleCols = (cfg: ColCfg) => cfg.order.filter((k) => !cfg.hidden.includes(k))
+/** Catálogo (chave + rótulo) de tudo que pode virar coluna. */
+export const COL_CATALOG: { key: string; label: string }[] = MET_COLS.map((c) => ({ key: c.key, label: c.label }))
 
 /* Larguras padrão das colunas FIXAS (nome/status/aumento). Elas moram no mesmo
  * colCfg das métricas, então "↺ resetar colunas" também as devolve ao padrão. */
@@ -850,7 +859,7 @@ function MetHead({ sort, onSort }: { sort: Sort; onSort: (k: string) => void }) 
   }
   return (
     <>
-      {cfg.order.map((key) => {
+      {visibleCols(cfg).map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
         const w = cfg.w[key] || defW(key)
@@ -877,7 +886,7 @@ function MetCells({ r, sym, s }: { r: ListaRow; sym: string; s: Settings }) {
   const cfg = useColCfg()
   return (
     <>
-      {cfg.order.map((key) => {
+      {visibleCols(cfg).map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
         const w = cfg.w[key] || defW(key)
@@ -896,7 +905,7 @@ function MetFoot({ T, sym, s }: { T: TotAgg; sym: string; s: Settings }) {
   const cfg = useColCfg()
   return (
     <>
-      {cfg.order.map((key) => {
+      {visibleCols(cfg).map((key) => {
         const c = MET_BY_KEY[key]
         if (!c) return null
         const w = cfg.w[key] || defW(key)

@@ -9,11 +9,13 @@ import {
   Filter,
   RefreshCw,
   Settings2,
+  SlidersHorizontal,
   Trash2,
   Zap,
 } from 'lucide-react'
 import { useMonitor, type MonitorView } from '../MonitorContext'
 import { touchedIds, useLog } from '../actionLog'
+import ColumnsModal from './ColumnsModal'
 import { toast } from '@/components/ui/toast'
 
 /** "Atualizado há 3 minutos" — recalcula sozinho a cada 30s. */
@@ -74,7 +76,7 @@ const MENU_ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-muted transition-colors hover:bg-surface2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted'
 
 /** Engrenagem → colunas e parâmetros. */
-function SettingsMenu({ onSettings, onResetCols }: { onSettings: () => void; onResetCols: () => void }) {
+function SettingsMenu({ onSettings, onColumns }: { onSettings: () => void; onColumns: () => void }) {
   const [open, setOpen] = useState(false)
   const ref = useOutside(open, () => setOpen(false))
   return (
@@ -83,12 +85,12 @@ function SettingsMenu({ onSettings, onResetCols }: { onSettings: () => void; onR
         <Settings2 className="h-[17px] w-[17px]" />
       </IconBtn>
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-1 w-[230px] overflow-hidden rounded-[10px] border border-border bg-surface py-1 shadow-card">
-          <button className={MENU_ITEM} onClick={() => { onResetCols(); setOpen(false) }}>
-            <Columns3 className="h-4 w-4" /> Resetar colunas
+        <div className="absolute left-0 top-full z-40 mt-1 w-[236px] overflow-hidden rounded-[10px] border border-border bg-surface py-1 shadow-card">
+          <button className={MENU_ITEM} onClick={() => { onColumns(); setOpen(false) }}>
+            <Columns3 className="h-4 w-4" /> Personalizar colunas
           </button>
           <button className={MENU_ITEM} onClick={() => { onSettings(); setOpen(false) }}>
-            <Settings2 className="h-4 w-4" /> Parâmetros de análise
+            <SlidersHorizontal className="h-4 w-4" /> Configurações avançadas
           </button>
         </div>
       )}
@@ -167,17 +169,19 @@ const VIEWS: { value: MonitorView; label: string }[] = [
   { value: 'aovivo', label: 'Ao vivo' },
 ]
 
-export default function Toolbar({ onSettings, onResetCols }: { onSettings: () => void; onResetCols: () => void }) {
+export default function Toolbar({ onSettings }: { onSettings: () => void }) {
   const m = useMonitor()
   useLog() // "Mexidas hoje" reconta assim que eu aumento/duplico
   const touched = touchedIds().size
+  const [cols, setCols] = useState(false)
 
   return (
     <div className="flex flex-col gap-3 border-b border-border px-4 py-3 lg:flex-row lg:items-center">
+      {cols && <ColumnsModal onClose={() => setCols(false)} />}
       <div className="flex flex-wrap items-center gap-2">
         {/* grupo segmentado de ícones */}
         <div className="flex overflow-hidden rounded-[8px] border border-border bg-[#0a0c19]">
-          <SettingsMenu onSettings={onSettings} onResetCols={onResetCols} />
+          <SettingsMenu onSettings={onSettings} onColumns={() => setCols(true)} />
           <IconBtn
             title={touched ? 'Ver só o que eu mexi hoje' : 'Nenhuma campanha mexida hoje'}
             active={m.touchedOnly}

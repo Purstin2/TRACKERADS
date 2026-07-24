@@ -14,7 +14,6 @@ import {
   GraficoView,
   SummaryStrip,
   tallyCounts,
-  resetColCfg,
 } from './MonitorViews'
 import AoVivoView from './AoVivoView'
 import RegrasView from './RegrasView'
@@ -119,7 +118,7 @@ function MonitorInner() {
               gerenciador que ele já usa no dia a dia. */}
           <LevelTabs />
           <div className="card !rounded-t-none">
-            <Toolbar onSettings={() => setShowSettings(true)} onResetCols={resetColCfg} />
+            <Toolbar onSettings={() => setShowSettings(true)} />
             <FilterBar />
             <ContextBar />
 
