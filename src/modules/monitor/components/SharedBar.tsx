@@ -112,9 +112,13 @@ export default function SharedBar({ onSettings, showFilters }: { onSettings: () 
           {hasTok ? 'Token' : 'Colar token'}
         </button>
 
-        <button className="btn btn-ghost btn-sm" onClick={onSettings} title="Parâmetros de análise (ROAS, CPA, câmbio)">
-          <Settings className="h-3.5 w-3.5" />
-        </button>
+        {/* Na aba Campanhas os parâmetros já têm botão com rótulo na toolbar —
+            aqui a engrenagem só existe para as outras abas, que não têm toolbar. */}
+        {showFilters && (
+          <button className="btn btn-ghost btn-sm" onClick={onSettings} title="Parâmetros de análise (ROAS, CPA, câmbio)">
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {openTok && (
