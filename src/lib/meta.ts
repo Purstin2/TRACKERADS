@@ -92,10 +92,23 @@ export const fnlVal = (r: InsightRow, keys: string[]) => {
 }
 
 /* ── datas ── */
+// Presets last_Nd que o Graph aceita nativamente. "last_4d" NÃO está aqui — o
+// Graph não tem 4d, então ele é traduzido pra uma janela time_range.
+const NATIVE_PRESETS = new Set(['last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d'])
 export function dateParams(val: string): Record<string, string> {
   if (typeof val === 'string' && val.startsWith('custom:')) {
     const [, since, until] = val.split(':')
     if (since && until) return { time_range: JSON.stringify({ since, until }) }
+  }
+  // last_Nd não-nativo (ex.: last_4d) → janela de N dias terminando ONTEM,
+  // igual à convenção "exclui hoje" dos last_Nd nativos (bate com o 7d na Lista).
+  const md = /^last_(\d+)d$/.exec(val || '')
+  if (md && !NATIVE_PRESETS.has(val)) {
+    const n = parseInt(md[1])
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+    const until = new Date(); until.setDate(until.getDate() - 1)
+    const since = new Date(); since.setDate(since.getDate() - n)
+    return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) }
   }
   return { date_preset: val }
 }
@@ -105,7 +118,7 @@ export function dateRange(val: string): { since: string; until: string } {
     if (since && until) return { since, until }
   }
   const days =
-    ({ yesterday: 1, today: 1, last_7d: 7, last_14d: 14, last_30d: 30 } as Record<string, number>)[
+    ({ yesterday: 1, today: 1, last_4d: 4, last_7d: 7, last_14d: 14, last_30d: 30 } as Record<string, number>)[
       val
     ] ||
     parseInt(val) ||

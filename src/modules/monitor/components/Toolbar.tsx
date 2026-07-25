@@ -17,6 +17,7 @@ import {
 import { useMonitor, type MonitorView } from '../MonitorContext'
 import { touchedIds, useLog } from '../actionLog'
 import ColumnsModal from './ColumnsModal'
+import PeriodPicker from './PeriodPicker'
 import { toast } from '@/components/ui/toast'
 
 /** "Atualizado há 3 minutos" — recalcula sozinho a cada 30s. */
@@ -242,7 +243,10 @@ export default function Toolbar({ onSettings }: { onSettings: () => void }) {
         <TrackingBadge />
       </div>
 
-      <div className="flex items-center gap-3 lg:ml-auto">
+      <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
+        {/* Compacto esconde a FilterBar inteira — o período reaparece AQUI, no canto,
+            pra não sumir junto com os filtros e sem roubar altura da tabela. */}
+        {m.compact && <PeriodPicker variant="compact" />}
         <LastUpdate />
         <button className="btn btn-primary btn-sm h-[34px] px-5" onClick={() => m.loadMonitor()} disabled={m.loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${m.loading ? 'animate-spin' : ''}`} />

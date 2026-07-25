@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Info, RefreshCw, Search, X } from 'lucide-react'
 import { useMonitor } from '../MonitorContext'
-import { STATUS_FILTERS, DATE_OPTIONS } from '../config'
+import { STATUS_FILTERS } from '../config'
 import { loadOfferDefs } from '../offers'
+import PeriodPicker from './PeriodPicker'
 
 /** Campo rotulado — o rótulo em cima é o que faz a barra "ler" de relance. */
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -124,12 +125,8 @@ export default function FilterBar() {
         </select>
       </Field>
 
-      <Field label="Período de Visualização" hint="Janela de dados buscada na Meta. Trocar exige Atualizar.">
-        <select value={m.datePreset} onChange={(e) => m.setDatePreset(e.target.value)} className={CONTROL}>
-          {DATE_OPTIONS.map((d) => (
-            <option key={d.value} value={d.value}>{d.label}</option>
-          ))}
-        </select>
+      <Field label="Período de Visualização" hint="Janela de dados buscada na Meta. Trocar exige Atualizar. 'Personalizado' abre a escolha de datas.">
+        <PeriodPicker variant="full" />
       </Field>
 
       <Field label="Conta de Anúncio">

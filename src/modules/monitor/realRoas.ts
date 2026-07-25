@@ -110,9 +110,20 @@ export function presetRange(preset: string): { since: string; until?: string } {
   const startBR = (d: string) => new Date(`${d}T00:00:00-03:00`).toISOString()
   const now = Date.now()
   const today = dayBR(now)
+  // Personalizado: "custom:AAAA-MM-DD:AAAA-MM-DD" — inclui o dia final (until+1 exclusivo).
+  if (typeof preset === 'string' && preset.startsWith('custom:')) {
+    const [, since, until] = preset.split(':')
+    if (since && until) {
+      const u = new Date(`${until}T00:00:00-03:00`)
+      u.setDate(u.getDate() + 1)
+      return { since: startBR(since), until: u.toISOString() }
+    }
+  }
   if (preset === 'today') return { since: startBR(today) }
   if (preset === 'yesterday') return { since: startBR(dayBR(now - 86400000)), until: startBR(today) }
-  const days = preset === 'last_7d' ? 7 : preset === 'last_30d' ? 30 : 14
+  // last_Nd (7/14/30 e o novo 4d) — janela de N dias terminando ontem, igual ao Graph.
+  const md = /^last_(\d+)d$/.exec(preset || '')
+  const days = md ? parseInt(md[1]) : 14
   return { since: startBR(dayBR(now - days * 86400000)), until: startBR(today) }
 }
 
