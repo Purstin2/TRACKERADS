@@ -121,6 +121,10 @@ export function presetRange(preset: string): { since: string; until?: string } {
   }
   if (preset === 'today') return { since: startBR(today) }
   if (preset === 'yesterday') return { since: startBR(dayBR(now - 86400000)), until: startBR(today) }
+  if (preset === 'day_before_yesterday') {
+    const d = dayBR(now - 2 * 86400000)
+    return { since: startBR(d), until: startBR(dayBR(now - 86400000)) }
+  }
   // last_Nd (7/14/30 e o novo 4d) — janela de N dias terminando ontem, igual ao Graph.
   const md = /^last_(\d+)d$/.exec(preset || '')
   const days = md ? parseInt(md[1]) : 14

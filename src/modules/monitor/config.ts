@@ -58,6 +58,7 @@ export const STATUS_FILTERS: Record<string, { label: string; values: string[] }>
 export const DATE_OPTIONS: { value: string; label: string }[] = [
   { value: 'today', label: 'Hoje' },
   { value: 'yesterday', label: 'Ontem' },
+  { value: 'day_before_yesterday', label: 'Anteontem' },
   { value: 'last_4d', label: 'Últimos 4 dias' },
   { value: 'last_7d', label: 'Últimos 7 dias' },
   { value: 'last_14d', label: 'Últimos 14 dias' },

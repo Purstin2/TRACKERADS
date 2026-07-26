@@ -100,6 +100,12 @@ export function dateParams(val: string): Record<string, string> {
     const [, since, until] = val.split(':')
     if (since && until) return { time_range: JSON.stringify({ since, until }) }
   }
+  // "Anteontem" não existe no Graph — dia único, 2 dias atrás.
+  if (val === 'day_before_yesterday') {
+    const d = new Date(); d.setDate(d.getDate() - 2)
+    const fmt = (dt: Date) => dt.toISOString().split('T')[0]
+    return { time_range: JSON.stringify({ since: fmt(d), until: fmt(d) }) }
+  }
   // last_Nd não-nativo (ex.: last_4d) → janela de N dias terminando ONTEM,
   // igual à convenção "exclui hoje" dos last_Nd nativos (bate com o 7d na Lista).
   const md = /^last_(\d+)d$/.exec(val || '')
@@ -116,6 +122,11 @@ export function dateRange(val: string): { since: string; until: string } {
   if (typeof val === 'string' && val.startsWith('custom:')) {
     const [, since, until] = val.split(':')
     if (since && until) return { since, until }
+  }
+  if (val === 'day_before_yesterday') {
+    const d = new Date(); d.setDate(d.getDate() - 2)
+    const fmt = (dt: Date) => dt.toISOString().split('T')[0]
+    return { since: fmt(d), until: fmt(d) }
   }
   const days =
     ({ yesterday: 1, today: 1, last_4d: 4, last_7d: 7, last_14d: 14, last_30d: 30 } as Record<string, number>)[
