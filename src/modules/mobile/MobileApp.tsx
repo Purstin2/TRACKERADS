@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered } from 'lucide-react'
+import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone } from 'lucide-react'
+import MobileCamps from './MobileCamps'
 import { supabase } from '@/lib/supabase'
 import { loadTaxas, syncTaxas, feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import type { KirvanoOrder } from '@/modules/pixel/orders'
@@ -88,7 +89,7 @@ function beep() {
 interface AdStats { spend: number; impressions: number; clicks: number }
 
 export default function MobileApp() {
-  const [tab, setTab] = useState<'vendas' | 'dash'>('vendas')
+  const [tab, setTab] = useState<'vendas' | 'dash' | 'camps'>('vendas')
   const [orders, setOrders] = useState<Order[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
   const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
@@ -259,7 +260,9 @@ export default function MobileApp() {
           <Zap className="h-5 w-5 fill-white text-white" />
         </span>
         <div className="flex-1">
-          <div className="text-[15px] font-extrabold leading-none">{tab === 'vendas' ? 'Vendas' : 'Dashboard'}</div>
+          <div className="text-[15px] font-extrabold leading-none">
+            {tab === 'vendas' ? 'Vendas' : tab === 'dash' ? 'Dashboard' : 'Campanhas'}
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted2">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
@@ -384,6 +387,8 @@ export default function MobileApp() {
         )}
 
         </>
+        ) : tab === 'camps' ? (
+          <MobileCamps />
         ) : (
         <>
         {/* ── DASHBOARD do dia ── */}
@@ -443,7 +448,12 @@ export default function MobileApp() {
         </>
         )}
 
-        <p className="mt-6 text-center text-[11px] text-muted2">Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar</p>
+        {/* o auto-refresh de 25s é das vendas; Campanhas puxa da Meta e atualiza no botão */}
+        <p className="mt-6 text-center text-[11px] text-muted2">
+          {tab === 'camps'
+            ? 'Dados da Meta · toque em Atualizar pra recarregar'
+            : 'Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar'}
+        </p>
       </main>
 
       {/* ── abas fixas embaixo ── */}
@@ -452,7 +462,7 @@ export default function MobileApp() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-[560px]">
-          {([['vendas', 'Vendas', ListOrdered], ['dash', 'Dashboard', LayoutDashboard]] as const).map(([id, label, Icon]) => (
+          {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}

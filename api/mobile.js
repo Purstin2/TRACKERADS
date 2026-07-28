@@ -220,12 +220,163 @@ async function recupEmail(req, res) {
   return res.json({ ok: true, dias, campanhas: lista })
 }
 
+/* ── CAMPANHAS no celular (mesma leitura do Monitor do desktop) ───────────────
+ * Token e lista de contas moram no servidor (app_state), então o celular não
+ * precisa colar token — funciona em qualquer aparelho, e o token não trafega
+ * pro browser.
+ *   GET  /api/mobile?fn=camps&preset=last_7d&status=active[&acc=<id>]
+ *   POST /api/mobile?fn=camp-action   body { id, status: 'ACTIVE'|'PAUSED' }
+ */
+const ATYPES = ['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase']
+const findVal = (arr, keys) => {
+  if (!Array.isArray(arr)) return null
+  const i = arr.find((a) => keys.includes(a.action_type))
+  return i ? parseFloat(i.value) : null
+}
+// janelas iguais às do desktop (src/lib/meta.ts): last_Nd exclui hoje.
+// O Graph não tem last_4d nem "anteontem" → viram time_range.
+function campDateParams(preset) {
+  const fmt = (d) => d.toISOString().split('T')[0]
+  if (preset === 'day_before_yesterday') {
+    const d = new Date(); d.setDate(d.getDate() - 2)
+    return { time_range: JSON.stringify({ since: fmt(d), until: fmt(d) }) }
+  }
+  const NATIVE = ['last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d']
+  const m = /^last_(\d+)d$/.exec(preset || '')
+  if (m && !NATIVE.includes(preset)) {
+    const n = parseInt(m[1], 10)
+    const until = new Date(); until.setDate(until.getDate() - 1)
+    const since = new Date(); since.setDate(since.getDate() - n)
+    return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) }
+  }
+  return { date_preset: preset || 'today' }
+}
+const CAMP_STATUS = {
+  active: ['ACTIVE'],
+  active_paused: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES'],
+  all: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'ARCHIVED', 'DELETED'],
+}
+const GRAPH = 'https://graph.facebook.com/v22.0'
+
+async function metaCtx(res) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) { res.json({ ok: false, reason: 'supabase não configurado' }); return null }
+  const token = await stateGet(url, key, 'meta_tok')
+  const accounts = (await stateGet(url, key, 'monitor_accounts_v1')) || []
+  const s = (await stateGet(url, key, 'meta_settings')) || {}
+  if (!token || !Array.isArray(accounts) || !accounts.length) {
+    res.json({ ok: false, reason: 'abra o Monitor no desktop uma vez (sincroniza token/contas)' })
+    return null
+  }
+  return { token, accounts, fx: +s.fx || 5.4, roasGood: +s.roasGood || 2, roasBe: +s.roasBe || 1.25, cpaMax: +s.cpaMax || 12 }
+}
+
+async function camps(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const { token, accounts, fx } = ctx
+  const preset = String(req.query.preset || 'last_7d')
+  const statuses = CAMP_STATUS[String(req.query.status || 'active')] || CAMP_STATUS.active
+  const only = String(req.query.acc || '').trim()
+  const alvo = only ? accounts.filter((a) => String(a.id) === only) : accounts
+
+  const porConta = await Promise.all(alvo.map(async (acc) => {
+    try {
+      const p = new URLSearchParams({
+        level: 'campaign',
+        fields: 'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,frequency',
+        ...campDateParams(preset),
+        filtering: JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: statuses }]),
+        access_token: token, limit: '300',
+      })
+      const pm2 = new URLSearchParams({
+        fields: 'id,name,daily_budget,lifetime_budget,effective_status',
+        limit: '300', access_token: token,
+      })
+      const [ins, met] = await Promise.all([
+        fetch(`${GRAPH}/act_${acc.id}/insights?${p}`).then((r) => r.json()),
+        fetch(`${GRAPH}/act_${acc.id}/campaigns?${pm2}`).then((r) => r.json()),
+      ])
+      if (ins.error) return { erro: `${acc.name}: ${ins.error.message}` }
+      const meta = {}
+      for (const c of (met.data || [])) {
+        meta[c.id] = {
+          budget: c.daily_budget ? parseInt(c.daily_budget, 10) / 100 : c.lifetime_budget ? parseInt(c.lifetime_budget, 10) / 100 : null,
+          status: c.effective_status,
+        }
+      }
+      const mult = acc.cur === 'USD' ? fx : 1 // tudo em BRL, como o resto do app
+      return {
+        rows: (ins.data || []).map((r) => {
+          const spend = (parseFloat(r.spend) || 0) * mult
+          const roas = findVal(r.purchase_roas, ATYPES)
+          const cpa = findVal(r.cost_per_action_type, ATYPES)
+          const sales = Math.round(findVal(r.actions, ATYPES) || 0)
+          const md = meta[r.campaign_id] || {}
+          return {
+            id: r.campaign_id, name: r.campaign_name || '',
+            accId: acc.id, accName: acc.name,
+            spend: +spend.toFixed(2), roas, sales,
+            cpa: cpa == null ? null : +(cpa * mult).toFixed(2),
+            revenue: roas != null ? +(roas * spend).toFixed(2) : 0,
+            freq: parseFloat(r.frequency || '0') || 0,
+            budget: md.budget == null ? null : +(md.budget * mult).toFixed(2),
+            status: md.status || null,
+          }
+        }),
+      }
+    } catch (e) { return { erro: `${acc.name}: ${e.message}` } }
+  }))
+
+  const rows = porConta.flatMap((x) => x.rows || [])
+  const erros = porConta.map((x) => x.erro).filter(Boolean)
+  rows.sort((a, b) => b.spend - a.spend)
+  return res.json({
+    ok: true, preset, rows, erros,
+    contas: accounts.map((a) => ({ id: a.id, name: a.name })),
+    params: { roasGood: ctx.roasGood, roasBe: ctx.roasBe, cpaMax: ctx.cpaMax, fx },
+  })
+}
+
+async function campAction(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+  const id = String(body.id || '').trim()
+  const status = String(body.status || '').toUpperCase()
+  if (!id || !['ACTIVE', 'PAUSED'].includes(status)) {
+    return res.status(400).json({ ok: false, error: 'informe id e status ACTIVE|PAUSED' })
+  }
+  try {
+    const r = await fetch(`${GRAPH}/${id}`, {
+      method: 'POST',
+      body: new URLSearchParams({ status, access_token: ctx.token }),
+    })
+    const j = await r.json()
+    if (j.error) return res.json({ ok: false, error: j.error.message })
+    // relê o status de verdade: a resposta do POST diz "success" mesmo quando a
+    // Meta aplica algo diferente do pedido — quem manda é o effective_status.
+    let real = null
+    try {
+      const v = await (await fetch(`${GRAPH}/${id}?fields=effective_status&access_token=${ctx.token}`)).json()
+      real = v.effective_status || null
+    } catch {}
+    return res.json({ ok: true, pedido: status, effective_status: real })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
 export default async function handler(req, res) {
   const fn = String(req.query.fn || '')
+  if (fn === 'camps') return camps(req, res)
+  if (fn === 'camp-action') return campAction(req, res)
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)
   if (fn === 'limites') return limites(req, res)
   if (fn === 'recup-melodify') return recupMelodify(req, res)
   if (fn === 'recup-email') return recupEmail(req, res)
-  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
+  return res.status(400).json({ error: 'fn inválido (camps | camp-action | meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
 }
