@@ -59,6 +59,11 @@ export default function RecuperacaoPage() {
     orders.forEach((o) => {
       const st = String(o.wa_status || '')
       if (!['sent', 'done', 'converted'].includes(st)) return
+      // Sem wa_sent_at a mensagem NUNCA saiu — antes da correção do recover.js o cron
+      // carimbava 'converted' em qualquer pedido já pago que passasse por ele, e isso
+      // entrava aqui como receita recuperada (R$23 mil fantasma em 5 dias, contra
+      // R$1,3 mil reais). Exigir o carimbo de envio corrige também o histórico antigo.
+      if (!o.wa_sent_at) return
       const nome = (o.product || '(sem produto)').slice(0, 34)
       const g = (m[nome] ||= { oferta: nome, enviados: 0, mensagens: 0, convertidos: 0, taxa: 0, receita: 0, custo: 0, roi: null })
       g.enviados++

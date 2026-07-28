@@ -53,6 +53,16 @@ function cleanParam(v, fallback) {
   return s || fallback
 }
 
+// Quantos passos da cadência realmente disparam. Medição 20/06–28/07:
+//   dia 1 → 297 disparos, 17 vendas   |   dia 2 + dia 3 → 43 disparos, ZERO venda.
+// Os dias 2/3 só insistiam com quem já tinha ignorado — é bloqueio/denúncia, que é
+// o que derruba a nota do número pra RED. Default 1 (só o dia 1); WA_MAX_STEPS
+// permite voltar a 2 ou 3 sem mexer no código.
+const MAX_STEPS = Math.max(1, Math.min(3, parseInt(process.env.WA_MAX_STEPS || '1', 10) || 1))
+// wa_step = 3 é o marcador de "encerrado" (o filtro da query usa wa_step < 3),
+// independente de quantos passos a cadência tem.
+const STEP_FIM = 3
+
 // ── definição dos 3 passos da cadência (lidos de env) ────────────────────────
 function getSteps() {
   const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
@@ -91,7 +101,7 @@ function getSteps() {
 //   -1 = ainda não é hora   |   -2 = expirou (velho demais p/ iniciar)
 function dueStep(o, cfg, now) {
   const step = o.wa_step || 0
-  if (step >= 3) return -1
+  if (step >= MAX_STEPS) return -1
   const delayMs = (cfg.delay_minutes ?? 60) * 60000
   const gapMs = (cfg.step_gap_hours ?? 24) * 3600000
   const windowMs = (cfg.window_hours ?? 24) * 3600000
@@ -241,8 +251,18 @@ export default async function handler(req, res) {
   const results = []
   for (const o of orders) {
     if (o.status === 'APPROVED' || o.recovered) {
-      await patchOrder(url, key, o.id, { wa_status: 'converted', wa_step: 3 })
-      results.push({ id: o.id, skipped: 'já comprou' })
+      // "converted" = RECUPERADA, e só é recuperada quem recebeu mensagem ANTES de
+      // pagar. Sem o teste do wa_sent_at, todo pedido que já estava pago quando o
+      // cron passava virava "converted" — 426 dos 428 "recuperados" de 23–27/07
+      // nunca tinham recebido nada, e o painel somava isso como receita (R$23 mil
+      // fantasma contra R$1,3 mil reais).
+      const recebeuMsg = !!o.wa_sent_at
+      await patchOrder(url, key, o.id, {
+        wa_status: recebeuMsg ? 'converted' : 'skipped',
+        wa_error: recebeuMsg ? null : 'pagou sem receber mensagem (não é recuperação)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: recebeuMsg ? 'recuperada' : 'já estava paga (sem disparo)' })
       continue
     }
     const phone = waPhone(o.customer_phone)
@@ -252,11 +272,27 @@ export default async function handler(req, res) {
       continue
     }
 
-    // REGRA POR PRODUTO (decisão do usuário): só o STL faz a cadência completa
-    // (dias 1, 2, 3). TODOS os outros produtos recebem APENAS o dia 1.
-    if (!manualIds && !isStlOrder(o) && (o.wa_step || 0) >= 1) {
-      await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: 3 })
-      results.push({ id: o.id, skipped: 'não-STL: só o dia 1' })
+    // REGRA POR PRODUTO: só o STL entra na recuperação. Medição 20/06–28/07:
+    //   STL     → 178 disparos, 16 vendas, R$1.284,40 (9%)
+    //   não-STL → 119 disparos,  1 venda,  R$29,90    (1%)
+    // Os disparos de canecas/Melodify/Pedreiro/moldes não se pagavam e gastavam a
+    // reputação do número à toa. Envio manual (?ids=) ignora esta regra.
+    if (!manualIds && !isStlOrder(o)) {
+      await patchOrder(url, key, o.id, {
+        wa_status: 'skipped',
+        wa_error: 'produto fora da recuperação (só STL)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: 'produto não-STL' })
+      continue
+    }
+
+    // Cadência já cumprida (inclusive os que ficaram em wa_step 1/2 de quando ela
+    // tinha 3 passos): encerra de vez. Sem isto eles voltariam em toda rodada só
+    // pra receber "waiting", ocupando as 80 vagas da fila sem nunca sair dela.
+    if (!manualIds && (o.wa_step || 0) >= MAX_STEPS) {
+      await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: STEP_FIM })
+      results.push({ id: o.id, skipped: 'cadência concluída' })
       continue
     }
 
@@ -303,9 +339,11 @@ export default async function handler(req, res) {
       ]),
     })
 
+    // acabou a cadência? marca STEP_FIM pra sair da fila (a query filtra wa_step<3)
+    const acabou = idx + 1 >= MAX_STEPS
     await patchOrder(url, key, o.id, {
-      wa_step: out.ok ? idx + 1 : o.wa_step || 0, // só avança se enviou
-      wa_status: out.ok ? (idx + 1 >= 3 ? 'done' : 'sent') : 'failed',
+      wa_step: out.ok ? (acabou ? STEP_FIM : idx + 1) : o.wa_step || 0, // só avança se enviou
+      wa_status: out.ok ? (acabou ? 'done' : 'sent') : 'failed',
       wa_attempts: (o.wa_attempts || 0) + 1,
       wa_sent_at: out.ok ? new Date().toISOString() : o.wa_sent_at,
       wa_last_try: new Date().toISOString(),
