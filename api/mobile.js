@@ -369,9 +369,108 @@ async function campAction(req, res) {
   }
 }
 
+/* Orçamento de UMA campanha — CBO (verba na campanha) ou ABO (verba nos
+ * conjuntos). GET lê o atual; POST aplica. Em ABO o fator é rateado entre os
+ * conjuntos ativos, igual ao desktop.
+ *   GET  /api/mobile?fn=camp-budget&id=<campId>
+ *   POST /api/mobile?fn=camp-budget   { id, novoTotal }   (novoTotal na moeda da conta) */
+async function campBudget(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const t = ctx.token
+  const id = String((req.query.id || (req.body && req.body.id) || '')).trim()
+  if (!id) return res.status(400).json({ ok: false, error: 'informe o id da campanha' })
+
+  async function ler() {
+    const j = await (await fetch(`${GRAPH}/${id}?fields=daily_budget,lifetime_budget,name,status&access_token=${t}`)).json()
+    if (j.error) throw new Error(j.error.message)
+    if (j.daily_budget) {
+      return { nivel: 'CBO', itens: [{ id, daily: parseInt(j.daily_budget, 10), name: j.name }], total: parseInt(j.daily_budget, 10) }
+    }
+    const p = new URLSearchParams({ fields: 'daily_budget,name,status,effective_status', access_token: t, limit: '100' })
+    const a = await (await fetch(`${GRAPH}/${id}/adsets?${p}`)).json()
+    if (a.error) throw new Error(a.error.message)
+    const itens = (a.data || [])
+      .filter((x) => x.effective_status === 'ACTIVE' && x.daily_budget)
+      .map((x) => ({ id: x.id, daily: parseInt(x.daily_budget, 10), name: x.name }))
+    return { nivel: 'ABO', itens, total: itens.reduce((s, i) => s + i.daily, 0) }
+  }
+
+  try {
+    if (req.method !== 'POST') {
+      const info = await ler()
+      return res.json({ ok: true, ...info, totalMoeda: +(info.total / 100).toFixed(2) })
+    }
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+    const novoTotal = parseFloat(body.novoTotal)
+    if (!(novoTotal > 0)) return res.status(400).json({ ok: false, error: 'novoTotal inválido' })
+    const info = await ler()
+    if (!info.itens.length) return res.json({ ok: false, error: 'nenhum conjunto ativo com orçamento diário' })
+    const atual = info.total / 100
+    const fator = atual > 0 ? novoTotal / atual : 1
+    const erros = []
+    for (const it of info.itens) {
+      const alvo = info.itens.length === 1 ? Math.round(novoTotal * 100) : Math.round(it.daily * fator)
+      const r = await fetch(`${GRAPH}/${it.id}`, { method: 'POST', body: new URLSearchParams({ daily_budget: String(alvo), access_token: t }) })
+      const j = await r.json()
+      if (j.error) erros.push(`${it.name}: ${j.error.message}`)
+    }
+    // confirma relendo — e avisa se a Meta pausou junto (já aconteceu em 24/07)
+    const depois = await ler()
+    let status = null
+    try {
+      const v = await (await fetch(`${GRAPH}/${id}?fields=effective_status&access_token=${t}`)).json()
+      status = v.effective_status || null
+    } catch {}
+    return res.json({
+      ok: erros.length === 0, erros,
+      antes: +atual.toFixed(2), depois: +(depois.total / 100).toFixed(2),
+      nivel: depois.nivel, effective_status: status,
+    })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
+/* Dia a dia de UMA campanha (padrão 7 dias) — o "histórico" de performance. */
+async function campDaily(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const id = String(req.query.id || '').trim()
+  const dias = Math.min(30, Math.max(2, parseInt(req.query.dias || '7', 10) || 7))
+  if (!id) return res.status(400).json({ ok: false, error: 'informe o id' })
+  const fmt = (d) => d.toISOString().split('T')[0]
+  const until = new Date()
+  const since = new Date(); since.setDate(since.getDate() - (dias - 1))
+  try {
+    const p = new URLSearchParams({
+      level: 'campaign',
+      fields: 'spend,purchase_roas,cost_per_action_type,actions,date_start',
+      time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }),
+      time_increment: '1',
+      filtering: JSON.stringify([{ field: 'campaign.id', operator: 'EQUAL', value: id }]),
+      access_token: ctx.token, limit: '60',
+    })
+    const j = await (await fetch(`${GRAPH}/act_${req.query.acc}/insights?${p}`)).json()
+    if (j.error) return res.json({ ok: false, error: j.error.message })
+    const dd = (j.data || []).map((r) => ({
+      dia: r.date_start,
+      spend: +(parseFloat(r.spend) || 0).toFixed(2),
+      roas: findVal(r.purchase_roas, ATYPES),
+      sales: Math.round(findVal(r.actions, ATYPES) || 0),
+      cpa: findVal(r.cost_per_action_type, ATYPES),
+    }))
+    return res.json({ ok: true, dias: dd })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
 export default async function handler(req, res) {
   const fn = String(req.query.fn || '')
   if (fn === 'camps') return camps(req, res)
+  if (fn === 'camp-budget') return campBudget(req, res)
+  if (fn === 'camp-daily') return campDaily(req, res)
   if (fn === 'camp-action') return campAction(req, res)
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)

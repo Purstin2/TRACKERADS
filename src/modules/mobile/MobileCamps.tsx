@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Search, X, Pause, Play, AlertTriangle, SlidersHorizontal } from 'lucide-react'
+import { RefreshCw, Search, X, Pause, Play, AlertTriangle, SlidersHorizontal, DollarSign, History, ChevronRight } from 'lucide-react'
+import { useLog, addAction, todayBR, KIND_LABEL } from '@/modules/monitor/actionLog'
 
 /* Campanhas no celular — mesma leitura do Monitor do desktop, mas em cartões e
  * com alvo de toque grande. O token NÃO vem pro browser: quem fala com a Meta é
@@ -34,6 +35,152 @@ interface Params { roasGood: number; roasBe: number; cpaMax: number; fx: number 
 const SEL =
   'h-[42px] w-full rounded-[10px] border border-border bg-surface px-3 text-[13px] text-ink focus:border-brand focus:outline-none'
 
+/* Detalhe da campanha: orçamento (mesmo ajuste do desktop) + histórico
+ * (dia a dia da Meta + o que eu já fiz nela, que vem do log sincronizado). */
+function Detalhe({ r, onClose, onBudget }: { r: Row; onClose: () => void; onBudget: (novo: number) => void }) {
+  const log = useLog()
+  const [aba, setAba] = useState<'orc' | 'hist'>('orc')
+  const [info, setInfo] = useState<any>(null)
+  const [dias, setDias] = useState<any[] | null>(null)
+  const [pct, setPct] = useState(20)
+  const [abs, setAbs] = useState('')
+  const [modo, setModo] = useState<'pct' | 'abs'>('pct')
+  const [aplicando, setAplicando] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/mobile?fn=camp-budget&id=${r.id}`).then((x) => x.json()).then(setInfo).catch(() => setInfo({ ok: false }))
+    fetch(`/api/mobile?fn=camp-daily&id=${r.id}&acc=${r.accId}&dias=7`).then((x) => x.json())
+      .then((j) => setDias(j.ok ? j.dias : [])).catch(() => setDias([]))
+  }, [r.id, r.accId])
+
+  const atual = info?.ok ? info.totalMoeda : null
+  const novo = modo === 'abs' ? parseFloat(abs || '0') : atual != null ? atual * (1 + pct / 100) : 0
+  const meu = useMemo(() => log.filter((e) => e.campId === r.id).slice(0, 12), [log, r.id])
+
+  async function aplicar() {
+    if (!(novo > 0) || atual == null) return
+    setAplicando(true)
+    try {
+      const j = await (await fetch('/api/mobile?fn=camp-budget', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: r.id, novoTotal: novo }),
+      })).json()
+      if (!j.ok && j.error) alert('Erro: ' + j.error)
+      else {
+        addAction({
+          accId: r.accId, name: r.name, campId: r.id, kind: 'orcamento', sim: false,
+          cur: 'BRL', roasAtTime: r.roas, spendAtTime: r.spend, salesAtTime: r.sales,
+          dateBR: todayBR(), budgetBefore: j.antes, budgetAfter: j.depois,
+          detail: `${modo === 'pct' ? (pct >= 0 ? '+' : '') + pct + '%' : 'valor fixo'} (${j.nivel}) · pelo celular`,
+        })
+        onBudget(j.depois)
+        if (j.effective_status && j.effective_status !== 'ACTIVE') {
+          alert(`⚠ Orçamento aplicado, mas a campanha está "${j.effective_status}". Reative se não foi você.`)
+        }
+        onClose()
+      }
+    } catch (e: any) { alert('Erro: ' + e.message) }
+    setAplicando(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={onClose}>
+      <div className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl border-t border-border bg-surface p-4" onClick={(e) => e.stopPropagation()}
+        style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 16px)' }}>
+        <div className="mb-3 flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="line-clamp-2 text-[14px] font-extrabold leading-snug">{r.name}</div>
+            <div className="mt-0.5 text-[11.5px] text-muted2">{r.accName}</div>
+          </div>
+          <button onClick={onClose} className="shrink-0 text-muted2"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mb-3 flex overflow-hidden rounded-[10px] border border-border">
+          {([['orc', 'Orçamento', DollarSign], ['hist', 'Histórico', History]] as const).map(([id, lb, Ic]) => (
+            <button key={id} onClick={() => setAba(id)}
+              className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[12.5px] font-bold ${aba === id ? 'bg-brand text-white' : 'text-muted2'}`}>
+              <Ic className="h-4 w-4" /> {lb}
+            </button>
+          ))}
+        </div>
+
+        {aba === 'orc' ? (
+          !info ? <div className="py-8 text-center text-[12.5px] text-muted2">carregando orçamento…</div>
+          : !info.ok ? <div className="rounded-[10px] border border-danger/30 bg-danger/[0.07] p-3 text-[12.5px] text-danger">{info.error || 'não consegui ler o orçamento'}</div>
+          : (
+            <>
+              <div className="flex items-center justify-between rounded-[10px] border border-border bg-surface2 px-3.5 py-3 text-[13px]">
+                <span className="text-muted2">Atual ({info.nivel}{info.nivel === 'ABO' ? ` · ${info.itens.length} conj.` : ''})</span>
+                <b className="font-mono">{brl(atual)}/dia</b>
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {[-30, -20, -10, 10, 20, 30, 50, 100].map((q) => (
+                  <button key={q} onClick={() => { setModo('pct'); setPct(q) }}
+                    className={`rounded-[9px] border py-2.5 text-[12.5px] font-bold ${modo === 'pct' && pct === q ? (q < 0 ? 'border-danger bg-danger/15 text-danger' : 'border-ok bg-ok/15 text-ok') : 'border-border text-muted'}`}>
+                    {q > 0 ? '+' : ''}{q}%
+                  </button>
+                ))}
+              </div>
+              <input type="number" inputMode="decimal" value={abs} placeholder={`ou valor fixo (${brl(atual)})`}
+                onChange={(e) => { setModo('abs'); setAbs(e.target.value) }}
+                className={`mt-2 h-[44px] w-full rounded-[10px] border bg-surface px-3 text-[13px] text-ink focus:outline-none ${modo === 'abs' ? 'border-ok/60' : 'border-border'}`} />
+              <div className={`mt-2 flex items-center justify-between rounded-[10px] border px-3.5 py-3 ${novo >= (atual || 0) ? 'border-ok/30 bg-ok/[0.06]' : 'border-warn/30 bg-warn/[0.06]'}`}>
+                <span className="text-[12.5px] text-muted">Novo orçamento</span>
+                <b className={`font-mono text-[15px] ${novo >= (atual || 0) ? 'text-ok' : 'text-warn'}`}>{brl(novo)}/dia</b>
+              </div>
+              <button onClick={aplicar} disabled={aplicando || !(novo > 0)}
+                className="mt-3 w-full rounded-[10px] border border-ok/50 bg-ok/15 py-3.5 text-[13.5px] font-bold text-ok active:scale-[0.99] disabled:opacity-50">
+                {aplicando ? 'Aplicando…' : 'Aplicar na Meta'}
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted2">Últimos 7 dias</div>
+            {!dias ? <div className="py-6 text-center text-[12.5px] text-muted2">carregando…</div>
+            : dias.length === 0 ? <div className="py-6 text-center text-[12.5px] text-muted2">sem dados no período</div>
+            : (
+              <div className="flex flex-col gap-1">
+                {dias.map((d) => (
+                  <div key={d.dia} className="flex items-center gap-2 rounded-[9px] border border-border bg-surface2/50 px-3 py-2 text-[12.5px]">
+                    <span className="w-[46px] shrink-0 font-mono text-muted2">{d.dia.slice(8)}/{d.dia.slice(5, 7)}</span>
+                    <span className={`w-[52px] shrink-0 font-bold ${d.roas == null ? 'text-muted2' : d.roas >= 2 ? 'text-ok' : d.roas < 1.25 ? 'text-danger' : 'text-warn'}`}>
+                      {d.roas != null ? d.roas.toFixed(2) : '—'}
+                    </span>
+                    <span className="flex-1 text-right text-muted">{brl(d.spend)}</span>
+                    <span className="w-[36px] shrink-0 text-right text-ink">{d.sales || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-wide text-muted2">O que já fiz nela</div>
+            {meu.length === 0 ? (
+              <div className="rounded-[9px] border border-dashed border-border py-5 text-center text-[12px] text-muted2">
+                nenhuma alteração registrada
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {meu.map((e) => (
+                  <div key={e.id} className="rounded-[9px] border border-border bg-surface2/50 px-3 py-2">
+                    <div className="flex items-center gap-2 text-[11px] text-muted2">
+                      <span className="font-bold text-brand-2">{KIND_LABEL[e.kind] || e.kind}</span>
+                      <span className="font-mono">{new Date(e.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                      {e.budgetBefore != null && e.budgetAfter != null && (
+                        <span className="ml-auto font-mono text-ink">{e.budgetBefore.toFixed(0)}→{e.budgetAfter.toFixed(0)}</span>
+                      )}
+                    </div>
+                    {e.detail && <div className="mt-0.5 text-[11.5px] text-muted">{e.detail}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function MobileCamps() {
   const [preset, setPreset] = useState('last_7d')
   const [status, setStatus] = useState('active')
@@ -48,6 +195,7 @@ export default function MobileCamps() {
   const [loading, setLoading] = useState(true)
   const [agindo, setAgindo] = useState<string | null>(null)
   const [confirmar, setConfirmar] = useState<Row | null>(null)
+  const [detalhe, setDetalhe] = useState<Row | null>(null)
 
   async function carregar() {
     setLoading(true)
@@ -218,6 +366,16 @@ export default function MobileCamps() {
                   </div>
                 </div>
 
+                <button
+                  onClick={() => setDetalhe(r)}
+                  className="mt-2 flex w-full items-center gap-1.5 rounded-[9px] border border-border bg-surface2/60 px-3 py-2 text-[12px] font-semibold text-muted active:scale-[0.99]"
+                >
+                  <DollarSign className="h-3.5 w-3.5 text-ok" /> Orçamento
+                  <span className="text-border2">·</span>
+                  <History className="h-3.5 w-3.5 text-brand-2" /> Histórico
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted2" />
+                </button>
+
                 <div className="mt-2.5 grid grid-cols-4 gap-1.5 border-t border-border/60 pt-2.5 text-center">
                   {[
                     ['Gasto', brl(r.spend), 'text-warn'],
@@ -252,6 +410,14 @@ export default function MobileCamps() {
           })
         )}
       </div>
+
+      {detalhe && (
+        <Detalhe
+          r={detalhe}
+          onClose={() => setDetalhe(null)}
+          onBudget={(novo) => setRows((prev) => prev.map((x) => (x.id === detalhe.id ? { ...x, budget: novo } : x)))}
+        />
+      )}
 
       {/* confirmação de pausa — no celular o toque errado é fácil demais */}
       {confirmar && (
