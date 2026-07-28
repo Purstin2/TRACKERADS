@@ -28,6 +28,7 @@ import {
   type Settings,
 } from './config'
 import { fetchRealByCampaign, type RealAgg } from './realRoas'
+import { toast } from '@/components/ui/toast'
 
 export type MonitorView = 'lista' | 'historico' | 'grafico' | 'aovivo'
 
@@ -339,6 +340,17 @@ export function MonitorProvider({ children }: { children: ReactNode }) {
       }),
     )
     setCache(out)
+    // Conta que falhou avisa por toast (some sozinho) + fica no chip da Toolbar.
+    // Como banner fixo na tabela isso roubava altura útil da tela toda carga.
+    const falhas = out.filter((i) => i.kind === 'err')
+    if (falhas.length) {
+      toast(
+        falhas.length === 1
+          ? `${falhas[0].acc.name} não carregou — veja o motivo no chip vermelho`
+          : `${falhas.length} contas não carregaram — veja o motivo no chip vermelho`,
+        'err',
+      )
+    }
     setLastLoad(Date.now())
     setLoading(false)
   }

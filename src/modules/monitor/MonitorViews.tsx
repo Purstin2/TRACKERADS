@@ -1002,7 +1002,6 @@ export function ListaView({ items }: { items: CacheItem[] }) {
   useLog() // "Mexidas hoje" reage assim que eu aumento/duplico
   const touched = m.touchedOnly ? touchedIds() : null
 
-  const errs = items.filter((i) => i.kind === 'err')
   const lists = items.filter((i) => i.kind === 'lista' && i.rows)
 
   /* Moeda de exibição: uma tabela só, várias contas. Se as contas misturam moeda,
@@ -1092,11 +1091,8 @@ export function ListaView({ items }: { items: CacheItem[] }) {
 
   return (
     <div>
-      {errs.map((item, idx) => (
-        <div key={idx} className="mx-4 mb-3 rounded-lg border border-danger/30 bg-danger/[0.07] px-4 py-3 text-[13px]">
-          ❌ <b>{item.acc.name}:</b> {item.msg}
-        </div>
-      ))}
+      {/* Erros de conta viram o chip "N contas com erro" na Toolbar (+ toast na
+          carga) — como banner aqui eles comiam a altura útil da tabela. */}
 
       {mixed && (
         <div className="border-b border-border bg-warn/[0.06] px-4 py-2 text-[11.5px] text-warn">
@@ -1723,12 +1719,8 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
         )}
       </div>
       {items.map((item, idx) => {
-        if (item.kind === 'err')
-          return (
-            <div key={idx} className="rounded-lg border border-danger/30 bg-danger/[0.07] px-4 py-3 text-[13px]">
-              ❌ <b>{item.acc.name}:</b> {item.msg}
-            </div>
-          )
+        // erro de conta: mostrado no chip da Toolbar, não como faixa aqui
+        if (item.kind === 'err') return null
         if (!item.campMap || !item.dates) return null
         // âncora do streak só vale se a data existe nesta conta
         const anchor = streakAnchor && item.dates.includes(streakAnchor) ? streakAnchor : null

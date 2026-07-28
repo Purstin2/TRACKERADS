@@ -18,6 +18,7 @@ import { useMonitor, type MonitorView } from '../MonitorContext'
 import { touchedIds, useLog } from '../actionLog'
 import ColumnsModal from './ColumnsModal'
 import PeriodPicker from './PeriodPicker'
+import AccountErrors from './AccountErrors'
 import { toast } from '@/components/ui/toast'
 
 /** "Atualizado há 3 minutos" — recalcula sozinho a cada 30s. */
@@ -241,6 +242,7 @@ export default function Toolbar({ onSettings }: { onSettings: () => void }) {
         </div>
 
         <TrackingBadge />
+        <AccountErrors />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
