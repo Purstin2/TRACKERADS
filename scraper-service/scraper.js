@@ -378,22 +378,12 @@ export async function scrapeFacebookAdsCountSimple(facebookAdsLibraryUrl, option
     }
 }
 
-// ─── EXTRAÇÃO DO NOME REAL DA PÁGINA/ANUNCIANTE ──────────────────────────────
-// O título do bookmark/URL costuma estar errado. O nome real da Página aparece
-// como o 1º link pro facebook.com e se repete muito nos alts de imagem/headings.
-const NAME_GENERIC = [
-    'selecionar país', 'localização atual', 'selecionar categoria de anúncio', 'entrar', 'sair',
-    'biblioteca de anúncios', 'relatório da biblioteca de anúncios', 'api da biblioteca de anúncios',
-    'foto do perfil da página', 'ver resumo da página', 'sobre anúncios e uso de dados', 'privacidade',
-    'termos', 'cookies', 'meta', 'facebook', 'instagram', 'ad library', 'log in', 'select country',
-    'current location', 'select ad category', 'about ads and data use', 'privacy', 'terms',
-];
-
+// ── NOMES REAIS DA PÁGINA ────────────────────────────────────────────────────
+// Entra no link da Biblioteca e lê o nome real da Página (autocontido; usa chromium).
 async function extractNameFromLoadedPage(page) {
     return page.evaluate(() => {
         const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
         const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-        // termos genéricos da própria Biblioteca / rodapé / chrome do FB (sem acento)
         const BAD = ['biblioteca', 'ad library', 'library', 'facebook', 'instagram', 'meta ', 'privacidade',
             'privacy', 'cookies', 'termos', 'terms', 'selecionar', 'localizacao', 'location', 'entrar',
             'log in', 'sair', 'categoria', 'category', 'relatorio', 'report', 'sobre anuncios', 'about ads',
@@ -406,8 +396,8 @@ async function extractNameFromLoadedPage(page) {
         const isName = (s) => {
             const c = clean(s);
             if (c.length < 2 || c.length > 60) return false;
-            if (/^[\d\W]+$/.test(c)) return false;       // só números/símbolos
-            if (looksUrl(c)) return false;               // descarta URLs/links de anúncio
+            if (/^[\d\W]+$/.test(c)) return false;
+            if (looksUrl(c)) return false;
             const n = ' ' + norm(c) + ' ';
             if (BAD.some((b) => n.includes(b))) return false;
             return true;
@@ -415,7 +405,6 @@ async function extractNameFromLoadedPage(page) {
         const links = [...document.querySelectorAll('a[href*="facebook.com/"]')].map((a) => clean(a.innerText)).filter(isName);
         const alts = [...document.querySelectorAll('img[alt]')].map((i) => clean(i.getAttribute('alt'))).filter(isName);
         const heads = [...document.querySelectorAll('[role="heading"],h1,h2')].map((e) => clean(e.innerText)).filter(isName);
-        // o nome real REPETE muito (avatar de cada anúncio) → a frequência decide; alt pesa x2
         const freq = {};
         [...links, ...alts, ...alts, ...heads].forEach((s) => { freq[s] = (freq[s] || 0) + 1; });
         const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
@@ -442,7 +431,7 @@ export async function scrapePageName(url) {
         await page.waitForTimeout(6000);
         const name = await extractNameFromLoadedPage(page);
         await browser.close();
-        return { success: !!name, name: name || null, error: name ? null : 'nome não encontrado' };
+        return { success: !!name, name: name || null, error: name ? null : 'nome nao encontrado' };
     } catch (error) {
         if (browser) await browser.close().catch(() => {});
         return { success: false, name: null, error: error.message };

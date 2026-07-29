@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ads Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+    --bg:#0a0c11; --side:#0f1218; --surf:#15181f; --surf2:#1b1f29; --surf3:#222734;
+    --brd:#262b37; --brd2:#313845;
+    --txt:#e7eaf1; --mut:#8b93a6; --mut2:#5f6678;
+    --vio:#8b7cff; --vio2:#7565f5; --vio-bg:rgba(139,124,255,.14);
+    --grn:#46d989; --red:#fb6f86; --yel:#f7b955; --blu:#5fa8ff;
+    --grn-bg:rgba(70,217,137,.10); --red-bg:rgba(251,111,134,.10); --yel-bg:rgba(247,185,85,.10);
+    --r:16px; --r-sm:10px; --r-pill:999px;
+    --sh:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);font-size:13px;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--brd2);border-radius:8px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===== APP SHELL ===== */
+.app{display:flex;min-height:100vh}
+.side{width:212px;flex-shrink:0;background:var(--side);border-right:1px solid var(--brd);display:flex;flex-direction:column;padding:18px 12px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:9px;padding:4px 8px 18px;font-weight:700;font-size:15px;letter-spacing:-.02em}
+.brand-ic{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,var(--vio),var(--vio2));display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;box-shadow:0 4px 12px rgba(124,101,245,.4)}
+.nav{display:flex;flex-direction:column;gap:3px;flex:1}
+.nav-i{display:flex;align-items:center;gap:11px;padding:9px 11px;border:none;background:transparent;color:var(--mut);font-size:13px;font-weight:600;border-radius:var(--r-sm);cursor:pointer;text-align:left;transition:all .15s;font-family:inherit;width:100%}
+.nav-i:hover{background:var(--surf2);color:var(--txt)}
+.nav-i.active{background:var(--vio-bg);color:#cabfff}
+.ni-ic{font-size:15px;width:18px;text-align:center;filter:grayscale(.2)}
+.side-foot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--brd);padding-top:12px;margin-top:8px}
+.exec-wrap{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--mut);user-select:none;cursor:pointer;padding:6px 11px;border-radius:var(--r-sm);transition:background .15s}
+.exec-wrap:hover{background:var(--surf2)}
+.exec-wrap.on{color:var(--red)}
+.switch{position:relative;width:34px;height:19px;background:var(--brd2);border-radius:var(--r-pill);transition:background .2s;flex-shrink:0}
+.switch.on{background:var(--red)}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;background:#fff;border-radius:50%;transition:transform .2s}
+.switch.on::after{transform:translateX(15px)}
+.exec-lbl{font-weight:700}
+
+.content{flex:1;min-width:0;display:flex;flex-direction:column}
+
+/* ===== TOPBAR ===== */
+.topbar{padding:14px 26px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:12px;background:rgba(15,18,24,.55);backdrop-filter:blur(8px);position:sticky;top:0;z-index:50}
+.tok-wrap{flex:1;display:flex;flex-direction:column;gap:3px;max-width:560px}
+.tok-row{display:flex;gap:7px}
+input[type=password],input[type=text],input[type=number]{background:var(--surf);border:1px solid var(--brd2);color:var(--txt);padding:8px 13px;border-radius:var(--r-sm);font-size:12px;outline:none;transition:border .15s;font-family:inherit}
+input:focus{border-color:var(--vio)}
+.tok-row input{flex:1}
+.hint{font-size:10px;color:var(--mut2)}.hint a{color:var(--vio);text-decoration:none}
+.btn{background:var(--surf2);border:1px solid var(--brd2);color:var(--mut);padding:8px 12px;border-radius:var(--r-sm);font-size:12px;cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s}
+.btn:hover{color:var(--txt);border-color:var(--brd2)}
+.btn-primary{background:linear-gradient(135deg,var(--vio),var(--vio2));border:none;color:#fff;font-weight:700;box-shadow:0 4px 14px rgba(124,101,245,.35)}
+.btn-primary:hover{filter:brightness(1.08);color:#fff}
+
+/* ===== CONTEXT BAR ===== */
+.ctxbar{padding:13px 26px;display:flex;flex-wrap:wrap;align-items:center;gap:9px;border-bottom:1px solid var(--brd)}
+.seg-tabs{display:flex;background:var(--surf);border:1px solid var(--brd2);border-radius:var(--r-pill);padding:3px;gap:2px}
+.seg-tab{padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--mut);border:none;background:transparent;border-radius:var(--r-pill);font-family:inherit;transition:all .15s}
+.seg-tab:hover{color:var(--txt)}
+.seg-tab.active{background:var(--vio);color:#fff}
+select{background:var(--surf);border:1px solid var(--brd2);color:var(--txt);padding:7px 11px;border-radius:var(--r-sm);font-size:12px;cursor:pointer;outline:none;font-family:inherit;max-width:260px}
+select:focus{border-color:var(--vio)}
+.ctx-lbl{font-size:10px;color:var(--mut2);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{border:1px solid var(--brd2);border-radius:var(--r-pill);padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;color:var(--mut);user-select:none;transition:all .15s}
+.chip.on{border-color:var(--vio);color:#cabfff;background:var(--vio-bg)}
+.spacer{margin-left:auto}
+
+/* ===== MAIN VIEW ===== */
+.view{padding:24px 26px;max-width:1500px;width:100%}
+.tab-pane{display:none}.tab-pane.active{display:block}
+
+/* ===== SUMMARY CARDS ===== */
+.sum-strip{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap}
+.sum-card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:14px 18px;min-width:130px;cursor:pointer;transition:all .15s;flex:1}
+.sum-card:hover{border-color:var(--brd2);transform:translateY(-1px)}
+.sum-card.sel{border-color:var(--vio);box-shadow:0 0 0 1px var(--vio)}
+.sum-n{font-size:27px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.sum-lb{font-size:11px;color:var(--mut);margin-top:6px;font-weight:500}
+.sc-escalar .sum-n{color:var(--grn)}.sc-matar .sum-n{color:var(--red)}
+.sc-atencao .sum-n{color:var(--yel)}.sc-perto .sum-n{color:var(--blu)}.sc-monitorar .sum-n{color:var(--mut)}
+
+.legend{display:flex;gap:14px;font-size:11px;color:var(--mut);margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.legend .sep{color:var(--brd2)}
+.filter-note{display:inline-flex;align-items:center;gap:8px;background:var(--vio-bg);border:1px solid var(--vio);color:#cabfff;padding:5px 12px;border-radius:var(--r-pill);font-size:11px;font-weight:600;margin-bottom:14px}
+.filter-note button{background:transparent;border:none;color:#cabfff;cursor:pointer;font-weight:700;font-family:inherit}
+
+/* ===== BADGES ===== */
+.bdg{display:inline-flex;align-items:center;padding:4px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:700;white-space:nowrap}
+.bdg-escalar{background:var(--grn-bg);color:var(--grn)}
+.bdg-matar{background:var(--red-bg);color:var(--red)}
+.bdg-atencao{background:var(--yel-bg);color:var(--yel)}
+.bdg-perto{background:rgba(95,168,255,.12);color:var(--blu)}
+.bdg-monitorar,.bdg-aguardar{background:var(--surf2);color:var(--mut)}
+.bdg-ok,.bdg-sem{background:transparent;color:var(--mut2)}
+.hist-pill{display:inline-block;font-size:10px;font-weight:700;color:var(--vio);background:var(--vio-bg);padding:2px 7px;border-radius:var(--r-pill);margin-left:5px}
+
+.act-btns{display:inline-flex;gap:5px;margin-left:7px}
+.act-btn{border:none;border-radius:var(--r-pill);font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:inherit;transition:all .15s}
+.act-up{background:var(--grn-bg);color:var(--grn)}.act-up:hover{filter:brightness(1.15)}
+.act-pause{background:var(--red-bg);color:var(--red)}.act-pause:hover{filter:brightness(1.15)}
+.act-exp{background:var(--surf2);border:1px solid var(--brd2);color:var(--mut)}.act-exp:hover{color:var(--txt)}
+
+/* ===== ACCOUNT BLOCK ===== */
+.acc-block{margin-bottom:26px}
+.acc-hdr{display:flex;align-items:center;gap:9px;margin-bottom:11px;flex-wrap:wrap}
+.acc-name{font-size:13px;font-weight:700;letter-spacing:-.01em}
+.acc-dot{width:7px;height:7px;border-radius:50%;background:var(--vio)}
+.acc-meta{font-size:11px;color:var(--mut)}
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:var(--r-pill)}
+.tag-g{background:var(--grn-bg);color:var(--grn)}.tag-r{background:var(--red-bg);color:var(--red)}
+
+/* ===== TABLES ===== */
+.card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.tbl{width:100%;border-collapse:collapse}
+.tbl thead{background:var(--surf2)}
+.tbl th{padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:var(--mut2);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--brd);white-space:nowrap}
+.tbl td{padding:11px 16px;border-bottom:1px solid var(--brd);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr{transition:background .12s}
+.tbl tbody tr:hover td{background:var(--surf2)}
+.row-good td:first-child{box-shadow:inset 3px 0 var(--grn)}
+.row-bad td:first-child{box-shadow:inset 3px 0 var(--red)}
+.row-warn td:first-child{box-shadow:inset 3px 0 var(--yel)}
+.sico{font-size:15px;text-align:center}
+.cname{font-size:12px;font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.num{font-variant-numeric:tabular-nums;font-size:12px}
+.cg{color:var(--grn);font-weight:700}.cr{color:var(--red);font-weight:700}.cy{color:var(--yel);font-weight:700}.cm{color:var(--mut)}
+.fire{color:var(--red);font-weight:700}
+.ad-row td{background:rgba(95,168,255,.04);font-size:11px}
+.ad-row td:first-child{box-shadow:inset 3px 0 var(--blu)!important}
+.ad-name{padding-left:18px;color:var(--mut);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbl-note{font-size:10px;color:var(--mut2);margin-top:8px}
+
+/* HISTÓRICO */
+.hist-wrap{overflow-x:auto}
+.hist-tbl{border-collapse:collapse;min-width:100%}
+.hist-tbl thead{background:var(--surf2)}
+.hist-tbl th{padding:8px 9px;font-size:10px;font-weight:700;color:var(--mut2);text-transform:uppercase;border-bottom:1px solid var(--brd);white-space:nowrap;text-align:center}
+.hist-tbl th:first-child{text-align:left;min-width:200px;max-width:220px}
+.hist-tbl th:last-child{text-align:left;border-left:1px solid var(--brd)}
+.hist-tbl td{padding:6px 7px;border-bottom:1px solid var(--brd);text-align:center}
+.hist-tbl tr:last-child td{border-bottom:none}
+.hist-tbl tr:hover td{background:var(--surf2)}
+.hist-tbl td:first-child{text-align:left;padding:8px 16px;font-size:11px;font-weight:500;border-right:1px solid var(--brd);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-tbl td:last-child{text-align:left;padding:6px 12px;border-left:1px solid var(--brd)}
+.dcell{font-size:14px;min-width:52px}.droas{display:block;font-size:9px;color:var(--mut2);margin-top:1px;line-height:1;font-variant-numeric:tabular-nums}
+.dg{background:var(--grn-bg)}.dr{background:var(--red-bg)}.dy{background:var(--yel-bg)}
+
+/* CHARTS */
+.chart-card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:18px;box-shadow:var(--sh)}
+.chart-card h3{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;font-weight:700}
+.chart-card canvas{max-height:300px}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-bottom:18px}
+
+/* KPI */
+.kpi-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.kpi{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:15px 20px;min-width:120px;flex:1;box-shadow:var(--sh)}
+.kpi-n{font-size:24px;font-weight:700;letter-spacing:-.02em}.kpi-l{font-size:10px;color:var(--mut);margin-top:5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+
+/* INSIGHTS */
+.insights{margin-bottom:22px}
+.ins-summary{background:var(--surf);border:1px solid var(--brd);border-left:3px solid var(--vio);border-radius:var(--r);padding:14px 18px;font-size:13px;margin-bottom:14px;line-height:1.55}
+.ins-head{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.ins-stat{flex:1;min-width:180px;border-radius:var(--r);padding:14px 18px;border:1px solid}
+.ins-bleed{background:var(--red-bg);border-color:rgba(251,111,134,.3)}
+.ins-sub{background:var(--yel-bg);border-color:rgba(247,185,85,.3)}
+.ins-gold{background:var(--grn-bg);border-color:rgba(70,217,137,.3)}
+.ins-stat .n{font-size:22px;font-weight:700;letter-spacing:-.02em}.ins-stat .l{font-size:10px;color:var(--mut);margin-top:4px}
+.ins-group{margin-bottom:16px}
+.ins-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.ins-cards{display:flex;flex-direction:column;gap:7px}
+.ins-card{display:flex;align-items:center;gap:14px;padding:11px 16px;border-radius:var(--r-sm);border:1px solid var(--brd);background:var(--surf)}
+.ins-card:hover{background:var(--surf2)}
+.ins-card .seg{font-weight:700;min-width:135px;font-size:12px}
+.ins-card .bar{flex:1;height:7px;background:var(--surf3);border-radius:var(--r-pill);overflow:hidden;min-width:50px}
+.ins-card .bar i{display:block;height:100%;border-radius:var(--r-pill)}
+.ins-card .metrics{font-variant-numeric:tabular-nums;font-size:11px;color:var(--mut);white-space:nowrap}
+.ins-card .verdict{font-size:11px;min-width:155px;text-align:right;font-weight:600}
+.ic-red{border-left:3px solid var(--red)}.ic-yel{border-left:3px solid var(--yel)}.ic-grn{border-left:3px solid var(--grn)}
+.drill-caret{font-size:10px;color:var(--vio);font-weight:700;margin-left:5px}
+.seg-drill{margin:3px 0 11px 16px;border-left:2px solid var(--brd2);padding-left:13px}
+.drill-head{font-size:10px;color:var(--mut2);text-transform:uppercase;letter-spacing:.05em;margin:9px 0 7px;font-weight:700}
+.drill-row{display:flex;align-items:center;gap:12px;padding:8px 13px;border-radius:var(--r-sm);background:var(--surf2);margin-bottom:5px;flex-wrap:wrap}
+.drill-row .dr-name{font-size:11px;min-width:200px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.drill-row .dr-met{font-variant-numeric:tabular-nums;font-size:11px;color:var(--mut);white-space:nowrap}
+.dr-g{border-left:3px solid var(--grn)}.dr-r{border-left:3px solid var(--red)}.dr-y{border-left:3px solid var(--yel)}
+.dr-link{font-size:10px;color:var(--vio);text-decoration:none;white-space:nowrap;font-weight:700}
+.dr-link:hover{text-decoration:underline}
+.cre-drill{flex-basis:100%;margin:5px 0 2px 12px}
+.cre-row{display:flex;justify-content:space-between;gap:10px;padding:6px 12px;font-size:11px;background:var(--surf);border-radius:var(--r-sm);margin-bottom:3px}
+.cre-row .dr-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cre-row .dr-met{font-variant-numeric:tabular-nums;color:var(--mut);white-space:nowrap}
+
+/* OFERTA / CRIATIVOS list rows */
+.offer-row{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:8px;overflow:hidden;box-shadow:var(--sh)}
+.offer-main{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;transition:background .12s}
+.offer-main:hover{background:var(--surf2)}
+.offer-name{font-weight:700;font-size:13px;min-width:200px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.offer-met{font-variant-numeric:tabular-nums;font-size:12px;color:var(--mut);white-space:nowrap;display:flex;gap:16px}
+.offer-met b{color:var(--txt)}
+.offer-acc{font-size:10px;color:var(--mut2);background:var(--surf3);padding:3px 9px;border-radius:var(--r-pill)}
+.offer-drill{padding:0 18px 14px;display:none}
+.offer-drill.open{display:block}
+
+/* STATES */
+.empty{text-align:center;padding:64px 24px;color:var(--mut)}
+.empty h2{font-size:16px;color:var(--txt);margin-bottom:8px;font-weight:700}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--brd2);border-top-color:var(--vio);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{background:var(--red-bg);border:1px solid rgba(251,111,134,.3);border-radius:var(--r-sm);padding:11px 15px;color:var(--red);font-size:12px;margin-bottom:10px}
+
+/* LOG */
+.log-tbl{width:100%;border-collapse:collapse}
+.log-tbl th{padding:11px 16px;text-align:left;font-size:10px;color:var(--mut2);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--brd);background:var(--surf2);font-weight:700}
+.log-tbl td{padding:11px 16px;border-bottom:1px solid var(--brd);font-size:12px}
+.log-tbl tr:last-child td{border-bottom:none}
+.log-act{font-weight:700;font-size:10px;padding:3px 9px;border-radius:var(--r-pill)}
+.la-escala{background:var(--grn-bg);color:var(--grn)}.la-pause{background:var(--red-bg);color:var(--red)}.la-sim{background:var(--yel-bg);color:var(--yel)}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(5,7,10,.7);backdrop-filter:blur(3px);z-index:1000;align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--surf);border:1px solid var(--brd2);border-radius:18px;padding:24px;width:440px;max-width:92vw;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.modal h2{font-size:16px;margin-bottom:5px;letter-spacing:-.01em}
+.modal .m-camp{font-size:11px;color:var(--mut);margin-bottom:18px;word-break:break-word}
+.modal .m-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--brd);font-size:13px}
+.modal .m-row b{font-variant-numeric:tabular-nums}
+.m-budget-opts{display:flex;gap:7px;margin:16px 0}
+.m-bopt{flex:1;border:1px solid var(--brd2);border-radius:var(--r-sm);padding:10px;text-align:center;cursor:pointer;font-size:12px;transition:all .15s}
+.m-bopt.on{border-color:var(--grn);background:var(--grn-bg);color:var(--grn);font-weight:700}
+.m-custom{display:flex;align-items:center;gap:7px;margin-bottom:16px}
+.m-custom input{width:110px}
+.m-warn{background:var(--yel-bg);border:1px solid rgba(247,185,85,.3);color:var(--yel);padding:9px 13px;border-radius:var(--r-sm);font-size:11px;margin-bottom:16px;line-height:1.5}
+.m-actions{display:flex;gap:9px;justify-content:flex-end}
+.m-btn{padding:9px 20px;border-radius:var(--r-sm);font-size:13px;font-weight:700;cursor:pointer;border:none;font-family:inherit}
+.m-cancel{background:var(--surf2);border:1px solid var(--brd2);color:var(--mut)}
+.m-confirm{background:var(--grn);color:#06231a}.m-confirm.danger{background:var(--red);color:#2a0a10}
+.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
+.set-f label{display:block;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;font-weight:700}
+.set-f input{width:100%}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surf);border:1px solid var(--brd2);border-radius:var(--r-sm);padding:13px 19px;font-size:13px;z-index:1100;box-shadow:0 12px 40px rgba(0,0,0,.5);opacity:0;transform:translateY(12px);transition:all .25s;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{border-left:3px solid var(--grn)}.toast.bad{border-left:3px solid var(--red)}
+[title]{cursor:help}
+
+/* ===== COMPARISON BAR (segmento vs campanha) ===== */
+.drill-row.col{flex-direction:column;align-items:stretch;gap:9px}
+.dr-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dr-top .dr-name{flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.cmp-bar{display:flex;align-items:center;gap:12px}
+.cmp-track{flex:1;height:10px;background:var(--surf3);border-radius:var(--r-pill);overflow:hidden;min-width:80px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+.cmp-track i{display:block;height:100%;border-radius:var(--r-pill)}
+.cmp-lbl{font-size:11px;color:var(--mut);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cmp-tbl{width:100%;border-collapse:collapse;font-size:11px;margin:2px 0 6px;max-width:520px}
+.cmp-tbl th{text-align:right;color:var(--mut2);font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:3px 12px;border-bottom:1px solid var(--brd)}
+.cmp-tbl th:first-child{text-align:left}
+.cmp-tbl td{padding:6px 12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--mut)}
+.cmp-tbl td:first-child{text-align:left}
+.cmp-tbl .cmp-tag{font-weight:600}
+.cmp-tbl tr.r-slice td{background:var(--vio-bg);font-weight:700;color:var(--txt)}
+.cmp-tbl tr.r-slice .cmp-tag{color:#cabfff}
+.cmp-sub{font-size:9px;color:var(--mut2);font-weight:500}
+.cmp-note{font-size:11px;margin-top:5px;font-weight:600;line-height:1.45;max-width:560px}
+
+/* ===== ANIMATIONS ===== */
+@keyframes fadeInUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.tab-pane.active{animation:fadeIn .28s ease}
+.kpi,.chart-card,.acc-block,.offer-row,.sum-card,.ins-card{animation:fadeInUp .42s cubic-bezier(.22,1,.36,1) both}
+.bar i,.cmp-track i{transition:width .8s cubic-bezier(.22,1,.36,1)}
+.btn,.act-btn,.m-btn,.seg-tab,.chip,.nav-i,.sum-card,.kpi,.offer-main,.m-bopt{transition:all .16s ease}
+.btn:active,.act-btn:active,.m-btn:active,.seg-tab:active,.chip:active{transform:scale(.96)}
+.kpi:hover{transform:translateY(-2px);border-color:var(--brd2)}
+.offer-row:hover{border-color:var(--brd2)}
+.seg-drill,.cre-drill{animation:fadeIn .25s ease}
+.offer-drill.open{animation:fadeInUp .32s ease}
+.drill-row{animation:fadeInUp .3s ease both}
+.modal{animation:popIn .26s cubic-bezier(.22,1,.36,1)}
+.modal-bg{transition:opacity .2s ease}
+.tbl tbody tr{transition:background .12s ease}
+.filter-note{animation:fadeIn .25s ease}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+    <!-- SIDEBAR -->
+    <aside class="side">
+        <div class="brand"><span class="brand-ic">◆</span><span>Ads Monitor</span></div>
+        <nav class="nav">
+            <button class="nav-i active" data-tab="monitor"   onclick="setTab('monitor')"><span class="ni-ic">📊</span>Monitor</button>
+            <button class="nav-i"        data-tab="oferta"    onclick="setTab('oferta')"><span class="ni-ic">🎯</span>Por Oferta</button>
+            <button class="nav-i"        data-tab="publicos"  onclick="setTab('publicos')"><span class="ni-ic">🔍</span>Públicos</button>
+            <button class="nav-i"        data-tab="criativos" onclick="setTab('criativos')"><span class="ni-ic">🎬</span>Criativos</button>
+            <button class="nav-i"        data-tab="acoes"     onclick="setTab('acoes')"><span class="ni-ic">📝</span>Ações</button>
+        </nav>
+        <div class="side-foot">
+            <div class="exec-wrap" id="execWrap" onclick="toggleExec()"><div class="switch" id="execSwitch"></div><span class="exec-lbl" id="execLbl">Execução OFF</span></div>
+            <button class="nav-i" onclick="openSettings()"><span class="ni-ic">⚙️</span>Ajustes</button>
+        </div>
+    </aside>
+
+    <!-- CONTENT -->
+    <main class="content">
+        <header class="topbar">
+            <div class="tok-wrap">
+                <div class="tok-row">
+                    <input type="password" id="tokenInput" placeholder="Access Token do Meta (ads_management)" />
+                    <button class="btn" onclick="toggleTok()">👁</button>
+                </div>
+                <div class="hint"><a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API Explorer</a> — escala/pause exige <code>ads_management</code>. Token salvo localmente.</div>
+            </div>
+        </header>
+
+        <div class="ctxbar" id="ctxbar"></div>
+
+        <div class="view">
+            <div class="tab-pane active" id="pane-monitor">
+                <div id="sum-strip" class="sum-strip" style="display:none"></div>
+                <div class="legend">
+                    <span>🚀 ESCALAR · 2 dias ROAS ≥ <b id="lg1">2.0</b></span><span class="sep">│</span>
+                    <span>📈 PERTO · 1 dia ≥ alvo</span><span class="sep">│</span>
+                    <span>⚠️ ATENÇÃO · dia ruim, macro ok</span><span class="sep">│</span>
+                    <span>🔴 MATAR · CPA 7d &gt; máx ou 3 dias &lt; breakeven</span><span class="sep">│</span>
+                    <span>👁 MONITORAR · lucrativo</span>
+                </div>
+                <div id="dash"><div class="empty"><h2>Monitor de Campanhas</h2>Cole o token, selecione as contas e clique em Atualizar.</div></div>
+            </div>
+            <div class="tab-pane" id="pane-oferta"><div id="oferta-dash"><div class="empty"><h2>Performance por Oferta</h2>Agrupa a mesma oferta somando todas as contas. Selecione contas e clique em Analisar.</div></div></div>
+            <div class="tab-pane" id="pane-publicos"><div id="pub-dash"><div class="empty"><h2>Análise de Públicos</h2>Selecione dimensão e escopo, depois Analisar.</div></div></div>
+            <div class="tab-pane" id="pane-criativos"><div id="criativos-dash"><div class="empty"><h2>Ranking de Criativos</h2>Lista todos os anúncios das contas, do melhor ao pior. Clique em Analisar.</div></div></div>
+            <div class="tab-pane" id="pane-acoes"><div id="acoes-dash"></div></div>
+        </div>
+    </main>
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+
+<script>
+/* ════════ CONFIG ════════ */
+const ACCOUNTS=[
+    {id:'1182053470681632',name:'MALDIVAS',  cur:'USD'},
+    {id:'884258587535238', name:'CHILE',     cur:'USD'},
+    {id:'2529287140834764',name:'HOLANDA',   cur:'USD'},
+    {id:'1149436580510398',name:'CANADA',    cur:'USD'},
+    {id:'1903971303669696',name:'BILLIONARE',cur:'BRL'},
+    {id:'984584710777200', name:'TANJIRO',   cur:'USD'},
+];
+let ROAS_GOOD=2.0, ROAS_BE=1.25, CPA_MAX=12, FX_BRL=5.4, FREQ_WARN=3.5;
+(function(){try{const s=JSON.parse(localStorage.getItem('meta_settings')||'{}');if(s.roasGood)ROAS_GOOD=+s.roasGood;if(s.roasBe)ROAS_BE=+s.roasBe;if(s.cpaMax)CPA_MAX=+s.cpaMax;if(s.fx)FX_BRL=+s.fx;}catch(e){}})();
+
+const ICONS={good:'✅',bad:'❌',warn:'⚠️',none:'—'};
+const ORDER={bad:0,none:1,warn:2,good:3};
+const PALETTE=['#8b7cff','#46d989','#f7b955','#5fa8ff','#fb6f86','#a78bff','#5ee0a0','#ffca6b','#7eb8ff','#ff8fa3','#c4b5ff','#86efac'];
+const ATYPES=['offsite_conversion.fb_pixel_purchase','omni_purchase','purchase'];
+const GENDER_PT={male:'Homem',female:'Mulher',unknown:'Desconhecido'};
+const DEVICE_PT={iphone:'iPhone',ipad:'iPad',android_smartphone:'Android',android_tablet:'Tablet Android',desktop:'Desktop',other:'Outro'};
+const COUNTRY_PT={BR:'🇧🇷 Brasil',US:'🇺🇸 EUA',PT:'🇵🇹 Portugal',GB:'🇬🇧 Reino Unido',DE:'🇩🇪 Alemanha',FR:'🇫🇷 França',ES:'🇪🇸 Espanha',IT:'🇮🇹 Itália',CA:'🇨🇦 Canadá',AU:'🇦🇺 Austrália',NL:'🇳🇱 Holanda',IE:'🇮🇪 Irlanda',MX:'🇲🇽 México',CH:'🇨🇭 Suíça'};
+const BREAKDOWNS={
+    age:{label:'Idade',api:'age'},gender:{label:'Gênero',api:'gender'},age_gender:{label:'Idade + Gênero',api:'age,gender'},
+    device:{label:'Dispositivo',api:'impression_device'},country:{label:'País',api:'country'},regiao:{label:'Região',api:'region'},
+    platform:{label:'Plataforma',api:'publisher_platform'},posicionamento:{label:'Posicionamento',api:'platform_position'},hora:{label:'Hora do dia',api:'hourly_stats_aggregated_by_advertiser_time_zone'},
+};
+const PLACEMENT_PT={feed:'Feed',facebook_feed:'Feed FB',instagram_feed:'Feed IG',story:'Stories',facebook_story:'Stories FB',instagram_story:'Stories IG',instagram_stories:'Stories IG',reels:'Reels',facebook_reels:'Reels FB',instagram_reels:'Reels IG',instream_video:'Vídeo in-stream',video_feeds:'Feed de vídeo',marketplace:'Marketplace',right_hand_column:'Coluna direita',search:'Busca',facebook_search:'Busca FB',explore:'Explorar',instagram_explore:'Explorar IG',biz_disco_feed:'Feed descoberta',facebook_groups_feed:'Grupos',messenger_inbox:'Messenger',an_classic:'Audience Network',rewarded_video:'Vídeo recompensado',profile_feed:'Feed de perfil'};
+const STATUS_FILTERS={
+    active:{label:'Apenas ativas',values:['ACTIVE']},
+    active_paused:{label:'Ativas + pausadas',values:['ACTIVE','PAUSED','CAMPAIGN_PAUSED','ADSET_PAUSED','IN_PROCESS','WITH_ISSUES']},
+    all:{label:'Tudo (inclui excluídas)',values:['ACTIVE','PAUSED','CAMPAIGN_PAUSED','ADSET_PAUSED','IN_PROCESS','WITH_ISSUES','ARCHIVED','DELETED']},
+};
+const TIPO_PT={T:'Teste',E:'Escala'};
+const AGE_ORDER=['13-17','18-24','25-34','35-44','45-54','55-64','65+'];
+
+/* ════════ STATE ════════ */
+let TAB='monitor', VIEW='lista', EXEC=false, STATUS_SEL='active', actionFilter=null;
+const charts={}, pubCharts=[], ofCharts=[];
+const selected=new Set(ACCOUNTS.map(a=>a.id));
+let counts={escalar:0,matar:0,atencao:0,perto:0,monitorar:0};
+let pubCampCache=null, pubDrill={}, pubCtx={}, pubCampTotals={}, drillMap={}, drillCounter=0;
+let monitorCache=[];
+let actionLog=JSON.parse(localStorage.getItem('meta_action_log')||'[]');
+let CUR='$';
+
+/* ════════ INIT ════════ */
+const sv=localStorage.getItem('meta_tok');if(sv)document.getElementById('tokenInput').value=sv;
+document.getElementById('lg1').textContent=ROAS_GOOD.toFixed(1);
+buildCtxBar();
+
+/* ════════ HELPERS ════════ */
+function tok(){return document.getElementById('tokenInput').value.trim()}
+function toggleTok(){const i=document.getElementById('tokenInput');i.type=i.type==='password'?'text':'password'}
+function curSym(c){return c==='BRL'?'R$':'$'}
+function accCur(id){return (ACCOUNTS.find(a=>a.id===id)||{}).cur||'USD'}
+function accName(id){return (ACCOUNTS.find(a=>a.id===id)||{}).name||id}
+function trunc(s,n){return s.length>n?s.slice(0,n)+'…':s}
+function fmtDate(s){const[,m,d]=s.split('-');return`${d}/${m}`}
+
+function toggleExec(){EXEC=!EXEC;document.getElementById('execSwitch').classList.toggle('on',EXEC);document.getElementById('execWrap').classList.toggle('on',EXEC);document.getElementById('execLbl').textContent=EXEC?'Execução ON':'Execução OFF'}
+
+function setTab(t){
+    TAB=t;
+    document.querySelectorAll('.nav-i[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.toggle('active',p.id==='pane-'+t));
+    buildCtxBar();
+    if(t==='acoes')renderAcoes();
+}
+function setView(v){
+    VIEW=v;actionFilter=null;
+    document.querySelectorAll('.seg-tab[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+    const sel=document.getElementById('dateSelect');
+    if(sel){if(v==='lista')sel.innerHTML=`<option value="yesterday">Ontem</option><option value="today">Hoje</option><option value="last_7d">7 dias</option><option value="last_14d">14 dias</option>`;
+        else sel.innerHTML=`<option value="7">Últimos 7 dias</option><option value="14" selected>Últimos 14 dias</option><option value="30">Últimos 30 dias</option>`;}
+}
+function chipHTML(){return `<span class="ctx-lbl">Contas</span><div class="chips" id="chips">`+ACCOUNTS.map(a=>`<div class="chip ${selected.has(a.id)?'on':''}" data-id="${a.id}" onclick="toggleChip('${a.id}')">${a.name}</div>`).join('')+`</div>`}
+function toggleChip(id){if(selected.has(id))selected.delete(id);else selected.add(id);document.querySelector(`.chip[data-id="${id}"]`)?.classList.toggle('on');pubCampCache=null}
+function statusSelectHTML(){return `<span class="ctx-lbl">Status</span><select id="statusSel" onchange="onStatusChange()">`+Object.entries(STATUS_FILTERS).map(([k,v])=>`<option value="${k}" ${k===STATUS_SEL?'selected':''}>${v.label}</option>`).join('')+`</select>`}
+
+function buildCtxBar(){
+    const bar=document.getElementById('ctxbar');bar.style.display='flex';
+    if(TAB==='monitor'){
+        bar.innerHTML=`<div class="seg-tabs">
+            <button class="seg-tab ${VIEW==='lista'?'active':''}" data-view="lista" onclick="setView('lista')">Lista</button>
+            <button class="seg-tab ${VIEW==='historico'?'active':''}" data-view="historico" onclick="setView('historico')">Histórico</button>
+            <button class="seg-tab ${VIEW==='grafico'?'active':''}" data-view="grafico" onclick="setView('grafico')">Gráfico</button>
+        </div><select id="dateSelect"></select>${statusSelectHTML()}${chipHTML()}<span class="spacer"></span><button class="btn btn-primary" onclick="loadMonitor()">▶ Atualizar</button>`;
+        setView(VIEW);
+    }else if(TAB==='oferta'){
+        bar.innerHTML=`<span class="ctx-lbl">Período</span><select id="ofDate"><option value="yesterday">Ontem</option><option value="last_7d" selected>7 dias</option><option value="last_14d">14 dias</option><option value="last_30d">30 dias</option></select>${statusSelectHTML()}${chipHTML()}<span class="spacer"></span><button class="btn btn-primary" onclick="loadOferta()">▶ Analisar</button>`;
+    }else if(TAB==='publicos'){
+        bar.innerHTML=`<span class="ctx-lbl">Dimensão</span><select id="pubDim">${Object.entries(BREAKDOWNS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}</select>
+            <span class="ctx-lbl">Escopo</span><select id="pubScope" onchange="onScopeChange()">
+                <option value="all">Tudo</option><option value="lote">Por Lote (data)</option><option value="market">Por Mercado</option><option value="type">Por Tipo</option>
+                <option value="campaign">Campanhas</option><option value="adset">Conjuntos</option><option value="ad">Criativos</option></select>
+            <span class="scope-extra" id="scopeExtra"></span>
+            <select id="pubDate"><option value="last_7d">7 dias</option><option value="last_14d" selected>14 dias</option><option value="last_30d">30 dias</option></select>
+            ${statusSelectHTML()}${chipHTML()}<span class="spacer"></span><button class="btn btn-primary" onclick="loadPublicos()">▶ Analisar</button>`;
+    }else if(TAB==='criativos'){
+        bar.innerHTML=`<span class="ctx-lbl">Período</span><select id="crDate"><option value="yesterday">Ontem</option><option value="last_7d" selected>7 dias</option><option value="last_14d">14 dias</option></select>
+            <span class="ctx-lbl">Ordenar</span><select id="crSort"><option value="spend">Maior gasto</option><option value="roas_desc">Melhor ROAS</option><option value="roas_asc">Pior ROAS</option></select>
+            <span class="ctx-lbl">Gasto mín</span><input type="number" id="crMin" value="5" style="width:64px">
+            ${statusSelectHTML()}${chipHTML()}<span class="spacer"></span><button class="btn btn-primary" onclick="loadCriativos()">▶ Analisar</button>`;
+    }else{
+        bar.innerHTML=`<span class="ctx-lbl">Histórico de ações executadas pelo dashboard</span><span class="spacer"></span><button class="btn" onclick="exportLog('csv')">⬇ CSV</button><button class="btn" onclick="exportLog('json')">⬇ JSON</button><button class="btn" onclick="clearLog()">🗑 Limpar</button>`;
+    }
+}
+
+/* ════════ DATA HELPERS ════════ */
+function findVal(arr,keys){if(!arr)return null;const i=arr.find(a=>keys.includes(a.action_type));return i?parseFloat(i.value):null}
+function getRoas(r){return findVal(r.purchase_roas,ATYPES)}
+function getCpa(r){return findVal(r.cost_per_action_type,ATYPES)}
+function getSales(r){const v=findVal(r.actions,ATYPES);return v?Math.round(v):0}
+function getRevenue(r){return findVal(r.action_values,ATYPES)||0}
+function getFreq(r){return parseFloat(r.frequency||0)}
+function getCpm(r){return parseFloat(r.cpm||0)}
+function toUSD(v,cur){return cur==='BRL'?v/FX_BRL:v}
+function classify(roas,cpa,sales){if(!sales)return'none';const ok=cpa===null||cpa<=CPA_MAX;if(roas>=ROAS_GOOD&&ok)return'good';if(roas<ROAS_BE||!ok)return'bad';return'warn'}
+function roasCls(r){if(r===null)return'cm';if(r>=ROAS_GOOD)return'cg';if(r<ROAS_BE)return'cr';return'cy'}
+function parseName(name){const p=name.split(/\s*-\s*/);const tipo=/^[TE]$/i.test(p[0]||'')?p[0].toUpperCase():null;const mercado=/^(BR|GR|PT|ES)$/i.test(p[1]||'')?p[1].toUpperCase():null;const lote=/^\d{2}\/\d{2}$/.test(p[2]||'')?p[2]:null;const estM=(p[3]||'').match(/CBO|ABO/i);return{tipo,mercado,lote,estrutura:estM?estM[0].toUpperCase():null}}
+function offerKey(name){const p=name.split(/\s*-\s*/);let rest=p.slice(5).join(' - ').trim();if(!rest)rest=p[p.length-1]||name;rest=rest.replace(/—?\s*c[óo]pia.*/i,'').trim();rest=rest.replace(/^(BRGR|GRBR|BR|GR|PT|ES)\s*-\s*/i,'').trim();return rest.toUpperCase()||name.toUpperCase()}
+function segKeyOf(r,dim){return dim==='age_gender'?`${r.age||'—'} · ${GENDER_PT[r.gender]||r.gender||'—'}`:keyFor(r,dim)}
+function campUrl(accId,campId){return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${accId}&selected_campaign_ids=${campId}`}
+
+/* ════════ ACTION RULES ════════ */
+function analyzeAction(datesObj,allDates){
+    const sorted=allDates.filter(d=>datesObj[d]);if(!sorted.length)return{code:'sem',label:'—',detail:'Sem dados'};
+    const days=sorted.map(d=>({...datesObj[d],date:d}));const n=days.length;
+    if(n<3)return{code:'aguardar',label:'🕐 AGUARDAR',detail:`${n} dia(s) de dados — aguardar 48-72h`};
+    const last1=days[n-1],last2=days.slice(-2),last3=days.slice(-3),last7=days.slice(-7);
+    const sp7=last7.reduce((s,d)=>s+d.spend,0),rev7=last7.reduce((s,d)=>s+(d.roas||0)*d.spend,0);
+    const macRoas=sp7>0?rev7/sp7:null,sl7=last7.reduce((s,d)=>s+d.sales,0),macCpa=sl7>0?sp7/sl7:null;
+    const l2v=last2.filter(d=>d.roas!==null);
+    if(l2v.length>=2&&l2v.every(d=>d.roas>=ROAS_GOOD&&(d.cpa===null||d.cpa<=CPA_MAX)))return{code:'escalar',label:'🚀 ESCALAR',detail:`2 dias consecutivos: ${l2v.map(d=>d.roas.toFixed(2)).join(' e ')} — +30% ou duplicar`};
+    if(macCpa!==null&&macCpa>CPA_MAX)return{code:'matar',label:'🔴 MATAR',detail:`CPA 7d $${macCpa.toFixed(2)} > $${CPA_MAX} — pausar`};
+    const l3s=last3.filter(d=>d.spend>0.5);
+    if(l3s.length>=3&&l3s.every(d=>d.roas!==null&&d.roas<ROAS_BE))return{code:'matar',label:'🔴 MATAR',detail:`3 dias ROAS < ${ROAS_BE}: ${l3s.map(d=>d.roas.toFixed(2)).join(' → ')} — pausar`};
+    if(last3.filter(d=>d.spend>0.5&&d.sales===0).length>=3)return{code:'matar',label:'🔴 MATAR',detail:'3 dias com gasto e zero vendas'};
+    if(last1.roas!==null&&last1.roas>=ROAS_GOOD){const prev=n>=2?days[n-2]:null;if(!prev||prev.roas===null||prev.roas<ROAS_GOOD)return{code:'perto',label:'📈 PERTO',detail:`Ontem ROAS ${last1.roas.toFixed(2)} — falta +1 dia ≥ ${ROAS_GOOD}`};}
+    if(last1.roas!==null&&last1.roas<ROAS_BE&&macRoas!==null&&macRoas>=ROAS_BE)return{code:'atencao',label:'⚠️ ATENÇÃO',detail:`Ontem ${last1.roas.toFixed(2)} — macro 7d ${macRoas.toFixed(2)} ok. Monitorar`};
+    if(macRoas!==null&&macRoas>=ROAS_BE&&macRoas<ROAS_GOOD)return{code:'monitorar',label:'👁 MONITORAR',detail:`ROAS 7d ${macRoas.toFixed(2)} — lucrativo abaixo de ${ROAS_GOOD}`};
+    return{code:'ok',label:'✅ OK',detail:'Dentro dos parâmetros'};
+}
+function analyzeAggregate(roas,cpa,sales){
+    if(!sales)return{code:'sem',label:'—',detail:'Sem vendas'};
+    if(cpa!==null&&cpa>CPA_MAX)return{code:'matar',label:'🔴 MATAR',detail:`CPA $${cpa.toFixed(2)} > $${CPA_MAX} — confira 7d`};
+    if(roas!==null&&roas<ROAS_BE)return{code:'matar',label:'🔴 MATAR',detail:`ROAS ${roas.toFixed(2)} < breakeven ${ROAS_BE}`};
+    if(roas!==null&&roas>=ROAS_GOOD&&(cpa===null||cpa<=CPA_MAX))return{code:'escalar',label:'🚀 ESCALAR',detail:'ROAS alto — confirme 2 dias no Histórico'};
+    if(roas!==null&&roas>=ROAS_BE)return{code:'monitorar',label:'👁 MONITORAR',detail:`ROAS ${roas.toFixed(2)} — lucrativo`};
+    return{code:'ok',label:'—',detail:''};
+}
+function badgeHTML(a){const cls={escalar:'bdg-escalar',matar:'bdg-matar',atencao:'bdg-atencao',perto:'bdg-perto',monitorar:'bdg-monitorar',aguardar:'bdg-aguardar',ok:'bdg-ok',sem:'bdg-sem'}[a.code]||'bdg-ok';return`<span class="bdg ${cls}" title="${a.detail}">${a.label}</span>`}
+function countAction(a){if(counts[a.code]!==undefined)counts[a.code]++}
+function actBtns(a,accId,campId,name){const nm=name.replace(/'/g,"\\'");let b='';if(a.code==='escalar'||a.code==='perto')b+=`<button class="act-btn act-up" onclick="askEscalar('${accId}','${campId}','${nm}')">+30%</button>`;if(a.code==='matar')b+=`<button class="act-btn act-pause" onclick="askPausar('${accId}','${campId}','${nm}')">Pausar</button>`;return b?`<span class="act-btns">${b}</span>`:''}
+function scaleHistoryBadge(campId){const r=actionLog.find(l=>l.campId===campId&&l.action==='escala'&&!l.sim);if(!r)return'';const d=Math.floor((Date.now()-new Date(r.ts))/86400000);return `<span class="hist-pill" title="${r.detail}">↑ ${d===0?'hoje':d+'d'}</span>`}
+
+/* ════════ API ════════ */
+async function paginate(url){let data=[],next=url,g=0;while(next&&g++<30){const r=await fetch(next);const j=await r.json();if(j.error)throw new Error(j.error.message);data=data.concat(j.data||[]);next=j.paging&&j.paging.next?j.paging.next:null}return data}
+function statusClause(s){return {field:'campaign.effective_status',operator:'IN',value:s||['ACTIVE']}}
+function getPubStatuses(){const el=document.getElementById('statusSel');return STATUS_FILTERS[(el&&el.value)||'active'].values}
+async function fetchAggregate(id,preset,t,statuses){const p=new URLSearchParams({level:'campaign',fields:'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,frequency,cpm',date_preset:preset,filtering:JSON.stringify([statusClause(statuses)]),access_token:t,limit:300});return paginate(`https://graph.facebook.com/v22.0/act_${id}/insights?${p}`)}
+async function fetchTimeSeries(id,days,t,statuses){const end=new Date(),start=new Date();start.setDate(end.getDate()-parseInt(days)+1);const fmt=d=>d.toISOString().split('T')[0];const p=new URLSearchParams({level:'campaign',fields:'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,date_start',time_range:JSON.stringify({since:fmt(start),until:fmt(end)}),time_increment:'1',filtering:JSON.stringify([statusClause(statuses)]),access_token:t,limit:500});return paginate(`https://graph.facebook.com/v22.0/act_${id}/insights?${p}`)}
+async function fetchAds(accId,campId,preset,t){const p=new URLSearchParams({level:'ad',fields:'ad_id,ad_name,spend,purchase_roas,cost_per_action_type,actions',date_preset:preset,filtering:JSON.stringify([{field:'campaign.id',operator:'EQUAL',value:campId}]),access_token:t,limit:100});return paginate(`https://graph.facebook.com/v22.0/act_${accId}/insights?${p}`)}
+async function fetchBreakdown(accId,level,bdApi,preset,t,idFilter,statuses){const fields=level==='campaign'?'campaign_id,campaign_name,spend,actions,action_values':level==='adset'?'campaign_id,adset_id,adset_name,campaign_name,spend,actions,action_values':'campaign_id,ad_id,ad_name,adset_name,campaign_name,spend,actions,action_values';const filt=[statusClause(statuses)];if(idFilter)filt.push(idFilter);const p=new URLSearchParams({level,fields,breakdowns:bdApi,date_preset:preset,filtering:JSON.stringify(filt),access_token:t,limit:500});return paginate(`https://graph.facebook.com/v22.0/act_${accId}/insights?${p}`)}
+async function fetchEntityNames(accId,level,t,statuses){const fields=level==='adset'?'adset_id,adset_name':'ad_id,ad_name';const p=new URLSearchParams({level,fields:fields+',campaign_name',date_preset:'last_30d',filtering:JSON.stringify([statusClause(statuses)]),access_token:t,limit:500});return paginate(`https://graph.facebook.com/v22.0/act_${accId}/insights?${p}`)}
+async function fetchOffer(accId,preset,t,statuses){const p=new URLSearchParams({level:'campaign',fields:'campaign_id,campaign_name,spend,actions,action_values',date_preset:preset,filtering:JSON.stringify([statusClause(statuses)]),access_token:t,limit:400});return paginate(`https://graph.facebook.com/v22.0/act_${accId}/insights?${p}`)}
+async function fetchCreatives(accId,preset,t,statuses){const p=new URLSearchParams({level:'ad',fields:'ad_id,ad_name,campaign_name,spend,purchase_roas,cost_per_action_type,actions,action_values',date_preset:preset,filtering:JSON.stringify([statusClause(statuses)]),access_token:t,limit:500});return paginate(`https://graph.facebook.com/v22.0/act_${accId}/insights?${p}`)}
+async function getBudget(campId,t){const r=await fetch(`https://graph.facebook.com/v22.0/${campId}?fields=daily_budget,lifetime_budget,name,status&access_token=${t}`);const j=await r.json();if(j.error)throw new Error(j.error.message);if(j.daily_budget)return{level:'campaign',items:[{id:campId,daily:parseInt(j.daily_budget)}],total:parseInt(j.daily_budget)};const p=new URLSearchParams({fields:'daily_budget,name,status,effective_status',access_token:t,limit:100});const j2=await(await fetch(`https://graph.facebook.com/v22.0/${campId}/adsets?${p}`)).json();if(j2.error)throw new Error(j2.error.message);const items=(j2.data||[]).filter(a=>a.effective_status==='ACTIVE'&&a.daily_budget).map(a=>({id:a.id,daily:parseInt(a.daily_budget),name:a.name}));return{level:'adset',items,total:items.reduce((s,i)=>s+i.daily,0)}}
+async function setBudget(entityId,cents,t){const r=await fetch(`https://graph.facebook.com/v22.0/${entityId}`,{method:'POST',body:new URLSearchParams({daily_budget:cents,access_token:t})});const j=await r.json();if(j.error)throw new Error(j.error.message);return j}
+async function pauseCampaign(campId,t){const r=await fetch(`https://graph.facebook.com/v22.0/${campId}`,{method:'POST',body:new URLSearchParams({status:'PAUSED',access_token:t})});const j=await r.json();if(j.error)throw new Error(j.error.message);return j}
+
+/* ════════ MONITOR ════════ */
+function processTS(rows){const map={};rows.forEach(r=>{if(!map[r.campaign_id])map[r.campaign_id]={name:r.campaign_name,dates:{}};map[r.campaign_id].dates[r.date_start]={roas:getRoas(r),cpa:getCpa(r),sales:getSales(r),spend:parseFloat(r.spend||0)}});return map}
+function fpass(code){return !actionFilter||actionFilter.has(code)}
+
+function renderLista(acc,rows){
+    const sym=curSym(acc.cur);
+    const data=rows.map(r=>{const roas=getRoas(r),cpa=getCpa(r),sales=getSales(r);const action=analyzeAggregate(roas,cpa,sales);countAction(action);return{id:r.campaign_id,name:r.campaign_name,spend:parseFloat(r.spend||0),roas,cpa,sales,freq:getFreq(r),cpm:getCpm(r),cls:classify(roas,cpa,sales),action}}).sort((a,b)=>ORDER[a.cls]-ORDER[b.cls]);
+    const shown=data.filter(r=>fpass(r.action.code));
+    if(!shown.length)return'';
+    const totSpend=data.reduce((s,r)=>s+r.spend,0),totSales=data.reduce((s,r)=>s+r.sales,0);
+    const gc=data.filter(r=>r.cls==='good').length,bc=data.filter(r=>r.cls==='bad').length;
+    const trs=shown.map(r=>`<tr class="row-${r.cls}">
+        <td class="sico">${ICONS[r.cls]}</td>
+        <td><div class="cname" title="${r.name}">${r.name}</div></td>
+        <td class="num">${sym}${r.spend.toFixed(2)}</td>
+        <td class="num ${roasCls(r.roas)}">${r.roas!==null?r.roas.toFixed(2):'—'}</td>
+        <td class="num ${r.cpa===null?'cm':r.cpa<=CPA_MAX?'cg':'cr'}">${r.cpa!==null?'$'+r.cpa.toFixed(2):'—'}</td>
+        <td class="num">${r.sales}</td>
+        <td class="num ${r.freq>=FREQ_WARN?'fire':'cm'}">${r.freq?r.freq.toFixed(1):'—'}${r.freq>=FREQ_WARN?' 🔥':''}</td>
+        <td>${badgeHTML(r.action)}${scaleHistoryBadge(r.id)}${actBtns(r.action,acc.id,r.id,r.name)}<button class="act-btn act-exp" onclick="toggleAds('${acc.id}','${r.id}',this)">criativos ▾</button></td>
+    </tr><tr class="ad-host" id="ads-${r.id}" style="display:none"><td colspan="8" style="padding:0"></td></tr>`).join('');
+    return`<div class="acc-block"><div class="acc-hdr"><span class="acc-dot"></span><span class="acc-name">${acc.name}</span><span class="acc-meta">${totSales} vendas · ${sym}${totSpend.toFixed(2)}</span><span class="tag tag-g">${gc} ✅</span><span class="tag tag-r">${bc} ❌</span></div>
+        <div class="card"><table class="tbl"><thead><tr><th style="width:44px;text-align:center">●</th><th>Campanha</th><th>Gasto</th><th>ROAS</th><th>CPA</th><th>Vendas</th><th>Freq</th><th>Ação Sugerida</th></tr></thead><tbody>${trs}</tbody></table></div></div>`;
+}
+async function toggleAds(accId,campId,btn){
+    const host=document.getElementById('ads-'+campId);
+    if(host.style.display!=='none'){host.style.display='none';btn.textContent='criativos ▾';return}
+    host.style.display='';btn.textContent='criativos ▴';const cell=host.querySelector('td');
+    cell.innerHTML=`<div style="padding:12px 16px;color:var(--mut)"><span class="spinner"></span> Carregando criativos...</div>`;
+    const preset=document.getElementById('dateSelect').value;const sym=curSym(accCur(accId));
+    try{const ads=await fetchAds(accId,campId,preset,tok());
+        if(!ads.length){cell.innerHTML=`<div style="padding:12px 16px;color:var(--mut)">Sem dados no período</div>`;return}
+        const rows=ads.map(a=>{const roas=getRoas(a),cpa=getCpa(a),sales=getSales(a);return{name:a.ad_name,spend:parseFloat(a.spend||0),roas,cpa,sales,cls:classify(roas,cpa,sales)}}).sort((x,y)=>ORDER[x.cls]-ORDER[y.cls]);
+        cell.innerHTML=`<table class="tbl">${rows.map(r=>`<tr class="ad-row row-${r.cls}"><td class="sico" style="width:44px">${ICONS[r.cls]}</td><td><div class="ad-name" title="${r.name}">↳ ${r.name}</div></td><td class="num" style="width:90px">${sym}${r.spend.toFixed(2)}</td><td class="num ${roasCls(r.roas)}" style="width:70px">${r.roas!==null?r.roas.toFixed(2):'—'}</td><td class="num ${r.cpa===null?'cm':r.cpa<=CPA_MAX?'cg':'cr'}" style="width:70px">${r.cpa!==null?'$'+r.cpa.toFixed(2):'—'}</td><td class="num" style="width:60px">${r.sales}</td><td style="width:60px"></td><td></td></tr>`).join('')}</table>`;
+    }catch(e){cell.innerHTML=`<div class="err" style="margin:10px 16px">${e.message}</div>`}
+}
+function renderHistorico(acc,campMap,dates){
+    const camps=Object.entries(campMap);const thds=dates.map(d=>`<th title="${d}">${fmtDate(d)}</th>`).join('');
+    const out=camps.map(([cid,camp])=>{const action=analyzeAction(camp.dates,dates);countAction(action);return{cid,camp,action}}).filter(x=>fpass(x.action.code));
+    if(!out.length)return'';
+    const rows=out.map(({cid,camp,action})=>{const cells=dates.map(d=>{const day=camp.dates[d];if(!day)return`<td class="dcell cm">—</td>`;const cls=classify(day.roas,day.cpa,day.sales),bg={good:'dg',bad:'dr',warn:'dy',none:''}[cls];const rStr=day.roas!==null?day.roas.toFixed(2):'—';return`<td class="dcell ${bg}" title="ROAS:${rStr} | CPA:${day.cpa!==null?'$'+day.cpa.toFixed(2):'—'} | ${day.sales}v | $${day.spend.toFixed(2)}">${ICONS[cls]}<span class="droas">${rStr}</span></td>`}).join('');return`<tr><td title="${camp.name}">${trunc(camp.name,34)}</td>${cells}<td>${badgeHTML(action)}${scaleHistoryBadge(cid)}${actBtns(action,acc.id,cid,camp.name)}</td></tr>`}).join('');
+    return`<div class="acc-block"><div class="acc-hdr"><span class="acc-dot"></span><span class="acc-name">${acc.name}</span></div><div class="card hist-wrap"><table class="hist-tbl"><thead><tr><th>Campanha</th>${thds}<th>Ação</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function renderGrafico(acc,campMap,dates){
+    const camps=Object.values(campMap);if(!camps.length)return'';const cid=`c-${acc.id}`;
+    camps.forEach(camp=>countAction(analyzeAction(camp.dates,dates)));
+    setTimeout(()=>{const el=document.getElementById(cid);if(!el)return;const labels=dates.map(fmtDate);
+        const ds=camps.map((camp,i)=>({label:trunc(camp.name,42),data:dates.map(d=>camp.dates[d]?camp.dates[d].roas:null),borderColor:PALETTE[i%PALETTE.length],backgroundColor:PALETTE[i%PALETTE.length]+'22',tension:.35,pointRadius:3,pointHoverRadius:6,borderWidth:2,spanGaps:false}));
+        ds.push({label:`Breakeven ${ROAS_BE}`,data:dates.map(()=>ROAS_BE),borderColor:'rgba(251,111,134,.5)',borderDash:[6,4],pointRadius:0,borderWidth:1.5,tension:0});
+        ds.push({label:`Escala ${ROAS_GOOD}`,data:dates.map(()=>ROAS_GOOD),borderColor:'rgba(70,217,137,.5)',borderDash:[6,4],pointRadius:0,borderWidth:1.5,tension:0});
+        new Chart(el,{type:'line',data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:'#8b93a6',font:{size:10},boxWidth:12,padding:10}},tooltip:{callbacks:{label:c=>c.parsed.y!==null?`${c.dataset.label}: ${c.parsed.y.toFixed(2)}`:null}}},scales:{x:{ticks:{color:'#8b93a6',font:{size:10}},grid:{color:'rgba(38,43,55,.6)'}},y:{ticks:{color:'#8b93a6',font:{size:10}},grid:{color:'rgba(38,43,55,.6)'},beginAtZero:true}}}});
+    },60);
+    return`<div class="acc-block"><div class="acc-hdr"><span class="acc-dot"></span><span class="acc-name">${acc.name} — ROAS por dia</span></div><div class="chart-card"><canvas id="${cid}"></canvas></div></div>`;
+}
+function renderSummary(){
+    const items=[['escalar','Para escalar','🚀','sc-escalar'],['matar','Para matar','🔴','sc-matar'],['atencao','Em atenção','⚠️','sc-atencao'],['perto','Perto de escalar','📈','sc-perto'],['monitorar','Monitorando','👁','sc-monitorar']];
+    const strip=document.getElementById('sum-strip');
+    strip.innerHTML=items.map(([c,l,i,cl])=>`<div class="sum-card ${cl} ${actionFilter&&actionFilter.has(c)?'sel':''}" onclick="toggleActionFilter('${c}')"><div class="sum-n">${counts[c]}</div><div class="sum-lb">${i} ${l}</div></div>`).join('');
+    strip.style.display='flex';
+}
+function toggleActionFilter(code){if(actionFilter&&actionFilter.has(code))actionFilter=null;else actionFilter=new Set([code]);renderMonitorView()}
+async function loadMonitor(){
+    if(!tok()){alert('Cole o access token primeiro.');return}
+    localStorage.setItem('meta_tok',tok());actionFilter=null;monitorCache=[];
+    const dash=document.getElementById('dash');dash.innerHTML=`<div class="empty"><span class="spinner"></span> Carregando dados...</div>`;
+    document.getElementById('sum-strip').style.display='none';
+    const accs=ACCOUNTS.filter(a=>selected.has(a.id));
+    for(const acc of accs){
+        try{if(VIEW==='lista'){const rows=await fetchAggregate(acc.id,document.getElementById('dateSelect').value,tok(),getPubStatuses());monitorCache.push({acc,kind:'lista',rows});}
+            else{const rows=await fetchTimeSeries(acc.id,document.getElementById('dateSelect').value,tok(),getPubStatuses());monitorCache.push({acc,kind:VIEW,campMap:processTS(rows),dates:[...new Set(rows.map(r=>r.date_start))].sort()});}}
+        catch(e){monitorCache.push({acc,kind:'err',msg:e.message})}
+    }
+    renderMonitorView();
+}
+function renderMonitorView(){
+    counts={escalar:0,matar:0,atencao:0,perto:0,monitorar:0};
+    const dash=document.getElementById('dash');const parts=[];
+    monitorCache.forEach(c=>{
+        if(c.kind==='err'){parts.push(`<div class="err">❌ <b>${c.acc.name}:</b> ${c.msg}</div>`);return}
+        if(c.kind==='lista'){const h=renderLista(c.acc,c.rows);if(h)parts.push(h);}
+        else if(c.kind==='historico'){const h=renderHistorico(c.acc,c.campMap,c.dates);if(h)parts.push(h);}
+        else if(c.kind==='grafico'){const h=renderGrafico(c.acc,c.campMap,c.dates);if(h)parts.push(h);}
+    });
+    let head='';
+    if(actionFilter){const code=[...actionFilter][0];const lbl={escalar:'Para escalar',matar:'Para matar',atencao:'Em atenção',perto:'Perto de escalar',monitorar:'Monitorando'}[code];head=`<div class="filter-note">Filtrando: ${lbl} <button onclick="actionFilter=null;renderMonitorView()">✕ limpar</button></div>`}
+    dash.innerHTML=head+(parts.join('')||`<div class="empty">Nenhuma campanha ${actionFilter?'nesse filtro':'no período'}.</div>`);
+    renderSummary();
+}
+
+/* ════════ POR OFERTA ════════ */
+async function loadOferta(){
+    if(!tok()){alert('Cole o token.');return}localStorage.setItem('meta_tok',tok());
+    ofCharts.forEach(c=>c.destroy());ofCharts.length=0;
+    const accs=ACCOUNTS.filter(a=>selected.has(a.id));const preset=document.getElementById('ofDate').value;
+    const dash=document.getElementById('oferta-dash');dash.innerHTML=`<div class="empty"><span class="spinner"></span> Agrupando ofertas em todas as contas...</div>`;
+    const curs=[...new Set(accs.map(a=>a.cur))];const mixed=curs.length>1;CUR=mixed?'$':curSym(curs[0]);
+    const offers={};const errs=[];
+    for(const acc of accs){
+        try{const rows=await fetchOffer(acc.id,preset,tok(),getPubStatuses());
+            rows.forEach(r=>{const key=offerKey(r.campaign_name||'?');const fx=mixed?(acc.cur==='BRL'?1/FX_BRL:1):1;const spend=parseFloat(r.spend||0)*fx,rev=getRevenue(r)*fx,sales=getSales(r);
+                if(!offers[key])offers[key]={key,spend:0,rev:0,sales:0,accs:{},camps:{}};
+                const o=offers[key];o.spend+=spend;o.rev+=rev;o.sales+=sales;
+                o.accs[acc.name]=(o.accs[acc.name]||0)+spend;
+                const ck=r.campaign_id;if(!o.camps[ck])o.camps[ck]={accId:acc.id,name:r.campaign_name,spend:0,rev:0,sales:0};
+                o.camps[ck].spend+=spend;o.camps[ck].rev+=rev;o.camps[ck].sales+=sales;});
+        }catch(e){errs.push(`${acc.name}: ${e.message}`)}
+    }
+    renderOferta(offers,mixed,errs);
+}
+function renderOferta(offers,mixed,errs){
+    const dash=document.getElementById('oferta-dash');
+    const list=Object.values(offers).filter(o=>o.spend>0.5).map(o=>({...o,roas:o.spend>0?o.rev/o.spend:0,cpa:o.sales>0?o.spend/o.sales:null})).sort((a,b)=>b.spend-a.spend);
+    if(!list.length){dash.innerHTML=`<div class="empty">Sem dados no período.</div>`;return}
+    const tS=list.reduce((s,o)=>s+o.spend,0),tR=list.reduce((s,o)=>s+o.rev,0),tV=list.reduce((s,o)=>s+o.sales,0);const tRoas=tS>0?tR/tS:0;
+    let h='';
+    if(errs.length)h+=`<div class="err">${errs.join('<br>')}</div>`;
+    if(mixed)h+=`<div class="ins-summary" style="border-left-color:var(--blu)">ⓘ Contas em moedas diferentes — valores convertidos para <b>USD</b> (câmbio R$ ${FX_BRL.toFixed(2)}, editável em Ajustes).</div>`;
+    h+=`<div class="kpi-row">
+        <div class="kpi"><div class="kpi-n">${list.length}</div><div class="kpi-l">Ofertas ativas</div></div>
+        <div class="kpi"><div class="kpi-n">${CUR}${tS.toFixed(0)}</div><div class="kpi-l">Gasto total</div></div>
+        <div class="kpi"><div class="kpi-n">${CUR}${tR.toFixed(0)}</div><div class="kpi-l">Faturamento</div></div>
+        <div class="kpi"><div class="kpi-n ${tRoas>=ROAS_GOOD?'cg':tRoas<ROAS_BE?'cr':'cy'}">${tRoas.toFixed(2)}</div><div class="kpi-l">ROAS geral</div></div>
+        <div class="kpi"><div class="kpi-n">${tV}</div><div class="kpi-l">Vendas</div></div></div>`;
+    h+=list.map((o,i)=>{
+        const accStr=Object.entries(o.accs).sort((a,b)=>b[1]-a[1]).map(([n])=>`<span class="offer-acc">${n}</span>`).join('');
+        const rc=o.roas>=ROAS_GOOD?'cg':o.roas<ROAS_BE?'cr':'cy';
+        return`<div class="offer-row" style="animation-delay:${Math.min(i,15)*30}ms"><div class="offer-main" onclick="toggleOffer(${i})">
+            <span class="drill-caret">▾</span>
+            <span class="offer-name" title="${o.key}">${o.key}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap">${accStr}</span>
+            <span class="offer-met"><span>${CUR}${o.spend.toFixed(0)}</span><span>ROAS <b class="${rc}">${o.roas.toFixed(2)}</b></span><span><b>${o.sales}</b>v</span></span>
+        </div><div class="offer-drill" id="ofd-${i}">${offerDrillHTML(o)}</div></div>`;
+    }).join('');
+    dash.innerHTML=h;
+}
+function offerDrillHTML(o){
+    const camps=Object.values(o.camps).sort((a,b)=>b.spend-a.spend);
+    return `<div class="drill-head">Campanhas (${camps.length}) — somando contas</div>`+camps.map(c=>{const roas=c.spend>0?c.rev/c.spend:0;const dr=c.sales===0?'dr-r':roas>=ROAS_GOOD?'dr-g':roas<ROAS_BE?'dr-r':'dr-y';return`<div class="drill-row ${dr}"><span class="dr-name" title="${c.name}">${trunc(c.name,50)}</span><span class="dr-met">${curSym(accCur(c.accId))==='R$'&&CUR==='$'?'≈$':CUR}${c.spend.toFixed(2)} · ROAS ${roas.toFixed(2)} · ${c.sales}v</span><a class="dr-link" href="${campUrl(c.accId,c.campId||'')}" target="_blank">↗ abrir</a></div>`}).join('');
+}
+function toggleOffer(i){document.getElementById('ofd-'+i).classList.toggle('open')}
+
+/* ════════ CRIATIVOS (leaderboard) ════════ */
+async function loadCriativos(){
+    if(!tok()){alert('Cole o token.');return}localStorage.setItem('meta_tok',tok());
+    const accs=ACCOUNTS.filter(a=>selected.has(a.id));const preset=document.getElementById('crDate').value;
+    const sortBy=document.getElementById('crSort').value;const minSpend=parseFloat(document.getElementById('crMin').value||0);
+    const dash=document.getElementById('criativos-dash');dash.innerHTML=`<div class="empty"><span class="spinner"></span> Buscando criativos...</div>`;
+    const curs=[...new Set(accs.map(a=>a.cur))];const mixed=curs.length>1;CUR=mixed?'$':curSym(curs[0]);
+    let ads=[];const errs=[];
+    for(const acc of accs){try{const rows=await fetchCreatives(acc.id,preset,tok(),getPubStatuses());
+        rows.forEach(r=>{const fx=mixed?(acc.cur==='BRL'?1/FX_BRL:1):1;const spend=parseFloat(r.spend||0)*fx;if(spend<minSpend)return;const rev=getRevenue(r)*fx,sales=getSales(r);ads.push({acc:acc.name,name:r.ad_name||'(sem nome)',camp:r.campaign_name||'',spend,rev,sales,roas:spend>0?rev/spend:0,cpa:sales>0?spend/sales:null})});
+    }catch(e){errs.push(`${acc.name}: ${e.message}`)}}
+    if(sortBy==='spend')ads.sort((a,b)=>b.spend-a.spend);else if(sortBy==='roas_desc')ads.sort((a,b)=>b.roas-a.roas);else ads.sort((a,b)=>a.roas-b.roas);
+    ads=ads.slice(0,80);
+    let h=errs.length?`<div class="err">${errs.join('<br>')}</div>`:'';
+    if(!ads.length){dash.innerHTML=h+`<div class="empty">Nenhum criativo acima do gasto mínimo.</div>`;return}
+    h+=`<div class="legend"><span>Ranking de criativos (top 80) — gasto mín ${CUR}${minSpend}. Use pra escolher os campeões a consolidar.</span></div>`;
+    h+=`<div class="card"><table class="tbl"><thead><tr><th style="width:40px">#</th><th>Criativo</th><th>Conta</th><th>Gasto</th><th>ROAS</th><th>CPA</th><th>Vendas</th></tr></thead><tbody>`+
+        ads.map((a,i)=>{const cls=classify(a.roas,a.cpa,a.sales);return`<tr class="row-${cls}"><td class="num cm">${i+1}</td><td><div class="cname" title="${a.name} — ${a.camp}">${a.name}</div></td><td><span class="offer-acc">${a.acc}</span></td><td class="num">${CUR}${a.spend.toFixed(2)}</td><td class="num ${roasCls(a.roas)}">${a.roas.toFixed(2)}</td><td class="num ${a.cpa===null?'cm':a.cpa<=CPA_MAX?'cg':'cr'}">${a.cpa!==null?'$'+a.cpa.toFixed(2):'—'}</td><td class="num">${a.sales}</td></tr>`}).join('')+`</tbody></table></div>`;
+    dash.innerHTML=h;
+}
+
+/* ════════ PÚBLICOS ════════ */
+function onStatusChange(){STATUS_SEL=document.getElementById('statusSel').value;pubCampCache=null;const ex=document.getElementById('scopeExtra');if(ex&&ex.innerHTML.trim())onScopeChange()}
+function onScopeChange(){
+    const scope=document.getElementById('pubScope').value;const ex=document.getElementById('scopeExtra');
+    if(scope==='all'){ex.innerHTML='';return}
+    if(['lote','market','type'].includes(scope)){ex.innerHTML=`<select id="scopeVal"><option>carregando...</option></select>`;
+        ensureCampCache().then(()=>{const set=new Set();Object.values(pubCampCache).flat().forEach(c=>{const p=parseName(c.name);const v=scope==='lote'?p.lote:scope==='market'?p.mercado:p.tipo;if(v)set.add(v)});let opts=[...set].sort();opts=scope==='type'?opts.map(o=>`<option value="${o}">${TIPO_PT[o]||o}</option>`).join(''):opts.map(o=>`<option value="${o}">${o}</option>`).join('');document.getElementById('scopeVal').innerHTML=opts||'<option>—</option>'});
+    }else if(scope==='campaign'){ex.innerHTML=`<select id="scopeVal" multiple size="1" style="min-width:240px"><option>carregando...</option></select>`;
+        ensureCampCache().then(()=>{const all=Object.entries(pubCampCache).flatMap(([aid,cs])=>cs.map(c=>({...c,aid})));document.getElementById('scopeVal').innerHTML=all.map(c=>`<option value="${c.aid}|${c.id}">${trunc(c.name,40)}</option>`).join('')});
+    }else{ex.innerHTML=`<select id="scopeVal" multiple size="1" style="min-width:240px"><option>carregando...</option></select>`;
+        loadLevelNames(scope).then(list=>{document.getElementById('scopeVal').innerHTML=list.map(x=>`<option value="${x.aid}|${x.id}">${trunc(x.name,40)}</option>`).join('')||'<option>—</option>'});}
+}
+async function ensureCampCache(){if(pubCampCache)return pubCampCache;pubCampCache={};for(const acc of ACCOUNTS.filter(a=>selected.has(a.id))){try{const rows=await fetchAggregate(acc.id,'last_30d',tok(),getPubStatuses());pubCampCache[acc.id]=rows.map(r=>({id:r.campaign_id,name:r.campaign_name}))}catch(e){pubCampCache[acc.id]=[]}}return pubCampCache}
+async function loadLevelNames(level){const out=[];for(const acc of ACCOUNTS.filter(a=>selected.has(a.id))){try{const rows=await fetchEntityNames(acc.id,level,tok(),getPubStatuses());const seen=new Set();rows.forEach(r=>{const id=level==='adset'?r.adset_id:r.ad_id,nm=level==='adset'?r.adset_name:r.ad_name;if(id&&!seen.has(id)){seen.add(id);out.push({aid:acc.id,id,name:nm})}})}catch(e){}}return out}
+function keyFor(r,dim){if(dim==='age')return r.age||'—';if(dim==='gender')return GENDER_PT[r.gender]||r.gender||'—';if(dim==='device')return DEVICE_PT[r.impression_device]||r.impression_device||'—';if(dim==='country')return COUNTRY_PT[r.country]||r.country||'—';if(dim==='regiao')return r.region||'—';if(dim==='platform')return r.publisher_platform||'—';if(dim==='posicionamento')return PLACEMENT_PT[r.platform_position]||r.platform_position||'—';if(dim==='hora'){const h=r.hourly_stats_aggregated_by_advertiser_time_zone;return h?h.slice(0,2)+'h':'—'}return'—'}
+
+async function loadPublicos(){
+    if(!tok()){alert('Cole o token.');return}localStorage.setItem('meta_tok',tok());
+    pubCharts.forEach(c=>c.destroy());pubCharts.length=0;
+    const dim=document.getElementById('pubDim').value,scope=document.getElementById('pubScope').value,preset=document.getElementById('pubDate').value,bd=BREAKDOWNS[dim];
+    const dash=document.getElementById('pub-dash');dash.innerHTML=`<div class="empty"><span class="spinner"></span> Buscando ${bd.label.toLowerCase()}...</div>`;
+    let level='campaign',idFilterPerAcc=null,selVal=null;const svEl=document.getElementById('scopeVal');
+    if(scope==='adset'||scope==='ad'){level=scope;const picks=svEl?[...svEl.selectedOptions].map(o=>o.value):[];if(!picks.length){dash.innerHTML=`<div class="err">Selecione ao menos 1 ${scope==='adset'?'conjunto':'criativo'}.</div>`;return}idFilterPerAcc={};picks.forEach(v=>{const[aid,id]=v.split('|');(idFilterPerAcc[aid]=idFilterPerAcc[aid]||[]).push(id)})}
+    else if(scope==='campaign'){const picks=svEl?[...svEl.selectedOptions].map(o=>o.value):[];if(!picks.length){dash.innerHTML=`<div class="err">Selecione ao menos 1 campanha.</div>`;return}idFilterPerAcc={};picks.forEach(v=>{const[aid,id]=v.split('|');(idFilterPerAcc[aid]=idFilterPerAcc[aid]||[]).push(id)})}
+    else if(['lote','market','type'].includes(scope)){selVal=svEl?svEl.value:null}
+    const accs=ACCOUNTS.filter(a=>selected.has(a.id));const curs=[...new Set(accs.map(a=>a.cur))];const mixed=curs.length>1;CUR=mixed?'$':curSym(curs[0]);
+    const agg={};pubDrill={};pubCampTotals={};pubCtx={dim,bd,preset};
+    for(const acc of accs){
+        let idFilter=null;if(idFilterPerAcc){const ids=idFilterPerAcc[acc.id];if(!ids||!ids.length)continue;const field=level==='adset'?'adset.id':level==='ad'?'ad.id':'campaign.id';idFilter={field,operator:'IN',value:ids}}
+        let rows;try{rows=await fetchBreakdown(acc.id,level,bd.api,preset,tok(),idFilter,getPubStatuses())}catch(e){dash.innerHTML=`<div class="err">❌ <b>${acc.name}:</b> ${e.message}</div>`;return}
+        const fx=mixed?(acc.cur==='BRL'?1/FX_BRL:1):1;
+        rows.forEach(r=>{
+            if(['lote','market','type'].includes(scope)){const p=parseName(r.campaign_name||'');const v=scope==='lote'?p.lote:scope==='market'?p.mercado:p.tipo;if(v!==selVal)return}
+            const spend=parseFloat(r.spend||0)*fx,rev=getRevenue(r)*fx,sales=getSales(r);
+            if(dim==='age_gender'){const age=r.age||'—',g=GENDER_PT[r.gender]||r.gender||'—';agg[age]=agg[age]||{};agg[age][g]=agg[age][g]||{spend:0,revenue:0,sales:0};agg[age][g].spend+=spend;agg[age][g].revenue+=rev;agg[age][g].sales+=sales}
+            else{const k=keyFor(r,dim);agg[k]=agg[k]||{spend:0,revenue:0,sales:0};agg[k].spend+=spend;agg[k].revenue+=rev;agg[k].sales+=sales}
+            const sk=segKeyOf(r,dim),ck=r.campaign_id||r.campaign_name||'?';if(!pubDrill[sk])pubDrill[sk]={};if(!pubDrill[sk][ck])pubDrill[sk][ck]={accId:acc.id,campId:r.campaign_id,name:r.campaign_name||'(sem nome)',spend:0,revenue:0,sales:0};const dd=pubDrill[sk][ck];dd.spend+=spend;dd.revenue+=rev;dd.sales+=sales;
+            if(!pubCampTotals[ck])pubCampTotals[ck]={spend:0,revenue:0,sales:0,name:r.campaign_name||'(sem nome)',accId:acc.id};const ct=pubCampTotals[ck];ct.spend+=spend;ct.revenue+=rev;ct.sales+=sales;
+        });
+    }
+    renderPublicos(dim,bd,agg,scope,selVal,mixed);
+}
+function sortFlatForChart(flat,dim){if(dim==='age')return [...flat].sort((a,b)=>{const ia=AGE_ORDER.indexOf(a.k),ib=AGE_ORDER.indexOf(b.k);return (ia<0?99:ia)-(ib<0?99:ib)});if(dim==='hora')return [...flat].sort((a,b)=>parseInt(a.k)-parseInt(b.k));return [...flat].sort((a,b)=>b.spend-a.spend)}
+function renderInsights(flat,total){
+    drillCounter=0;drillMap={};const minSpend=Math.max(1.5,total*0.015);
+    const dead=[],bleed=[],sub=[],gold=[];
+    flat.forEach(f=>{if(f.spend<minSpend&&f.sales===0)return;if(f.sales===0&&f.spend>=minSpend){dead.push(f);return}if(f.roas<ROAS_BE)bleed.push(f);else if(f.roas<ROAS_GOOD)sub.push(f);else gold.push(f)});
+    dead.sort((a,b)=>b.spend-a.spend);bleed.sort((a,b)=>b.spend-a.spend);sub.sort((a,b)=>b.spend-a.spend);gold.sort((a,b)=>b.roas-a.roas);
+    const wasted=[...dead,...bleed].reduce((s,f)=>s+f.spend,0),subSp=sub.reduce((s,f)=>s+f.spend,0),goldSp=gold.reduce((s,f)=>s+f.spend,0);
+    const drain=dead[0]||bleed[0]||sub[0],opp=gold[0];let summ='';
+    if(drain){const sh=total>0?(drain.spend/total*100).toFixed(0):0;summ+=`Maior dreno: <b style="color:var(--red)">${drain.k}</b> — ${CUR}${drain.spend.toFixed(2)} (${sh}% do budget) a ROAS ${drain.roas.toFixed(2)}${drain.sales===0?', 0 vendas':''}. `}
+    if(opp){const sh=total>0?(opp.spend/total*100).toFixed(0):0;summ+=`Maior oportunidade: <b style="color:var(--grn)">${opp.k}</b> — ROAS ${opp.roas.toFixed(2)} com só ${sh}% do budget.`}
+    const card=(f,kind)=>{const share=total>0?f.spend/total*100:0;const col=kind==='gold'?'#46d989':kind==='sub'?'#f7b955':'#fb6f86';const bord=kind==='gold'?'ic-grn':kind==='sub'?'ic-yel':'ic-red';let v;if(kind==='dead')v=`<span class="cr">💀 0 vendas — excluir</span>`;else if(kind==='bleed')v=`<span class="cr">🩸 prejuízo — cortar</span>`;else if(kind==='sub')v=`<span class="cy">${share>=25?'consome muito, <'+ROAS_GOOD:'lucra, abaixo do alvo'}</span>`;else v=`<span class="cg">🏆 realocar budget pra cá</span>`;const cpa=f.cpa!==null?'$'+f.cpa.toFixed(2):'—';const idx=drillCounter;const id='d'+(drillCounter++);drillMap[id]=f.k;return`<div><div class="ins-card ${bord}" onclick="expandSeg('${id}')" style="cursor:pointer;animation-delay:${Math.min(idx,12)*30}ms"><span class="seg">${f.k} <span class="drill-caret">▾ campanhas</span></span><span class="bar"><i style="width:0;background:${col}" data-w="${Math.min(100,share).toFixed(1)}"></i></span><span class="metrics">${CUR}${f.spend.toFixed(2)} (${share.toFixed(0)}% do gasto total) · ROAS ${f.roas.toFixed(2)} · ${f.sales} vendas · CPA ${cpa}</span><span class="verdict">${v}</span></div><div class="seg-drill" id="drill-${id}" style="display:none"></div></div>`};
+    let h=`<div class="insights">`;
+    if(summ)h+=`<div class="ins-summary">🎯 ${summ}</div>`;
+    h+=`<div class="ins-head"><div class="ins-stat ins-bleed"><div class="n cr">${CUR}${wasted.toFixed(2)}</div><div class="l">💸 Vazando · ROAS<${ROAS_BE} ou 0 vendas · ${dead.length+bleed.length} seg</div></div><div class="ins-stat ins-sub"><div class="n cy">${CUR}${subSp.toFixed(2)}</div><div class="l">🟡 Abaixo do alvo · ${ROAS_BE}–${ROAS_GOOD} · ${sub.length} seg</div></div><div class="ins-stat ins-gold"><div class="n cg">${CUR}${goldSp.toFixed(2)}</div><div class="l">🏆 Eficiente · ROAS≥${ROAS_GOOD} · ${gold.length} seg</div></div></div>`;
+    if(dead.length+bleed.length)h+=`<div class="ins-group"><div class="ins-title cr">🩸 Vazamentos — cortar ou excluir</div><div class="ins-cards">${[...bleed,...dead].map(f=>card(f,f.sales===0?'dead':'bleed')).join('')}</div></div>`;
+    if(sub.length)h+=`<div class="ins-group"><div class="ins-title cy">🟡 Abaixo do alvo — lucra mas rende pouco</div><div class="ins-cards">${sub.map(f=>card(f,'sub')).join('')}</div></div>`;
+    if(gold.length)h+=`<div class="ins-group"><div class="ins-title cg">🏆 Ouro — escalar / realocar budget</div><div class="ins-cards">${gold.map(f=>card(f,'gold')).join('')}</div></div>`;
+    return h+`</div>`;
+}
+function renderPublicos(dim,bd,agg,scope,selVal,mixed){
+    const dash=document.getElementById('pub-dash');
+    if(!Object.keys(agg).length){dash.innerHTML=`<div class="empty">Sem dados para esse escopo/dimensão.</div>`;return}
+    pubCharts.forEach(c=>c.destroy());pubCharts.length=0;
+    let flat=[];
+    if(dim==='age_gender'){Object.entries(agg).forEach(([age,gs])=>Object.entries(gs).forEach(([g,m])=>flat.push({k:`${age} · ${g}`,spend:m.spend,revenue:m.revenue,sales:m.sales,roas:m.spend>0?m.revenue/m.spend:0,cpa:m.sales>0?m.spend/m.sales:null})))}
+    else{Object.entries(agg).forEach(([k,m])=>flat.push({k,spend:m.spend,revenue:m.revenue,sales:m.sales,roas:m.spend>0?m.revenue/m.spend:0,cpa:m.sales>0?m.spend/m.sales:null}))}
+    const tS=flat.reduce((s,f)=>s+f.spend,0),tR=flat.reduce((s,f)=>s+f.revenue,0),tV=flat.reduce((s,f)=>s+f.sales,0),tRoas=tS>0?tR/tS:0,tCpa=tV>0?tS/tV:0;
+    const scopeLbl=scope==='all'?'Tudo':scope==='lote'?'Lote '+selVal:scope==='market'?'Mercado '+selVal:scope==='type'?(TIPO_PT[selVal]||selVal):scope==='campaign'?'Campanhas selecionadas':scope==='adset'?'Conjuntos selecionados':'Criativos selecionados';
+    let html=`<div style="font-size:11px;color:var(--mut);margin-bottom:14px">Escopo: <b style="color:var(--txt)">${scopeLbl}</b> · Dimensão: <b style="color:var(--txt)">${bd.label}</b>${mixed?' · <span style="color:var(--blu)">valores em USD (câmbio R$'+FX_BRL.toFixed(2)+')</span>':''}</div>
+    <div class="kpi-row"><div class="kpi"><div class="kpi-n">${CUR}${tS.toFixed(2)}</div><div class="kpi-l">Gasto</div></div><div class="kpi"><div class="kpi-n">${CUR}${tR.toFixed(2)}</div><div class="kpi-l">Faturamento</div></div><div class="kpi"><div class="kpi-n ${tRoas>=ROAS_GOOD?'cg':tRoas<ROAS_BE?'cr':'cy'}">${tRoas.toFixed(2)}</div><div class="kpi-l">ROAS</div></div><div class="kpi"><div class="kpi-n">${tV}</div><div class="kpi-l">Vendas</div></div><div class="kpi"><div class="kpi-n ${tCpa<=CPA_MAX?'cg':'cr'}">$${tCpa.toFixed(2)}</div><div class="kpi-l">CPA</div></div></div>`;
+    const geoDim=(dim==='regiao'||dim==='country');
+    if(tV===0&&tS>2){
+        html+=`<div class="ins-summary" style="border-left-color:var(--yel);background:var(--yel-bg)">⚠️ <b>Recorte sem atribuição de vendas.</b> ${CUR}${tS.toFixed(2)} gastos e <b>0 vendas</b> neste detalhamento. O Meta normalmente não quebra compras por <b>${bd.label.toLowerCase()}</b> — ROAS/vendas aqui são <b>não confiáveis</b>. Use só a distribuição de gasto; <b>não corte nada</b> por este recorte.</div><div class="chart-grid"><div class="chart-card"><h3>Distribuição de gasto por ${bd.label.toLowerCase()}</h3><canvas id="pc2"></canvas></div></div>`;
+        dash.innerHTML=html;animateBars(dash);const fc=[...flat].sort((a,b)=>b.spend-a.spend);pubCharts.push(donutChart('pc2',fc.map(f=>f.k),fc.map(f=>+f.spend.toFixed(2)),fc.map((_,i)=>PALETTE[i%PALETTE.length])));return;
+    }
+    html+=renderInsights(flat,tS);
+    if(geoDim)html+=`<div style="font-size:11px;color:var(--mut);margin:-8px 0 14px">ⓘ Vendas por geografia podem ser parcialmente subnotificadas. Clique no segmento pra ver a quebra por campanha antes de decidir.</div>`;
+    if(dim==='age_gender'){
+        html+=`<div class="chart-grid"><div class="chart-card"><h3>ROAS por idade × gênero</h3><canvas id="pc1"></canvas></div><div class="chart-card"><h3>Vendas por idade × gênero</h3><canvas id="pc2"></canvas></div><div class="chart-card"><h3>Gasto por gênero</h3><canvas id="pc3"></canvas></div></div>`;
+        dash.innerHTML=html;animateBars(dash);
+        const ages=Object.keys(agg).sort((a,b)=>{const ia=AGE_ORDER.indexOf(a),ib=AGE_ORDER.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)});
+        const genders=[...new Set(ages.flatMap(a=>Object.keys(agg[a])))];const colorG={Homem:'#5fa8ff',Mulher:'#a78bff',Desconhecido:'#8b93a6'};
+        pubCharts.push(barChart('pc1',ages,genders.map(g=>({label:g,backgroundColor:colorG[g]||'#7eb8ff',data:ages.map(a=>{const m=agg[a][g];return m&&m.spend>0?+(m.revenue/m.spend).toFixed(2):0})})),true));
+        pubCharts.push(barChart('pc2',ages,genders.map(g=>({label:g,backgroundColor:colorG[g]||'#7eb8ff',data:ages.map(a=>{const m=agg[a][g];return m?m.sales:0})})),false));
+        const gSpend={};ages.forEach(a=>Object.entries(agg[a]).forEach(([g,m])=>gSpend[g]=(gSpend[g]||0)+m.spend));
+        pubCharts.push(donutChart('pc3',Object.keys(gSpend),Object.values(gSpend),Object.keys(gSpend).map(g=>colorG[g]||'#7eb8ff')));
+    }else{
+        const fc=sortFlatForChart(flat,dim);
+        html+=`<div class="chart-grid"><div class="chart-card"><h3>ROAS por ${bd.label.toLowerCase()}</h3><canvas id="pc1"></canvas></div><div class="chart-card"><h3>Distribuição de gasto</h3><canvas id="pc2"></canvas></div><div class="chart-card"><h3>Vendas por ${bd.label.toLowerCase()}</h3><canvas id="pc3"></canvas></div></div>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--mut);font-size:11px">Ver tabela detalhada</summary><div class="card" style="margin-top:8px"><table class="tbl"><thead><tr><th>${bd.label}</th><th>Gasto</th><th>Fat.</th><th>ROAS</th><th>Vendas</th><th>CPA</th></tr></thead><tbody>${[...flat].sort((a,b)=>b.spend-a.spend).map(f=>`<tr><td>${f.k}</td><td class="num">${CUR}${f.spend.toFixed(2)}</td><td class="num">${CUR}${f.revenue.toFixed(2)}</td><td class="num ${roasCls(f.roas)}">${f.roas.toFixed(2)}</td><td class="num">${f.sales}</td><td class="num ${f.cpa===null?'cm':f.cpa<=CPA_MAX?'cg':'cr'}">${f.cpa!==null?'$'+f.cpa.toFixed(2):'—'}</td></tr>`).join('')}</tbody></table></div></details>`;
+        dash.innerHTML=html;animateBars(dash);
+        const labels=fc.map(f=>f.k),roasData=fc.map(f=>+f.roas.toFixed(2)),roasColors=roasData.map(v=>v>=ROAS_GOOD?'#46d989':v<ROAS_BE?'#fb6f86':'#f7b955');
+        pubCharts.push(barChart('pc1',labels,[{label:'ROAS',data:roasData,backgroundColor:roasColors}],true));
+        pubCharts.push(donutChart('pc2',labels,fc.map(f=>+f.spend.toFixed(2)),labels.map((_,i)=>PALETTE[i%PALETTE.length])));
+        pubCharts.push(barChart('pc3',labels,[{label:'Vendas',data:fc.map(f=>f.sales),backgroundColor:'#8b7cff'}],false));
+    }
+}
+function barChart(id,labels,datasets){const el=document.getElementById(id);if(!el)return{destroy(){}};return new Chart(el,{type:'bar',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:datasets.length>1,labels:{color:'#8b93a6',font:{size:10}}}},scales:{x:{ticks:{color:'#8b93a6',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#8b93a6',font:{size:10}},grid:{color:'rgba(38,43,55,.6)'},beginAtZero:true}}}})}
+function donutChart(id,labels,data,colors){const el=document.getElementById(id);if(!el)return{destroy(){}};return new Chart(el,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:colors,borderColor:'#15181f',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'right',labels:{color:'#8b93a6',font:{size:10},boxWidth:12,padding:8}},tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((s,v)=>s+v,0);return `${c.label}: ${CUR}${c.parsed.toFixed(2)} (${(c.parsed/t*100).toFixed(0)}%)`}}}}}})}
+function animateBars(root){const els=(root||document).querySelectorAll('.bar i[data-w],.cmp-track i[data-w]');requestAnimationFrame(()=>requestAnimationFrame(()=>{els.forEach(el=>{el.style.width=el.getAttribute('data-w')+'%'})}))}
+function expandSeg(id){
+    const div=document.getElementById('drill-'+id);if(!div)return;if(div.style.display!=='none'){div.style.display='none';return}div.style.display='';
+    const segKey=drillMap[id],data=pubDrill[segKey]||{},camps=Object.values(data).sort((a,b)=>b.spend-a.spend);
+    if(!camps.length){div.innerHTML=`<div class="drill-head">Sem campanhas.</div>`;return}
+    div.innerHTML=`<div class="drill-head">🔎 "${segKey}" — fatia ${pubCtx.bd?pubCtx.bd.label.toLowerCase():''} × campanha inteira (${camps.length} campanhas)</div>`+camps.map(c=>{
+        const ct=pubCampTotals[c.campId]||{spend:c.spend,revenue:c.revenue,sales:c.sales};
+        const segRoas=c.spend>0?c.revenue/c.spend:0, campRoas=ct.spend>0?ct.revenue/ct.spend:0;
+        const pctSp=ct.spend>0?c.spend/ct.spend*100:0, pctSl=ct.sales>0?c.sales/ct.sales*100:0;
+        const dr=c.sales===0?'dr-r':segRoas>=ROAS_GOOD?'dr-g':segRoas<ROAS_BE?'dr-r':'dr-y';
+        const fill=dr==='dr-g'?'#46d989':dr==='dr-y'?'#f7b955':'#fb6f86';
+        let note;
+        if(c.sales===0)note=`<span class="cr">↓ A fatia ${segKey} não vendeu nada nesta campanha, mas consumiu ${CUR}${c.spend.toFixed(2)} (${pctSp.toFixed(0)}% do gasto). Cortar reclama esse valor.</span>`;
+        else if(segRoas>=campRoas)note=`<span class="cg">↑ A fatia rende ROAS ${segRoas.toFixed(2)} vs ${campRoas.toFixed(2)} da campanha — está acima da média, não é o problema aqui.</span>`;
+        else if(segRoas<ROAS_BE)note=`<span class="cr">↓ Fatia ROAS ${segRoas.toFixed(2)} (no prejuízo) vs ${campRoas.toFixed(2)} da campanha — puxando pra baixo. Cortar reclama ${CUR}${c.spend.toFixed(2)} (${pctSp.toFixed(0)}%).</span>`;
+        else note=`<span class="cy">↓ Fatia ROAS ${segRoas.toFixed(2)} vs ${campRoas.toFixed(2)} da campanha — abaixo da média da campanha.</span>`;
+        return`<div class="drill-row col ${dr}">
+            <div class="dr-top"><span class="dr-name" title="${c.name}">${trunc(c.name,48)}</span><button class="act-btn act-exp" onclick="expandCreatives('${id}','${c.campId}','${c.accId}',this)">criativos ▾</button><a class="dr-link" href="${campUrl(c.accId,c.campId)}" target="_blank">↗ abrir</a></div>
+            <table class="cmp-tbl"><thead><tr><th></th><th>Gasto</th><th>ROAS</th><th>Vendas</th></tr></thead><tbody>
+                <tr class="r-geral"><td class="cmp-tag">Campanha inteira</td><td>${CUR}${ct.spend.toFixed(2)}</td><td>${campRoas.toFixed(2)}</td><td>${ct.sales}</td></tr>
+                <tr class="r-slice"><td class="cmp-tag">Só ${segKey}</td><td>${CUR}${c.spend.toFixed(2)} <span class="cmp-sub">${pctSp.toFixed(0)}%</span></td><td class="${roasCls(segRoas)}">${segRoas.toFixed(2)}</td><td>${c.sales} <span class="cmp-sub">${pctSl.toFixed(0)}%</span></td></tr>
+            </tbody></table>
+            <div class="cmp-bar"><div class="cmp-track"><i style="width:0;background:${fill}" data-w="${pctSp.toFixed(1)}"></i></div><span class="cmp-lbl">${pctSp.toFixed(0)}% do gasto da campanha foi nesta fatia</span></div>
+            <div class="cmp-note">${note}</div>
+            <div class="cre-drill" style="display:none"></div>
+        </div>`}).join('');
+    animateBars(div);
+}
+async function expandCreatives(id,campId,accId,btn){
+    const seg=drillMap[id],div=btn.parentElement.querySelector('.cre-drill');if(!div)return;
+    if(div.style.display!=='none'){div.style.display='none';btn.textContent='criativos ▾';return}
+    div.style.display='';btn.textContent='criativos ▴';div.innerHTML=`<div style="padding:6px 10px;color:var(--mut)"><span class="spinner"></span> Carregando...</div>`;
+    try{const rows=await fetchBreakdown(accId,'ad',pubCtx.bd.api,pubCtx.preset,tok(),{field:'campaign.id',operator:'EQUAL',value:campId},getPubStatuses());
+        const map={};rows.forEach(r=>{if(segKeyOf(r,pubCtx.dim)!==seg)return;const k=r.ad_id||r.ad_name;if(!map[k])map[k]={name:r.ad_name||'(sem nome)',spend:0,revenue:0,sales:0};map[k].spend+=parseFloat(r.spend||0);map[k].revenue+=getRevenue(r);map[k].sales+=getSales(r)});
+        const ads=Object.values(map).sort((a,b)=>b.spend-a.spend);
+        if(!ads.length){div.innerHTML=`<div style="padding:6px 10px;color:var(--mut)">Sem dados de criativos para "${seg}".</div>`;return}
+        div.innerHTML=ads.map(a=>{const roas=a.spend>0?a.revenue/a.spend:0,dr=a.sales===0?'dr-r':roas>=ROAS_GOOD?'dr-g':roas<ROAS_BE?'dr-r':'dr-y';return`<div class="cre-row ${dr}"><span class="dr-name" title="${a.name}">↳ ${trunc(a.name,42)}</span><span class="dr-met">$${a.spend.toFixed(2)} · ROAS ${roas.toFixed(2)} · ${a.sales}v</span></div>`}).join('');
+    }catch(e){div.innerHTML=`<div class="err" style="margin:6px 10px">${e.message}</div>`}
+}
+
+/* ════════ AÇÕES (escalar/pausar/log) ════════ */
+function showModal(html){document.getElementById('modalBox').innerHTML=html;document.getElementById('modalBg').classList.add('show')}
+function closeModal(){document.getElementById('modalBg').classList.remove('show')}
+let pendingBudget={};
+async function askEscalar(accId,campId,name){
+    if(!tok()){alert('Token necessário.');return}const sym=curSym(accCur(accId));
+    showModal(`<h2>🚀 Escalar orçamento</h2><div class="m-camp">${name}</div><div style="padding:20px 0;text-align:center;color:var(--mut)"><span class="spinner"></span> Lendo orçamento...</div>`);
+    let budget;try{budget=await getBudget(campId,tok())}catch(e){showModal(`<h2>Erro</h2><div class="m-camp">${name}</div><div class="err">${e.message}</div><div class="m-actions"><button class="m-btn m-cancel" onclick="closeModal()">Fechar</button></div>`);return}
+    if(!budget.items.length){showModal(`<h2>⚠️ Sem orçamento diário</h2><div class="m-camp">${name}</div><div class="m-warn">Sem orçamento diário ativo (lifetime ou sem conjuntos ativos). Ajuste no Ads Manager.</div><div class="m-actions"><button class="m-btn m-cancel" onclick="closeModal()">Fechar</button></div>`);return}
+    pendingBudget={accId,campId,name,budget,mode:'30',target:Math.round(budget.total*1.3)};renderBudgetModal(sym);
+}
+function renderBudgetModal(sym){
+    const{budget,target,mode,name}=pendingBudget,cur=budget.total;
+    const abo=budget.level==='adset'?`<div class="m-warn">Campanha ABO — aumento aplicado proporcionalmente aos ${budget.items.length} conjunto(s) ativos.</div>`:'';
+    const execMsg=EXEC?'':`<div class="m-warn">⚠️ Execução <b>OFF</b>. Será apenas SIMULADO e registrado, sem alterar a conta. Ligue o switch pra executar.</div>`;
+    showModal(`<h2>🚀 Escalar orçamento</h2><div class="m-camp">${name}</div>
+        <div class="m-row"><span>Atual</span><b>${sym}${(cur/100).toFixed(2)}/dia</b></div><div class="m-row"><span>Novo</span><b class="cg">${sym}${(target/100).toFixed(2)}/dia</b></div>
+        <div class="m-budget-opts"><div class="m-bopt ${mode==='30'?'on':''}" onclick="setBudgetMode('30')">+30%<br><small>${sym}${(Math.round(cur*1.3)/100).toFixed(2)}</small></div><div class="m-bopt ${mode==='50'?'on':''}" onclick="setBudgetMode('50')">+50%<br><small>${sym}${(Math.round(cur*1.5)/100).toFixed(2)}</small></div><div class="m-bopt ${mode==='2x'?'on':''}" onclick="setBudgetMode('2x')">2x<br><small>${sym}${(Math.round(cur*2)/100).toFixed(2)}</small></div></div>
+        <div class="m-custom"><span style="font-size:12px;color:var(--mut)">Custom ${sym}</span><input type="number" id="customBudget" placeholder="${(target/100).toFixed(2)}" oninput="setBudgetMode('custom')"><span style="font-size:11px;color:var(--mut)">/dia total</span></div>
+        ${abo}${execMsg}<div class="m-actions"><button class="m-btn m-cancel" onclick="closeModal()">Cancelar</button><button class="m-btn m-confirm" onclick="confirmEscalar()">${EXEC?'Aplicar':'Simular'}</button></div>`);
+}
+function setBudgetMode(m){const cur=pendingBudget.budget.total;if(m==='30')pendingBudget.target=Math.round(cur*1.3);else if(m==='50')pendingBudget.target=Math.round(cur*1.5);else if(m==='2x')pendingBudget.target=Math.round(cur*2);else if(m==='custom'){const v=parseFloat(document.getElementById('customBudget').value);if(!isNaN(v)&&v>0)pendingBudget.target=Math.round(v*100)}pendingBudget.mode=m;if(m!=='custom')renderBudgetModal(curSym(accCur(pendingBudget.accId)))}
+async function confirmEscalar(){
+    const{accId,campId,name,budget,target}=pendingBudget,sym=curSym(accCur(accId)),cur=budget.total;
+    if(!EXEC){logAction({accId,campId,name,action:'escala',sim:true,detail:`Simulado: ${sym}${(cur/100).toFixed(2)} → ${sym}${(target/100).toFixed(2)}/dia`});closeModal();toast(`Simulado: ${name} → ${sym}${(target/100).toFixed(2)}`,'ok');return}
+    closeModal();toast(`Aplicando em ${name}...`,'ok');
+    try{if(budget.level==='campaign'){await setBudget(campId,target,tok())}else{const f=target/cur;for(const it of budget.items)await setBudget(it.id,Math.max(100,Math.round(it.daily*f)),tok())}
+        logAction({accId,campId,name,action:'escala',sim:false,detail:`${sym}${(cur/100).toFixed(2)} → ${sym}${(target/100).toFixed(2)}/dia${budget.level==='adset'?` (${budget.items.length} conj.)`:''}`});
+        toast(`✅ ${name} → ${sym}${(target/100).toFixed(2)}/dia`,'ok');
+    }catch(e){toast(`❌ ${e.message}`,'bad')}
+}
+async function askPausar(accId,campId,name){
+    if(!tok()){alert('Token necessário.');return}const execMsg=EXEC?'':`<div class="m-warn">⚠️ Execução <b>OFF</b>. Será SIMULADO e registrado, sem pausar.</div>`;
+    showModal(`<h2 style="color:var(--red)">🔴 Pausar campanha</h2><div class="m-camp">${name}</div><div class="m-warn">A campanha será pausada (PAUSED). Reative manualmente no Ads Manager depois.</div>${execMsg}<div class="m-actions"><button class="m-btn m-cancel" onclick="closeModal()">Cancelar</button><button class="m-btn m-confirm danger" onclick="confirmPausar('${accId}','${campId}','${name.replace(/'/g,"\\'")}')">${EXEC?'Pausar':'Simular'}</button></div>`);
+}
+async function confirmPausar(accId,campId,name){
+    if(!EXEC){logAction({accId,campId,name,action:'pause',sim:true,detail:'Simulado: pausar'});closeModal();toast(`Simulado: pausar ${name}`,'ok');return}
+    closeModal();toast(`Pausando ${name}...`,'ok');
+    try{await pauseCampaign(campId,tok());logAction({accId,campId,name,action:'pause',sim:false,detail:'Campanha pausada'});toast(`✅ Pausada: ${name}`,'ok')}catch(e){toast(`❌ ${e.message}`,'bad')}
+}
+function logAction(o){actionLog.unshift({ts:new Date().toISOString(),account:accName(o.accId),...o});localStorage.setItem('meta_action_log',JSON.stringify(actionLog.slice(0,500)));if(TAB==='acoes')renderAcoes()}
+function renderAcoes(){
+    const dash=document.getElementById('acoes-dash');
+    if(!actionLog.length){dash.innerHTML=`<div class="empty"><h2>Nenhuma ação registrada</h2>Aumentos de orçamento e pausas feitos pelo dashboard aparecem aqui.</div>`;return}
+    const rows=actionLog.map(l=>{const d=new Date(l.ts);const dt=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;const cls=l.sim?'la-sim':l.action==='escala'?'la-escala':'la-pause';const txt=l.sim?'SIMULADO':l.action==='escala'?'ESCALA':'PAUSE';return`<tr><td class="num cm">${dt}</td><td>${l.account}</td><td>${trunc(l.name,40)}</td><td><span class="log-act ${cls}">${txt}</span></td><td class="cm">${l.detail||''}</td></tr>`}).join('');
+    dash.innerHTML=`<div class="card"><table class="log-tbl"><thead><tr><th>Data/Hora</th><th>Conta</th><th>Campanha</th><th>Ação</th><th>Detalhe</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function exportLog(fmt){if(!actionLog.length){alert('Vazio.');return}let blob,fn;if(fmt==='json'){blob=new Blob([JSON.stringify(actionLog,null,2)],{type:'application/json'});fn='acoes.json'}else{const head='data,conta,campanha,acao,simulado,detalhe\n';const body=actionLog.map(l=>`"${l.ts}","${l.account}","${l.name}","${l.action}","${l.sim}","${(l.detail||'').replace(/"/g,'""')}"`).join('\n');blob=new Blob([head+body],{type:'text/csv'});fn='acoes.csv'}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;a.click()}
+function clearLog(){if(confirm('Limpar histórico de ações?')){actionLog=[];localStorage.removeItem('meta_action_log');renderAcoes()}}
+
+/* ════════ AJUSTES ════════ */
+function openSettings(){
+    showModal(`<h2>⚙️ Ajustes</h2><div class="m-camp">Limiares de decisão e câmbio (salvos no navegador).</div>
+        <div class="set-grid">
+            <div class="set-f"><label>ROAS alvo (escala)</label><input type="number" step="0.1" id="setRoasGood" value="${ROAS_GOOD}"></div>
+            <div class="set-f"><label>Breakeven ROAS</label><input type="number" step="0.01" id="setRoasBe" value="${ROAS_BE}"></div>
+            <div class="set-f"><label>CPA máximo (USD)</label><input type="number" step="0.5" id="setCpaMax" value="${CPA_MAX}"></div>
+            <div class="set-f"><label>Câmbio R$ por US$</label><input type="number" step="0.01" id="setFx" value="${FX_BRL}"></div>
+        </div>
+        <div class="m-warn">Vale pra todas as ofertas. Tickets diferentes (R$9,90 vs R$69) têm breakeven diferente — ajuste conforme a oferta que está analisando.</div>
+        <div class="m-actions"><button class="m-btn m-cancel" onclick="closeModal()">Cancelar</button><button class="m-btn m-confirm" onclick="saveSettings()">Salvar</button></div>`);
+}
+function saveSettings(){
+    ROAS_GOOD=parseFloat(document.getElementById('setRoasGood').value)||ROAS_GOOD;
+    ROAS_BE=parseFloat(document.getElementById('setRoasBe').value)||ROAS_BE;
+    CPA_MAX=parseFloat(document.getElementById('setCpaMax').value)||CPA_MAX;
+    FX_BRL=parseFloat(document.getElementById('setFx').value)||FX_BRL;
+    localStorage.setItem('meta_settings',JSON.stringify({roasGood:ROAS_GOOD,roasBe:ROAS_BE,cpaMax:CPA_MAX,fx:FX_BRL}));
+    document.getElementById('lg1').textContent=ROAS_GOOD.toFixed(1);
+    closeModal();toast('✅ Ajustes salvos. Recarregue a análise.','ok');
+}
+
+/* ════════ TOAST ════════ */
+let toastTimer;
+function toast(msg,type){let t=document.getElementById('toastEl');if(!t){t=document.createElement('div');t.id='toastEl';t.className='toast';document.body.appendChild(t)}t.className='toast '+(type||'');t.textContent=msg;requestAnimationFrame(()=>t.classList.add('show'));clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),4000)}
+document.getElementById('modalBg').addEventListener('click',e=>{if(e.target.id==='modalBg')closeModal()});
+</script>
+</body>
+</html>

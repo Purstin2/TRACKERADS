@@ -1,8 +1,45 @@
 import cron from 'node-cron';
-import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, createStealthContext } from './scraper.js';
-import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
+import { scrapeFacebookAdsCount, scrapeFacebookAdsCountSimple, createBrowser, createStealthContext, scrapePageNames } from './scraper.js';
+import { getOffersWithFacebookLinks, updateOfferAdCount, logScrapingResult, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName, getRecentAdCounts, archiveOffer } from './supabaseService.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { setLastScrapingInfo } from './lastScraping.js';
+import { loadSettingsAsync, loadBlocklist, mergeDiscoveryMeta, sanitizeSettings, getJobState, jobStart, jobLog, jobKeywordStart, jobKeywordDone, jobFinish, isRunning, shouldStop } from './jobState.js';
+
+/**
+ * REGRA AUTOMÁTICA: arquiva ofertas que ficaram com ≤N anúncios ativos durante
+ * os últimos D dias (default ≤5 por 7 dias). Arquivar = sai da lista ativa e o
+ * scraper para de raspá-la, mas NÃO apaga (recuperável na aba Arquivados).
+ * Configurável via env: LOW_ADS_THRESHOLD, LOW_ADS_DAYS, LOW_ADS_RULE=off pra desligar.
+ */
+export async function enforceLowAdRule(offers) {
+    if ((process.env.LOW_ADS_RULE || 'on') === 'off') return 0;
+    const THRESHOLD = parseInt(process.env.LOW_ADS_THRESHOLD || '5', 10);
+    const DAYS = parseInt(process.env.LOW_ADS_DAYS || '7', 10);
+    console.log(`\n🧹 Regra de limpeza: arquivar quem ficou ≤${THRESHOLD} ads por ${DAYS} dias...`);
+
+    const counts = await getRecentAdCounts(offers.map(o => o.id), DAYS);
+    const now = Date.now();
+    let archived = 0;
+
+    for (const offer of offers) {
+        const hist = counts[offer.id] || [];
+        if (hist.length < 3) continue; // amostras insuficientes
+        // só considera ofertas que já existem há pelo menos a janela inteira (não pega novas)
+        const createdAge = offer.created_at ? (now - new Date(offer.created_at).getTime()) / 86400000 : 999;
+        if (createdAge < DAYS) continue;
+        // as leituras precisam cobrir ~a janela toda (senão não dá pra afirmar "durante 7 dias")
+        const oldestAge = (now - Math.min(...hist.map(h => new Date(h.timestamp).getTime()))) / 86400000;
+        if (oldestAge < DAYS - 1) continue;
+        // todas as leituras da janela ≤ threshold  ⇔  o máximo ≤ threshold
+        const maxCount = Math.max(...hist.map(h => h.count || 0));
+        if (maxCount <= THRESHOLD) {
+            const ok = await archiveOffer(offer.id);
+            if (ok) { archived++; console.log(`   📦 Arquivada "${offer.name}" — máx ${maxCount} ads em ${DAYS}d`); }
+        }
+    }
+    console.log(`🧹 Regra concluída: ${archived} oferta(s) arquivada(s).`);
+    return archived;
+}
 
 // Quantas ofertas processar em paralelo. Mais = mais rápido, porém mais risco
 // de o Facebook limitar requisições. 3 é um equilíbrio seguro. Configurável por env.
@@ -117,6 +154,9 @@ export async function runScrapingJob() {
             results
         });
 
+        // Regra automática: arquiva quem ficou ≤5 ads por 7 dias (com os dados recém-atualizados)
+        try { await enforceLowAdRule(offers); } catch (e) { console.error('❌ Erro na regra de limpeza:', e.message); }
+
         return results;
     } catch (error) {
         console.error('\n❌ ERRO CRÍTICO NO JOB DE SCRAPING:', error);
@@ -130,11 +170,15 @@ export async function runScrapingJob() {
  * Job de descoberta automática de ofertas
  * Processa todas as keywords ativas de todos os usuários
  */
-export async function runDiscoveryJob() {
-    console.log('\n====================================');
-    console.log('🔍 INICIANDO JOB DE DISCOVERY');
-    console.log(`⏰ ${new Date().toLocaleString('pt-BR')}`);
-    console.log('====================================\n');
+export async function runDiscoveryJob(overrides = {}) {
+    if (isRunning()) {
+        console.log('⚠️  Discovery já está rodando — ignorando novo disparo.');
+        return { processed: 0, found: 0, skipped: 'já rodando' };
+    }
+
+    // filtros: settings do app_state/arquivo (editáveis pela UI) + overrides do request
+    const cfg = sanitizeSettings({ ...(await loadSettingsAsync()), ...overrides });
+    const blocklist = await loadBlocklist();
 
     try {
         const keywords = await getActiveDiscoveryKeywords();
@@ -144,57 +188,57 @@ export async function runDiscoveryJob() {
             return { processed: 0, found: 0 };
         }
 
-        console.log(`🔑 Keywords a processar: ${keywords.length}`);
+        jobStart(keywords.length);
+        jobLog(`🔍 Discovery iniciado — ${keywords.length} keyword(s) · escalado = ≥${cfg.minAdCount} ads · ≥${cfg.minDaysRunning} dias · até ${cfg.maxAdvertisers} anunciantes/keyword`);
 
-        let totalFound = 0;
         // PARALELO: processa N keywords ao mesmo tempo (config DISCOVERY_CONCURRENCY, default 3).
-        // Cada uma abre seu próprio browser headless — fica em 2º plano, dá pra usar o PC.
         const CONCURRENCY = Math.max(1, parseInt(process.env.DISCOVERY_CONCURRENCY || '3', 10));
-        const MIN_ADS = parseInt(process.env.DISCOVERY_MIN_ADS || '20', 10);   // "escalado" = nº de ads ativos
-        const MIN_DAYS = parseInt(process.env.DISCOVERY_MIN_DAYS || '2', 10);
-        console.log(`⚙️  Em paralelo: ${CONCURRENCY} por vez · escalado = ≥${MIN_ADS} ads rodando ≥${MIN_DAYS} dias`);
 
         for (let i = 0; i < keywords.length; i += CONCURRENCY) {
+            if (shouldStop()) break;
             const batch = keywords.slice(i, i + CONCURRENCY);
             await Promise.all(batch.map(async (kw) => {
+                let found = 0;
                 try {
-                    console.log(`🔑 "${kw.keyword}" (user ${kw.user_id.substring(0, 8)}…)`);
+                    jobKeywordStart(kw.keyword);
                     const result = await discoverOffersByKeyword(kw.keyword, {
-                        minAdCount: MIN_ADS,
-                        minDaysRunning: MIN_DAYS,
-                        maxAdvertisers: 15,
-                        country: 'BR',
+                        minAdCount: cfg.minAdCount,
+                        minDaysRunning: cfg.minDaysRunning,
+                        maxAdvertisers: cfg.maxAdvertisers,
+                        country: cfg.country,
+                        onLog: jobLog,
+                        shouldStop,
+                        blocklist,
                     });
                     if (result.success && result.offers.length > 0) {
                         await saveDiscoveredOffers(kw.user_id, result.offers);
-                        totalFound += result.offers.length;
-                        console.log(`✅ "${kw.keyword}": ${result.offers.length} escalada(s) salvas`);
-                    } else {
-                        console.log(`ℹ️  "${kw.keyword}": nenhuma escalada`);
+                        await mergeDiscoveryMeta(result.offers); // descrição/título/categoria por page_id
+                        found = result.offers.length;
+                        jobLog(`💾 "${kw.keyword}": ${found} escalada(s) salvas no banco`);
                     }
+                    if (!result.success) jobLog(`❌ "${kw.keyword}": ${result.error || 'falhou'}`);
                 } catch (e) {
-                    console.error(`❌ "${kw.keyword}": ${e.message}`);
+                    jobLog(`❌ "${kw.keyword}": ${e.message}`);
                 } finally {
+                    jobKeywordDone(kw.keyword, found);
                     await updateKeywordLastRun(kw.id);
                 }
             }));
             // pausa curta entre lotes (anti-bloqueio do FB)
-            if (i + CONCURRENCY < keywords.length) {
+            if (i + CONCURRENCY < keywords.length && !shouldStop()) {
                 await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
             }
         }
 
-        console.log('\n====================================');
-        console.log('📊 RESUMO DO JOB DE DISCOVERY');
-        console.log(`   Keywords processadas: ${keywords.length}`);
-        console.log(`   Ofertas encontradas: ${totalFound}`);
-        console.log(`   ⏰ ${new Date().toLocaleString('pt-BR')}`);
-        console.log('====================================\n');
+        const st = getJobState();
+        jobLog(`📊 Discovery ${shouldStop() ? 'PARADO' : 'concluído'}: ${st.keywordsDone}/${keywords.length} keywords · ${st.found} oferta(s) encontrada(s)`);
+        jobFinish();
 
-        return { processed: keywords.length, found: totalFound };
+        return { processed: st.keywordsDone, found: st.found };
 
     } catch (error) {
         console.error('\n❌ ERRO CRÍTICO NO JOB DE DISCOVERY:', error);
+        jobFinish(error.message);
         throw error;
     }
 }
@@ -289,4 +333,30 @@ export async function startSchedulerWithInitialRun() {
     
     console.log('\n⏰ Iniciando agendamento automático...\n');
     startScheduler();
+}
+
+/**
+ * NOMES REAIS: entra em cada link de PÁGINA (view_all_page_id) e grava o nome real.
+ * Roda na nuvem (GitHub Actions via run-once.js). Buscas por keyword (q=) não têm
+ * nome único confiável → ignoradas.
+ */
+export async function runNamesJob() {
+    try {
+        const offers = await getOffersWithFacebookLinks(); // já exclui arquivadas
+        const items = (offers || [])
+            .filter(o => /view_all_page_id=/.test(o.link || ''))
+            .map(o => ({ id: o.id, url: o.link }));
+        if (!items.length) {
+            console.log('🏷️ [NAMES] nenhum link de página (view_all_page_id) pra renomear.');
+            return { total: 0, ok: 0 };
+        }
+        console.log(`🏷️ [NAMES] buscando nome real de ${items.length} ofertas…`);
+        const res = await scrapePageNames(items, async (id, name) => { await updateOfferName(id, name); });
+        const ok = (res || []).filter(r => r.name).length;
+        console.log(`✅ [NAMES] concluído: ${ok}/${items.length} ofertas com nome real`);
+        return { total: items.length, ok };
+    } catch (err) {
+        console.error('❌ [NAMES] erro no job:', err.message);
+        return { total: 0, ok: 0, error: err.message };
+    }
 }

@@ -9,6 +9,7 @@ import { scrapeFacebookAdsCount, scrapePageName, scrapePageNames } from './scrap
 import { discoverOffersByKeyword } from './discoveryService.js';
 import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
+import { getJobState, requestStop, isRunning, loadSettings, loadSettingsAsync, saveSettingsRemote, loadBlocklist, saveBlocklist } from './jobState.js';
 
 dotenv.config();
 
@@ -16,8 +17,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middlewares
-// Private Network Access: o Chrome bloqueia requisição de site PÚBLICO (https) para
-// localhost sem este header. Tem que vir ANTES do cors (que encerra o OPTIONS).
+// Private Network Access: o Chrome bloqueia requisição de site PÚBLICO (https, ex.
+// trackerads-nine.vercel.app) para localhost a menos que o serviço local devolva este
+// header. SEM isto, os botões "Local"/"Nomes reais" do site deployado dão "scraper não
+// está rodando" mesmo com ele rodando. Tem que vir ANTES do cors (que encerra o OPTIONS).
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     next();
@@ -196,6 +199,7 @@ app.post('/api/scrape/names', async (req, res) => {
             .filter(o => /view_all_page_id=/.test(o.link || ''))
             .map(o => ({ id: o.id, url: o.link }));
 
+        // responde já; processa em background
         res.json({
             success: true,
             message: `Buscando o nome real de ${items.length} ofertas em background`,
@@ -217,13 +221,17 @@ app.post('/api/scrape/names', async (req, res) => {
 
 // ── DISCOVERY ENDPOINTS ───────────────────────────────────────────────────────
 
-// Dispara o job de discovery para todas as keywords ativas
+// Dispara o job de discovery para todas as keywords ativas.
+// Aceita overrides no body: { minAdCount, minDaysRunning, maxAdvertisers, country }
 app.post('/api/discovery/run', async (req, res) => {
     try {
+        if (isRunning()) {
+            return res.status(409).json({ success: false, error: 'Discovery já está rodando. Use /api/discovery/stop pra parar.' });
+        }
         console.log('🔍 Discovery job disparado manualmente');
 
         // Roda em background para não bloquear a resposta
-        runDiscoveryJob()
+        runDiscoveryJob(req.body || {})
             .then(results => console.log('✅ Discovery manual concluído:', results))
             .catch(error => console.error('❌ Erro no discovery manual:', error));
 
@@ -232,6 +240,44 @@ app.post('/api/discovery/run', async (req, res) => {
             message: 'Job de discovery iniciado em background',
             timestamp: new Date().toISOString()
         });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Estado vivo do job (status/progresso/logs) — o painel consulta isso
+app.get('/api/discovery/status', (req, res) => {
+    res.json({ success: true, job: getJobState(), settings: loadSettings(), timestamp: new Date().toISOString() });
+});
+
+// Pede a parada do job em andamento (para no anunciante atual)
+app.post('/api/discovery/stop', (req, res) => {
+    const ok = requestStop();
+    res.json({ success: ok, message: ok ? 'Parada solicitada — o job encerra no próximo passo' : 'Nenhum job rodando' });
+});
+
+// Filtros da descoberta (minAdCount etc.) — GET lê, POST salva (Supabase app_state
+// + arquivo local; vale pro botão, pro cron local E pro robô na nuvem/Actions)
+app.get('/api/discovery/settings', async (req, res) => {
+    res.json({ success: true, settings: await loadSettingsAsync() });
+});
+app.post('/api/discovery/settings', async (req, res) => {
+    try {
+        const settings = await saveSettingsRemote(req.body || {});
+        res.json({ success: true, settings });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Blocklist (anunciantes/categorias a pular) — GET lê, POST salva no app_state
+app.get('/api/discovery/blocklist', async (req, res) => {
+    res.json({ success: true, blocklist: await loadBlocklist() });
+});
+app.post('/api/discovery/blocklist', async (req, res) => {
+    try {
+        const blocklist = await saveBlocklist(req.body || {});
+        res.json({ success: true, blocklist });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

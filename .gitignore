@@ -33,3 +33,6 @@ scraper-service/screenshots/*.png
 scraper-service/.env
 scraper-service/node_modules
 .vercel
+
+scraper-service/discovery-settings.json
+scraper-service/debug-dump.mjs

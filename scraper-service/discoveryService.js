@@ -1,255 +1,359 @@
-import { createBrowser, createStealthContext, extractAdData } from './scraper.js';
+import { createBrowser, createStealthContext } from './scraper.js';
 
 /**
- * Serviço de Descoberta Automática de Ofertas
+ * Serviço de Descoberta Automática de Ofertas — v2 (GraphQL)
  *
- * Busca por anunciantes na Biblioteca de Anúncios do Facebook
- * com base em uma keyword e retorna apenas os que passam nos filtros:
- *  - Mínimo de adCount anúncios ativos
- *  - Rodando há pelo menos minDaysRunning dias
+ * O Facebook removeu os links `view_all_page_id` do DOM da busca (por isso a
+ * v1 voltava 0 anunciantes). A v2 não raspa mais o HTML visível: ela captura
+ * o JSON que a própria Ad Library trafega (GraphQL + payload embutido no HTML
+ * inicial), que traz page_id, page_name, ad_archive_id, start_date, is_active
+ * e collation_count por anúncio.
+ *
+ * Fluxo:
+ *  1. Busca por KEYWORD na Ad Library (país/ativos)
+ *  2. Colhe todos os anúncios do resultado (HTML inicial + GraphQL das rolagens)
+ *  3. Agrega por anunciante e ordena pelos MAIS ESCALADOS na keyword
+ *  4. Confirma cada candidato na página do anunciante (total de ads ativos +
+ *     data mais antiga, também via GraphQL/JSON — sem regex de texto PT)
+ *  5. Retorna só quem passa nos filtros (≥minAdCount ads, ≥minDaysRunning dias)
  */
+
+/* ── extração do JSON (funciona pro HTML embutido E pros bodies do GraphQL) ── */
+
+/** Recorta arrays "collated_results":[...] de um texto, com colchetes balanceados. */
+function extractCollatedArrays(text) {
+    const out = [];
+    const NEEDLE = '"collated_results":';
+    let idx = 0;
+    while ((idx = text.indexOf(NEEDLE, idx)) !== -1) {
+        let i = idx + NEEDLE.length;
+        while (i < text.length && text[i] !== '[' && text[i] !== 'n') i++; // 'n' = null
+        if (text[i] !== '[') { idx = i; continue; }
+        let depth = 0, inStr = false, esc = false, start = i;
+        for (; i < text.length; i++) {
+            const c = text[i];
+            if (esc) { esc = false; continue; }
+            if (c === '\\') { esc = true; continue; }
+            if (c === '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (c === '[') depth++;
+            else if (c === ']') { depth--; if (depth === 0) { i++; break; } }
+        }
+        try {
+            const arr = JSON.parse(text.slice(start, i));
+            if (Array.isArray(arr)) out.push(...arr);
+        } catch { /* pedaço corrompido — ignora */ }
+        idx = i;
+    }
+    return out;
+}
+
+/** Limpa placeholders de criativo dinâmico do Meta ({{product.name}} etc.). */
+function cleanTpl(s) {
+    if (!s) return null;
+    const t = String(s).trim();
+    if (!t || /\{\{.*?\}\}/.test(t)) return null; // macro não renderizado → descarta
+    return t;
+}
+
+/** Primeira frase / resumo curto do corpo do anúncio (pra dar ideia da oferta). */
+function adSnippet(snap) {
+    if (!snap) return null;
+    let t = snap.body;
+    if (t && typeof t === 'object') t = t.text || t.markup || '';
+    t = String(t || '').replace(/\{\{.*?\}\}/g, '').replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    // corta na 1ª quebra de frase; senão ~140 chars; tira hashtags do fim
+    const firstSentence = t.split(/(?<=[.!?])\s/)[0];
+    let out = (firstSentence.length >= 25 ? firstSentence : t).slice(0, 160);
+    out = out.replace(/(\s+#\S+)+\s*$/, '').trim();
+    return out || null;
+}
+
+/** Normaliza um item de collated_results pro que interessa (inclui a copy do anúncio). */
+function normalizeAd(item) {
+    if (!item || !item.page_id) return null;
+    const snap = item.snapshot || {};
+    const cats = Array.isArray(snap.page_categories) ? snap.page_categories : (snap.page_categories ? [snap.page_categories] : []);
+    return {
+        pageId: String(item.page_id),
+        pageName: item.page_name || snap.page_name || null,
+        adArchiveId: item.ad_archive_id ? String(item.ad_archive_id) : null,
+        startDate: typeof item.start_date === 'number' ? item.start_date * 1000 : null,
+        isActive: item.is_active !== false,
+        collationCount: Math.max(1, parseInt(item.collation_count, 10) || 1),
+        // metadados da criativa (pra resumo + bloqueio)
+        snippet: adSnippet(snap),
+        offerTitle: cleanTpl(snap.title),
+        offerDomain: (snap.caption && String(snap.caption).replace(/^https?:\/\//, '').replace(/\/$/, '')) || null,
+        category: cats.length ? String(cats[0]) : null,
+    };
+}
+
+/** Conta "~N resultados" no texto visível (ainda funciona — só os links sumiram). */
+function extractResultCount(bodyText) {
+    const patterns = [
+        /~?\s*([\d.,]+)\s+resultados?/i,
+        /~?\s*([\d.,]+)\s+results?/i,
+        /([\d.,]+)\s+anúncios?\s+ativos?/i,
+    ];
+    for (const pat of patterns) {
+        const m = bodyText.match(pat);
+        if (m) {
+            const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+            if (n > 0 && n <= 1000000 && (n < 2020 || n > 2030)) return n;
+        }
+    }
+    return null;
+}
+
+/**
+ * Abre uma URL da Ad Library e colhe os anúncios (JSON embutido + GraphQL das
+ * rolagens). Retorna { ads: [normalizados], resultCount, bodyText }.
+ */
+async function harvestAdsFromUrl(context, url, { scrolls = 4, settleMs = 6000 } = {}) {
+    const page = await context.newPage();
+    page.setDefaultTimeout(45000);
+    const gqlAds = [];
+    page.on('response', async (res) => {
+        if (!/graphql/i.test(res.url())) return;
+        try {
+            const t = await res.text();
+            if (t.includes('collated_results')) extractCollatedArrays(t).forEach((x) => gqlAds.push(x));
+        } catch { /* body já consumido/binário */ }
+    });
+
+    try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.waitForTimeout(settleMs);
+        for (let s = 0; s < scrolls; s++) {
+            await page.evaluate(() => window.scrollBy(0, 1500));
+            await page.waitForTimeout(1800);
+        }
+        const html = await page.content();
+        const bodyText = await page.evaluate(() => document.body.innerText || '');
+        const all = [...extractCollatedArrays(html), ...gqlAds];
+
+        // dedupe por ad_archive_id (o mesmo ad pode vir no HTML e no GraphQL)
+        const seen = new Set();
+        const ads = [];
+        for (const raw of all) {
+            const ad = normalizeAd(raw);
+            if (!ad) continue;
+            const k = ad.adArchiveId || `${ad.pageId}-${ads.length}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            ads.push(ad);
+        }
+        return { ads, resultCount: extractResultCount(bodyText), bodyText };
+    } finally {
+        await page.close().catch(() => {});
+    }
+}
+
+/** Fallback DOM antigo (se o Facebook voltar atrás no layout). */
+async function domFallbackAdvertisers(context, url) {
+    const page = await context.newPage();
+    try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.waitForTimeout(5000);
+        for (let s = 0; s < 4; s++) {
+            await page.evaluate(() => window.scrollBy(0, 900));
+            await page.waitForTimeout(1500);
+        }
+        return await page.evaluate(() => {
+            const seen = new Set();
+            const result = [];
+            document.querySelectorAll('a[href*="view_all_page_id"]').forEach((link) => {
+                const match = link.href.match(/view_all_page_id=(\d+)/);
+                if (!match || seen.has(match[1])) return;
+                seen.add(match[1]);
+                result.push({ pageId: match[1], name: (link.textContent || '').trim().substring(0, 120) || `Anunciante ${match[1]}` });
+            });
+            return result;
+        });
+    } finally {
+        await page.close().catch(() => {});
+    }
+}
 
 /**
  * Descobre ofertas escalando para uma keyword específica
- * @param {string} keyword - Palavra-chave para busca
+ * @param {string} keyword
  * @param {Object} options
- * @param {number} options.minAdCount - Mínimo de anúncios ativos (padrão: 20)
- * @param {number} options.minDaysRunning - Mínimo de dias rodando (padrão: 2)
- * @param {number} options.maxAdvertisers - Máximo de anunciantes a processar (padrão: 15)
- * @param {string} options.country - País (padrão: 'BR')
- * @returns {Promise<{success: boolean, offers: Array, keyword: string, error?: string}>}
+ * @param {number} options.minAdCount     - mínimo de anúncios ativos do anunciante (padrão 20)
+ * @param {number} options.minDaysRunning - mínimo de dias rodando (padrão 2)
+ * @param {number} options.maxAdvertisers - máximo de anunciantes a confirmar (padrão 15)
+ * @param {string} options.country        - país (padrão 'BR')
+ * @param {(msg: string) => void} [options.onLog]     - log pro painel (além do console)
+ * @param {() => boolean}         [options.shouldStop] - retorna true = usuário pediu Parar
+ * @param {{names?: string[], categories?: string[]}} [options.blocklist] - pula anunciantes/categorias
+ * @returns {Promise<{success: boolean, offers: Array, keyword: string, error?: string, stopped?: boolean}>}
  */
 export async function discoverOffersByKeyword(keyword, options = {}) {
     const {
         minAdCount = 20,
         minDaysRunning = 2,
         maxAdvertisers = 15,
-        country = 'BR'
+        country = 'BR',
+        onLog,
+        shouldStop = () => false,
+        blocklist = {},
     } = options;
+    const log = (msg) => { if (onLog) onLog(msg); else console.log(msg); };
+    const lc = (arr) => (arr || []).map((s) => String(s).toLowerCase().trim()).filter(Boolean);
+    const blockNames = lc(blocklist.names);
+    const blockCats = lc(blocklist.categories);
+    const blockDomains = lc(blocklist.domains);
+    const blockTerms = lc(blocklist.terms);
+    // bloqueio por nome / categoria / domínio (contém ou termina com) / termo (em qualquer campo)
+    const isBlocked = ({ name, category, domain, title, snippet }) => {
+        const n = String(name || '').toLowerCase();
+        const c = String(category || '').toLowerCase();
+        const d = String(domain || '').toLowerCase();
+        const blob = `${n} ${String(title || '').toLowerCase()} ${String(snippet || '').toLowerCase()} ${d}`;
+        if (blockNames.some((b) => n.includes(b))) return 'nome';
+        if (c && blockCats.some((b) => c.includes(b))) return `categoria (${category})`;
+        if (d && blockDomains.some((b) => d.includes(b) || d.endsWith(b))) return `domínio (${domain})`;
+        const hit = blockTerms.find((b) => blob.includes(b));
+        if (hit) return `termo "${hit}"`;
+        return null;
+    };
 
     let browser;
     const qualifiedOffers = [];
 
     try {
-        console.log(`\n[DISCOVERY] ========================================`);
-        console.log(`[DISCOVERY] Iniciando busca por: "${keyword}"`);
-        console.log(`[DISCOVERY] Filtros: ≥${minAdCount} ads | ≥${minDaysRunning} dias | país: ${country}`);
-        console.log(`[DISCOVERY] ========================================`);
+        log(`🔍 "${keyword}" — filtros: ≥${minAdCount} ads · ≥${minDaysRunning} dias · ${country}`);
 
+        // browser/contexto stealth compartilhados com o scraper (máscara de
+        // automação + bloqueio de imagem/fonte = mais rápido; GraphQL passa)
         browser = await createBrowser();
         const context = await createStealthContext(browser);
 
-        // ── PASSO 1: Busca por keyword ──────────────────────────────────────
-        const searchPage = await context.newPage();
-        searchPage.setDefaultTimeout(30000);
+        // ── PASSO 1: busca por keyword e colhe os anúncios do resultado ──────
+        const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(keyword)}&search_type=keyword_unordered&media_type=all`;
+        const search = await harvestAdsFromUrl(context, searchUrl, { scrolls: 5 });
+        log(`📥 "${keyword}": ${search.ads.length} anúncios colhidos (total na keyword: ${search.resultCount ?? '?'})`);
 
-        const searchUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(keyword)}&search_type=keyword_unordered`;
-        console.log(`[DISCOVERY] Navegando: ${searchUrl}`);
-
-        await searchPage.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-        // Espera os cards de anunciantes aparecerem (ou o aviso de vazio), sem sleep cego
-        await searchPage
-            .waitForFunction(
-                () => document.querySelector('a[href*="view_all_page_id"]') !== null ||
-                    /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(document.body?.innerText || ''),
-                { timeout: 15000 }
-            )
-            .catch(() => {});
-
-        // Scroll para carregar mais resultados
-        for (let s = 0; s < 4; s++) {
-            await searchPage.evaluate(() => window.scrollBy(0, 900));
-            await searchPage.waitForTimeout(1200);
+        // ── PASSO 2: agrega por anunciante (quem tem MAIS anúncios na keyword) ──
+        const byPage = new Map();
+        for (const ad of search.ads) {
+            if (!ad.isActive) continue;
+            const p = byPage.get(ad.pageId) || { pageId: ad.pageId, name: ad.pageName, matched: 0, minStart: null, bestAd: null, bestCollation: 0, snippet: null, offerTitle: null, offerDomain: null, category: null };
+            p.matched += ad.collationCount;
+            if (!p.name && ad.pageName) p.name = ad.pageName;
+            if (!p.category && ad.category) p.category = ad.category;
+            if (ad.startDate && (!p.minStart || ad.startDate < p.minStart)) p.minStart = ad.startDate;
+            // guarda a copy do anúncio mais "colado" (o carro-chefe da keyword)
+            if (ad.adArchiveId && ad.collationCount >= p.bestCollation) {
+                p.bestAd = ad.adArchiveId; p.bestCollation = ad.collationCount;
+                if (ad.snippet) p.snippet = ad.snippet;
+                if (ad.offerTitle) p.offerTitle = ad.offerTitle;
+                if (ad.offerDomain) p.offerDomain = ad.offerDomain;
+            }
+            byPage.set(ad.pageId, p);
         }
 
-        // ── PASSO 2: Extrai page IDs únicos dos resultados ──────────────────
-        const advertisers = await searchPage.evaluate(() => {
-            const seen = new Set();
-            const result = [];
+        let advertisers = [...byPage.values()].sort((a, b) => b.matched - a.matched);
 
-            // Links que contêm view_all_page_id são os botões "Ver todos os anúncios"
-            const links = document.querySelectorAll('a[href*="view_all_page_id"]');
-            links.forEach(link => {
-                const match = link.href.match(/view_all_page_id=(\d+)/);
-                if (!match || seen.has(match[1])) return;
-                seen.add(match[1]);
-
-                // Tenta extrair o nome do anunciante do card pai
-                const card = link.closest('[data-testid]') || link.closest('div[role="article"]') || link.parentElement;
-                const strongEl = card?.querySelector('strong');
-                const h2El = card?.querySelector('h2, h3');
-                const nameFromLink = link.textContent?.trim();
-                const name = (strongEl?.textContent?.trim() || h2El?.textContent?.trim() || nameFromLink || '').substring(0, 120);
-
-                result.push({
-                    pageId: match[1],
-                    name: name || `Anunciante ${match[1]}`
-                });
-            });
-
-            return result;
-        });
-
-        await searchPage.close();
-
-        console.log(`[DISCOVERY] Anunciantes únicos encontrados: ${advertisers.length}`);
-
+        // fallback: layout novo não rendeu nada? tenta o DOM antigo
         if (advertisers.length === 0) {
-            console.log('[DISCOVERY] Nenhum anunciante encontrado para essa keyword.');
+            log(`⚠ "${keyword}": JSON não rendeu — tentando fallback DOM…`);
+            const domAds = await domFallbackAdvertisers(context, searchUrl);
+            advertisers = domAds.map((a) => ({ pageId: a.pageId, name: a.name, matched: 0, minStart: null, bestAd: null }));
+        }
+
+        log(`👥 "${keyword}": ${advertisers.length} anunciantes únicos`);
+        if (advertisers.length === 0) {
             await browser.close();
             return { success: true, offers: [], keyword };
         }
 
-        // ── PASSO 3: Verifica cada anunciante contra os filtros ─────────────
+        // ── PASSO 3: confirma cada candidato na página do anunciante ─────────
+        let stopped = false;
         const toProcess = advertisers.slice(0, maxAdvertisers);
-
         for (let i = 0; i < toProcess.length; i++) {
-            const { pageId, name } = toProcess[i];
-            console.log(`\n[DISCOVERY] [${i + 1}/${toProcess.length}] Verificando: ${name}`);
+            if (shouldStop()) { stopped = true; log(`⏹ "${keyword}": interrompida pelo usuário (${i}/${toProcess.length} verificados)`); break; }
+            const cand = toProcess[i];
+            const name0 = cand.name || `Anunciante ${cand.pageId}`;
+            // bloqueio: pula app de loja / fintech / jogos / termos indesejados
+            const blk = isBlocked({ name: name0, category: cand.category, domain: cand.offerDomain, title: cand.offerTitle, snippet: cand.snippet });
+            if (blk) { log(`🚫 "${keyword}": ${name0} pulado (bloqueado por ${blk})`); continue; }
+            log(`🔎 "${keyword}" [${i + 1}/${toProcess.length}] ${name0} — ${cand.matched} ads na keyword`);
 
-            const adPage = await context.newPage();
-            adPage.setDefaultTimeout(30000);
-
+            const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${cand.pageId}`;
             try {
-                const libUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&view_all_page_id=${pageId}`;
+                const adv = await harvestAdsFromUrl(context, libUrl, { scrolls: 2, settleMs: 4500 });
 
-                await adPage.goto(libUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-                // Espera a contagem (ou aviso de vazio) renderizar
-                await adPage
-                    .waitForFunction(
-                        () => {
-                            const t = document.body?.innerText || '';
-                            return /[\d.,]+\s*(resultados?|results?|an[úu]ncios?)/i.test(t) ||
-                                /nenhum (an[úu]ncio|resultado)|no ads?\b/i.test(t);
-                        },
-                        { timeout: 15000 }
-                    )
-                    .catch(() => {});
-
-                // Scroll para garantir carregamento das datas dos anúncios
-                await adPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
-                await adPage.waitForTimeout(1200);
-                await adPage.evaluate(() => window.scrollTo(0, 0));
-                await adPage.waitForTimeout(600);
-
-                // Verifica contagem de anúncios (extração unificada, lado Node)
-                const bodyText = await adPage.evaluate(() => document.body.innerText || '');
-                const { adCount } = extractAdData(bodyText);
-
-                if (adCount === null || adCount < minAdCount) {
-                    console.log(`[DISCOVERY] ✗ ${name}: ${adCount ?? 0} ads ativos (mínimo: ${minAdCount})`);
-                    await adPage.close();
-                    await randomDelay(3000, 6000);
+                // total de anúncios ativos: texto "~N resultados" (preciso), senão o nº colhido
+                const adCount = adv.resultCount ?? adv.ads.length;
+                if (!adCount || adCount < minAdCount) {
+                    log(`✗ ${name0}: ${adCount ?? 0} ads ativos (mínimo: ${minAdCount})`);
+                    await randomDelay(2500, 5000);
                     continue;
                 }
 
-                console.log(`[DISCOVERY] ✓ ${name}: ${adCount} ads — verificando datas...`);
-
-                // Extrai a data do anúncio mais antigo ativo
-                const oldestDateStr = await adPage.evaluate(() => {
-                    const text = document.body.innerText;
-                    const timestamps = [];
-
-                    const monthsPt = {
-                        'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
-                        'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11,
-                        'janeiro': 0, 'fevereiro': 1, 'marco': 2, 'março': 2, 'abril': 3,
-                        'maio': 4, 'junho': 5, 'julho': 6, 'agosto': 7, 'setembro': 8,
-                        'outubro': 9, 'novembro': 10, 'dezembro': 11
-                    };
-
-                    // Português: "Iniciado em 15 de jan. de 2024"
-                    const ptRegex = /Iniciado em\s+(\d{1,2})\s+de\s+(\w+)\.?\s+de\s+(\d{4})/gi;
-                    let m;
-                    while ((m = ptRegex.exec(text)) !== null) {
-                        const day = parseInt(m[1]);
-                        const monthKey = m[2].toLowerCase().replace('.', '').replace('ç', 'c');
-                        const year = parseInt(m[3]);
-                        const month = monthsPt[monthKey];
-                        if (month !== undefined && year >= 2020) {
-                            timestamps.push(new Date(year, month, day).getTime());
-                        }
-                    }
-
-                    // Inglês: "Started running on January 15, 2024"
-                    const enRegex = /Started running on\s+(\w+\s+\d{1,2},?\s+\d{4})/gi;
-                    while ((m = enRegex.exec(text)) !== null) {
-                        const d = new Date(m[1]);
-                        if (!isNaN(d.getTime()) && d.getFullYear() >= 2020) {
-                            timestamps.push(d.getTime());
-                        }
-                    }
-
-                    if (timestamps.length === 0) return null;
-                    return new Date(Math.min(...timestamps)).toISOString();
-                });
-
-                const daysRunning = oldestDateStr
-                    ? Math.floor((Date.now() - new Date(oldestDateStr).getTime()) / (1000 * 60 * 60 * 24))
-                    : null;
-
+                // dias rodando: menor start_date do JSON (da página do anunciante,
+                // senão o da busca) — sem depender de regex de "Iniciado em"
+                const starts = adv.ads.filter((a) => a.startDate).map((a) => a.startDate);
+                const oldest = starts.length ? Math.min(...starts) : cand.minStart;
+                const daysRunning = oldest ? Math.floor((Date.now() - oldest) / 86400000) : null;
                 if (daysRunning !== null && daysRunning < minDaysRunning) {
-                    console.log(`[DISCOVERY] ✗ ${name}: apenas ${daysRunning} dia(s) rodando (mínimo: ${minDaysRunning})`);
-                    await adPage.close();
-                    await randomDelay(3000, 6000);
+                    log(`✗ ${name0}: só ${daysRunning} dia(s) rodando (mínimo: ${minDaysRunning})`);
+                    await randomDelay(2500, 5000);
                     continue;
                 }
 
-                // Tenta refinar o nome do anunciante via título da página
-                let advertiserName = name;
-                if (!advertiserName || advertiserName.startsWith('Anunciante ')) {
-                    const pageTitle = await adPage.title();
-                    if (pageTitle && !pageTitle.toLowerCase().includes('facebook')) {
-                        advertiserName = pageTitle.split(' - ')[0].trim();
-                    }
-                }
+                // nome real + copy: preferir o JSON da página do anunciante; cair no da busca
+                const advPageAd = adv.ads.find((a) => a.pageName) || {};
+                const advertiserName = advPageAd.pageName || name0;
+                const category = advPageAd.category || cand.category || null;
+                const snippet = cand.snippet || adv.ads.find((a) => a.snippet)?.snippet || null;
+                const offerTitle = cand.offerTitle || advPageAd.offerTitle || null;
+                const offerDomain = cand.offerDomain || advPageAd.offerDomain || null;
+                // segunda chance de bloqueio: categoria/domínio/copy só aparecem agora em alguns casos
+                const blk2 = isBlocked({ name: advertiserName, category, domain: offerDomain, title: offerTitle, snippet });
+                if (blk2) { log(`🚫 ${advertiserName} pulado após checagem (bloqueado por ${blk2})`); await randomDelay(1500, 3000); continue; }
+                const sampleAd = cand.bestAd || adv.ads.find((a) => a.adArchiveId)?.adArchiveId || null;
 
-                console.log(`[DISCOVERY] ✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias`);
-
+                log(`✅ QUALIFICADO: "${advertiserName}" | ${adCount} ads | ${daysRunning ?? '?'} dias${offerTitle ? ` | ${offerTitle}` : ''}`);
                 qualifiedOffers.push({
                     advertiser_name: advertiserName,
-                    facebook_page_id: pageId,
+                    facebook_page_id: cand.pageId,
                     facebook_link: libUrl,
+                    // link direto do anúncio mais "colado" (variações) da keyword:
+                    sample_ad_link: sampleAd ? `https://www.facebook.com/ads/library/?id=${sampleAd}` : null,
                     ad_count: adCount,
                     days_running: daysRunning,
-                    oldest_ad_date: oldestDateStr
-                        ? new Date(oldestDateStr).toISOString().split('T')[0]
-                        : null,
-                    keyword
+                    oldest_ad_date: oldest ? new Date(oldest).toISOString().split('T')[0] : null,
+                    keyword,
+                    // resumo da oferta (o que o anúncio diz) + categoria (pra você saber do que é)
+                    description: snippet,
+                    offer_title: offerTitle,
+                    offer_domain: offerDomain,
+                    page_category: category,
                 });
-
             } catch (err) {
-                console.log(`[DISCOVERY] Erro ao processar ${pageId}: ${err.message}`);
-            } finally {
-                await adPage.close().catch(() => {});
+                log(`⚠ Erro ao confirmar ${cand.pageId}: ${err.message}`);
             }
-
-            // Delay aleatório entre requests (anti-bloqueio)
-            await randomDelay(4000, 9000);
+            await randomDelay(3000, 6000);
         }
 
         await browser.close();
+        log(`🏁 "${keyword}": ${qualifiedOffers.length} qualificada(s) de ${Math.min(toProcess.length, maxAdvertisers)} verificadas${stopped ? ' (parcial — parado)' : ''}`);
 
-        console.log(`\n[DISCOVERY] ========================================`);
-        console.log(`[DISCOVERY] Resultado para "${keyword}": ${qualifiedOffers.length} qualificadas`);
-        console.log(`[DISCOVERY] ========================================\n`);
-
-        return { success: true, offers: qualifiedOffers, keyword };
+        return { success: true, offers: qualifiedOffers, keyword, stopped };
 
     } catch (error) {
-        console.error('[DISCOVERY] Erro crítico:', error);
+        log(`❌ "${keyword}" erro crítico: ${error.message}`);
         if (browser) await browser.close().catch(() => {});
         return { success: false, offers: [], keyword, error: error.message };
     }
 }
 
-/**
- * Helper: delay aleatório entre min e max ms
- */
+/** Helper: delay aleatório entre min e max ms (anti-bloqueio) */
 function randomDelay(min, max) {
     const ms = Math.floor(min + Math.random() * (max - min));
-    console.log(`[DISCOVERY] Aguardando ${(ms / 1000).toFixed(1)}s...`);
     return new Promise(r => setTimeout(r, ms));
 }
