@@ -5,9 +5,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { startScheduler, startSchedulerWithInitialRun, runScrapingJob, runDiscoveryJob } from './scheduler.js';
-import { scrapeFacebookAdsCount } from './scraper.js';
+import { scrapeFacebookAdsCount, scrapePageName, scrapePageNames } from './scraper.js';
 import { discoverOffersByKeyword } from './discoveryService.js';
-import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun } from './supabaseService.js';
+import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
 
 dotenv.config();
@@ -16,6 +16,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middlewares
+// Private Network Access: o Chrome bloqueia requisição de site PÚBLICO (https) para
+// localhost sem este header. Tem que vir ANTES do cors (que encerra o OPTIONS).
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    next();
+});
 // CORS configurado para permitir requisições de qualquer origem
 app.use(cors({
     origin: '*',
@@ -162,6 +168,50 @@ app.post('/api/scrape/test', async (req, res) => {
             error: error.message,
             timestamp: new Date().toISOString()
         });
+    }
+});
+
+// ── NOME REAL DA PÁGINA ───────────────────────────────────────────────────────
+
+// Lê o nome real de UM link (usado no import / rename individual)
+app.post('/api/scrape/name', async (req, res) => {
+    req.setTimeout(60000); res.setTimeout(60000);
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
+        const result = await scrapePageName(url);
+        res.json({ ...result, timestamp: new Date().toISOString() });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Renomeia EM MASSA todas as ofertas (FB, não arquivadas) com o nome real da Página
+app.post('/api/scrape/names', async (req, res) => {
+    try {
+        const offers = await getOffersWithFacebookLinks(); // já exclui arquivadas
+        // só renomeia links de PÁGINA específica (view_all_page_id); buscas por
+        // palavra-chave têm vários anunciantes → não dá um nome único confiável
+        const items = offers
+            .filter(o => /view_all_page_id=/.test(o.link || ''))
+            .map(o => ({ id: o.id, url: o.link }));
+
+        res.json({
+            success: true,
+            message: `Buscando o nome real de ${items.length} ofertas em background`,
+            count: items.length,
+            timestamp: new Date().toISOString(),
+        });
+
+        // grava cada nome assim que é raspado (incremental → o site reflete ao vivo)
+        scrapePageNames(items, async (id, name) => { await updateOfferName(id, name); })
+            .then((results) => {
+                const ok = results.filter(r => r.name).length;
+                console.log(`✅ [NAMES] concluído: ${ok}/${results.length} ofertas com nome real`);
+            })
+            .catch(err => console.error('❌ [NAMES] erro no job:', err));
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

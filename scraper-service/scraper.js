@@ -377,3 +377,106 @@ export async function scrapeFacebookAdsCountSimple(facebookAdsLibraryUrl, option
         if (browser) await browser.close().catch(() => {});
     }
 }
+
+// ─── EXTRAÇÃO DO NOME REAL DA PÁGINA/ANUNCIANTE ──────────────────────────────
+// O título do bookmark/URL costuma estar errado. O nome real da Página aparece
+// como o 1º link pro facebook.com e se repete muito nos alts de imagem/headings.
+const NAME_GENERIC = [
+    'selecionar país', 'localização atual', 'selecionar categoria de anúncio', 'entrar', 'sair',
+    'biblioteca de anúncios', 'relatório da biblioteca de anúncios', 'api da biblioteca de anúncios',
+    'foto do perfil da página', 'ver resumo da página', 'sobre anúncios e uso de dados', 'privacidade',
+    'termos', 'cookies', 'meta', 'facebook', 'instagram', 'ad library', 'log in', 'select country',
+    'current location', 'select ad category', 'about ads and data use', 'privacy', 'terms',
+];
+
+async function extractNameFromLoadedPage(page) {
+    return page.evaluate(() => {
+        const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        // termos genéricos da própria Biblioteca / rodapé / chrome do FB (sem acento)
+        const BAD = ['biblioteca', 'ad library', 'library', 'facebook', 'instagram', 'meta ', 'privacidade',
+            'privacy', 'cookies', 'termos', 'terms', 'selecionar', 'localizacao', 'location', 'entrar',
+            'log in', 'sair', 'categoria', 'category', 'relatorio', 'report', 'sobre anuncios', 'about ads',
+            ' api ', 'resultados', 'results', 'ver detalhes', 'see details', 'saiba mais', 'learn more',
+            'foto do perfil', 'profile picture', 'conteudo de marca', 'branded content', 'status do sistema',
+            'system status', 'patrocinado', 'sponsored', 'transparencia da pagina', 'page transparency',
+            'assinar para receber', 'subscribe', 'atualizacoes por email', 'email updates', 'inscreva',
+            'perguntas frequentes', 'faq', 'central de ajuda', 'help center', 'configuracoes', 'settings'];
+        const looksUrl = (s) => /https?:|www\.|\.(com|br|net|org|io|co|app|shop|online|site|me|xyz)\b|\//i.test(s);
+        const isName = (s) => {
+            const c = clean(s);
+            if (c.length < 2 || c.length > 60) return false;
+            if (/^[\d\W]+$/.test(c)) return false;       // só números/símbolos
+            if (looksUrl(c)) return false;               // descarta URLs/links de anúncio
+            const n = ' ' + norm(c) + ' ';
+            if (BAD.some((b) => n.includes(b))) return false;
+            return true;
+        };
+        const links = [...document.querySelectorAll('a[href*="facebook.com/"]')].map((a) => clean(a.innerText)).filter(isName);
+        const alts = [...document.querySelectorAll('img[alt]')].map((i) => clean(i.getAttribute('alt'))).filter(isName);
+        const heads = [...document.querySelectorAll('[role="heading"],h1,h2')].map((e) => clean(e.innerText)).filter(isName);
+        // o nome real REPETE muito (avatar de cada anúncio) → a frequência decide; alt pesa x2
+        const freq = {};
+        [...links, ...alts, ...alts, ...heads].forEach((s) => { freq[s] = (freq[s] || 0) + 1; });
+        const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+        return sorted.length ? sorted[0][0] : null;
+    });
+}
+
+function nameContext() {
+    return {
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
+    };
+}
+
+/** Lê o nome real da Página de UM link da Biblioteca de Anúncios. */
+export async function scrapePageName(url) {
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        const ctx = await browser.newContext(nameContext());
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(30000);
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(6000);
+        const name = await extractNameFromLoadedPage(page);
+        await browser.close();
+        return { success: !!name, name: name || null, error: name ? null : 'nome não encontrado' };
+    } catch (error) {
+        if (browser) await browser.close().catch(() => {});
+        return { success: false, name: null, error: error.message };
+    }
+}
+
+/** Lê o nome real de VÁRIOS links reusando um único browser. items = [{id, url}]. */
+export async function scrapePageNames(items, onName) {
+    const results = [];
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        const ctx = await browser.newContext(nameContext());
+        for (const it of items) {
+            const page = await ctx.newPage();
+            page.setDefaultTimeout(30000);
+            try {
+                await page.goto(it.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.waitForTimeout(5000);
+                const name = await extractNameFromLoadedPage(page);
+                results.push({ id: it.id, name: name || null });
+                console.log(`[NAMES] ${it.id} => ${name || '(nada)'}`);
+                if (name && typeof onName === 'function') {
+                    try { await onName(it.id, name); } catch (e) { console.error('[NAMES] update falhou:', e.message); }
+                }
+            } catch (e) {
+                results.push({ id: it.id, name: null, error: e.message });
+            } finally {
+                await page.close().catch(() => {});
+            }
+        }
+        await browser.close();
+    } catch (error) {
+        if (browser) await browser.close().catch(() => {});
+    }
+    return results;
+}

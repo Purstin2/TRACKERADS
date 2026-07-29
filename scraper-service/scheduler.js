@@ -147,32 +147,40 @@ export async function runDiscoveryJob() {
         console.log(`🔑 Keywords a processar: ${keywords.length}`);
 
         let totalFound = 0;
+        // PARALELO: processa N keywords ao mesmo tempo (config DISCOVERY_CONCURRENCY, default 3).
+        // Cada uma abre seu próprio browser headless — fica em 2º plano, dá pra usar o PC.
+        const CONCURRENCY = Math.max(1, parseInt(process.env.DISCOVERY_CONCURRENCY || '3', 10));
+        const MIN_ADS = parseInt(process.env.DISCOVERY_MIN_ADS || '20', 10);   // "escalado" = nº de ads ativos
+        const MIN_DAYS = parseInt(process.env.DISCOVERY_MIN_DAYS || '2', 10);
+        console.log(`⚙️  Em paralelo: ${CONCURRENCY} por vez · escalado = ≥${MIN_ADS} ads rodando ≥${MIN_DAYS} dias`);
 
-        for (const kw of keywords) {
-            console.log(`\n🔑 Processando keyword: "${kw.keyword}" (user: ${kw.user_id.substring(0, 8)}...)`);
-
-            const result = await discoverOffersByKeyword(kw.keyword, {
-                minAdCount: 20,
-                minDaysRunning: 2,
-                maxAdvertisers: 15,
-                country: 'BR'
-            });
-
-            if (result.success && result.offers.length > 0) {
-                await saveDiscoveredOffers(kw.user_id, result.offers);
-                totalFound += result.offers.length;
-                console.log(`✅ "${kw.keyword}": ${result.offers.length} oferta(s) qualificada(s) salvas`);
-            } else {
-                console.log(`ℹ️  "${kw.keyword}": nenhuma oferta qualificada`);
-            }
-
-            await updateKeywordLastRun(kw.id);
-
-            // Pausa entre keywords para não sobrecarregar
-            if (keywords.indexOf(kw) < keywords.length - 1) {
-                const pause = 10000 + Math.random() * 5000;
-                console.log(`⏸️  Aguardando ${(pause / 1000).toFixed(0)}s antes da próxima keyword...`);
-                await new Promise(r => setTimeout(r, pause));
+        for (let i = 0; i < keywords.length; i += CONCURRENCY) {
+            const batch = keywords.slice(i, i + CONCURRENCY);
+            await Promise.all(batch.map(async (kw) => {
+                try {
+                    console.log(`🔑 "${kw.keyword}" (user ${kw.user_id.substring(0, 8)}…)`);
+                    const result = await discoverOffersByKeyword(kw.keyword, {
+                        minAdCount: MIN_ADS,
+                        minDaysRunning: MIN_DAYS,
+                        maxAdvertisers: 15,
+                        country: 'BR',
+                    });
+                    if (result.success && result.offers.length > 0) {
+                        await saveDiscoveredOffers(kw.user_id, result.offers);
+                        totalFound += result.offers.length;
+                        console.log(`✅ "${kw.keyword}": ${result.offers.length} escalada(s) salvas`);
+                    } else {
+                        console.log(`ℹ️  "${kw.keyword}": nenhuma escalada`);
+                    }
+                } catch (e) {
+                    console.error(`❌ "${kw.keyword}": ${e.message}`);
+                } finally {
+                    await updateKeywordLastRun(kw.id);
+                }
+            }));
+            // pausa curta entre lotes (anti-bloqueio do FB)
+            if (i + CONCURRENCY < keywords.length) {
+                await new Promise((r) => setTimeout(r, 5000 + Math.random() * 5000));
             }
         }
 
@@ -239,8 +247,10 @@ export function startScheduler() {
     const nextRun = nextNoon < nextMidnight ? nextNoon : nextMidnight;
     console.log(`📅 Próxima execução: ${nextRun.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
-    // Job de Discovery: 1x por dia às 08:00 BRT (11:00 UTC)
-    cron.schedule('0 11 * * *', async () => {
+    // Discovery AUTÔNOMO: a cada N horas (config DISCOVERY_EVERY_HOURS, default 6), tz BR.
+    const everyH = Math.max(1, parseInt(process.env.DISCOVERY_EVERY_HOURS || '6', 10));
+    const discCron = process.env.DISCOVERY_CRON || `0 */${everyH} * * *`;
+    cron.schedule(discCron, async () => {
         const now = new Date();
         console.log('\n🔔 ====================================');
         console.log(`🔔 DISCOVERY CRON! ${now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
@@ -251,8 +261,17 @@ export function startScheduler() {
             console.error('❌ Erro no discovery agendado:', error);
         }
     }, { timezone: 'America/Sao_Paulo' });
+    console.log(`🔍 Discovery autônomo: a cada ${everyH}h (cron ${discCron})`);
 
-    console.log('🔍 Discovery agendado: 08:00 BRT (diário)');
+    // Roda uma vez ~3 min após iniciar — já traz resultados sem esperar o próximo cron.
+    // Desligue com DISCOVERY_RUN_ON_START=false.
+    if ((process.env.DISCOVERY_RUN_ON_START || 'true') !== 'false') {
+        setTimeout(() => {
+            console.log('🔍 Discovery inicial (pós-boot)…');
+            runDiscoveryJob().catch((e) => console.error('❌ Discovery inicial:', e.message));
+        }, 3 * 60 * 1000);
+    }
+
     console.log('✅ Scheduler configurado e rodando!\n');
 }
 

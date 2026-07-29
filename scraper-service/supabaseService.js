@@ -124,6 +124,26 @@ export async function updateOfferAdCount(offerId, adCount, meta = {}) {
     }
 }
 
+/**
+ * Atualiza SÓ o nome de uma oferta (renomear com o nome real da Página).
+ * Não toca em mais nada.
+ */
+export async function updateOfferName(offerId, name) {
+    try {
+        if (!name || !String(name).trim()) return false;
+        const { error } = await supabase
+            .from('offers')
+            .update({ name: String(name).trim(), updated_at: new Date().toISOString() })
+            .eq('id', offerId);
+        if (error) throw error;
+        console.log(`[SUPABASE] ✓ Oferta ${offerId} renomeada: "${name}"`);
+        return true;
+    } catch (error) {
+        console.error(`[SUPABASE] Erro ao renomear ${offerId}:`, error.message);
+        return false;
+    }
+}
+
 // ─── DISCOVERY FUNCTIONS ─────────────────────────────────────────────────────
 
 /**
