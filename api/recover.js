@@ -233,8 +233,27 @@ export default async function handler(req, res) {
     // Só vendas >= R$ MIN_VALUE (evita gastar disparo/risco de ban em pedido pequeno).
     // Para sozinho ao virar APPROVED (sai do filtro) ou recovered.
     const MIN_VALUE = parseFloat(process.env.WA_MIN_VALUE || '17')
+
+    /* RAMPA DE VOLUME — ABANDONED fica FORA por padrão.
+     *
+     * O webhook só passou a gravar carrinho abandonado em 29/07 (antes todos
+     * colidiam numa linha só). São ~25/dia, contra ~9/dia de disparo hoje: ligar
+     * junto seria 3,7x da noite pro dia, e salto súbito é o que faz a API do
+     * WhatsApp bloquear número — derrubando junto a recuperação de PIX que já
+     * funciona (22,6% de conversão).
+     *
+     * Os dados são gravados desde já; só o DISPARO está represado. Pra liberar,
+     * defina WA_ABANDONED=1 nas variáveis de ambiente da Vercel (sem redeploy do
+     * código). Recomendado só depois de 3-4 dias com o CANCELED rodando estável.
+     *
+     * CANCELED entrou agora porque PIX_EXPIRED cai nele: quem gerava PIX e
+     * expirava ANTES do cron passar saía da fila pra sempre (17 pedidos /
+     * R$1.260 parados só no ULTRA PACK). Volume ~igual ao de hoje. */
+    const statuses = ['PENDING', 'REFUSED', 'CANCELED']
+    if (process.env.WA_ABANDONED === '1') statuses.unshift('ABANDONED')
+
     query =
-      `${url}/rest/v1/kirvano_orders?status=in.(ABANDONED,PENDING,REFUSED)` +
+      `${url}/rest/v1/kirvano_orders?status=in.(${statuses.join(',')})` +
       `&or=(wa_step.is.null,wa_step.lt.3)&customer_phone=not.is.null&value=gte.${MIN_VALUE}` +
       `&created_at=gte.${cutoff}&select=*&order=created_at.asc&limit=80`
   }
@@ -247,6 +266,32 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'falha ao buscar pedidos: ' + e.message })
   }
   if (!Array.isArray(orders)) orders = []
+
+  /* GUARDA POR E-MAIL — não mandar "volte e finalize" pra quem já pagou.
+   * O guard de status logo abaixo só pega quem converteu NA MESMA linha. Isso
+   * funciona pra PIX/cartão (mesmo checkout_id do começo ao fim), mas NÃO pro
+   * carrinho abandonado: a Kirvano não manda id no abandono, então a venda que
+   * vem depois nasce numa linha nova e a linha abandonada fica ABANDONED pra
+   * sempre. Sem esta checagem, ligar o abandono = mensagear cliente já pago. */
+  const emails = [
+    ...new Set(orders.map((o) => (o.customer_email || '').toLowerCase().trim()).filter(Boolean)),
+  ]
+  const jaComprou = new Set()
+  if (emails.length) {
+    try {
+      const inList = emails.map((e) => `"${encodeURIComponent(e)}"`).join(',')
+      const r = await fetch(
+        `${url}/rest/v1/kirvano_orders?status=eq.APPROVED&customer_email=in.(${inList})&select=customer_email`,
+        { headers: sbHeaders(key) },
+      )
+      const pagos = await r.json()
+      if (Array.isArray(pagos)) {
+        for (const p of pagos) jaComprou.add((p.customer_email || '').toLowerCase().trim())
+      }
+    } catch {
+      /* falhou a checagem: segue com o guard de status. Não trava a fila. */
+    }
+  }
 
   const results = []
   for (const o of orders) {
@@ -265,6 +310,17 @@ export default async function handler(req, res) {
       results.push({ id: o.id, skipped: recebeuMsg ? 'recuperada' : 'já estava paga (sem disparo)' })
       continue
     }
+    const mail = (o.customer_email || '').toLowerCase().trim()
+    if (mail && jaComprou.has(mail)) {
+      await patchOrder(url, key, o.id, {
+        wa_status: 'skipped',
+        wa_error: 'já comprou em outro pedido (não mensagear)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: 'já comprou em outro pedido' })
+      continue
+    }
+
     const phone = waPhone(o.customer_phone)
     if (!phone) {
       await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'sem telefone', wa_step: 3 })

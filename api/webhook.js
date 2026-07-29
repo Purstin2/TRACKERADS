@@ -231,6 +231,33 @@ function stateFromDDD(phone) {
   return map[ddd] || null
 }
 
+/**
+ * Chave estável para CARRINHO ABANDONADO da Kirvano.
+ *
+ * O payload de ABANDONED_CART vem com `checkout_id: null` e SEM `sale_id`/`id`.
+ * Como `checkout_id` é UNIQUE na tabela, todos caíam no mesmo `''` e se
+ * sobrescreviam: 77 abandonos em 3 dias viraram 1 linha só, e a recuperação
+ * nunca teve com quem falar.
+ *
+ * Chave sintética = slug do checkout + e-mail → 1 linha por pessoa por oferta
+ * (quem abandona 3x o mesmo checkout atualiza a mesma linha, que é o que a
+ * recuperação quer: uma cadência por pessoa, não três).
+ *
+ * ⚠ Não linka com a venda futura: quando a pessoa compra, a Kirvano manda um
+ * checkout_id de verdade e nasce OUTRA linha. Por isso o recover.js precisa
+ * checar por e-mail se já comprou antes de disparar.
+ */
+function abandonedKey(body, email) {
+  const slug =
+    String(body.checkout_url || '')
+      .split('?')[0]
+      .split('/')
+      .filter(Boolean)
+      .pop() || 'sem-checkout'
+  const who = String(email || body.contactEmail || '').toLowerCase().trim()
+  return `ab:${slug}:${who || 'ip:' + (body.ip || 'x')}`
+}
+
 /** Normaliza o payload de cada gateway num pedido comum. */
 function parseOrder(gateway, body) {
   if (gateway === 'kirvano') {
@@ -274,7 +301,12 @@ function parseOrder(gateway, body) {
       abandoned: status === 'ABANDONED',
       offerId: offerId || null,
       productId: main.id ? String(main.id) : null,
-      checkoutId: body.checkout_id || body.sale_id || body.id,
+      // abandono não traz id nenhum → chave sintética (ver abandonedKey)
+      checkoutId:
+        body.checkout_id ||
+        body.sale_id ||
+        body.id ||
+        (status === 'ABANDONED' ? abandonedKey(body, c.email) : null),
       saleId: body.sale_id || null,
       value: toNumber(body.total_price ?? body.amount ?? body.value),
       product: main.name || body.product_name || 'Produto',
@@ -757,8 +789,22 @@ async function upsertOrder(o, capiOk) {
   const key = process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return
 
+  // Sem checkout_id, `String(undefined || '')` vira '' — e como a coluna é UNIQUE,
+  // TODOS os pedidos sem id colidem numa linha só, sobrescrevendo uns aos outros
+  // silenciosamente. Melhor gritar no log do que fingir que gravou.
+  const cid = String(o.checkoutId || '').trim()
+  if (!cid) {
+    await logHit({
+      gateway: o.gateway, event: o.event, status: o.status, ok: false,
+      http_status: 0, secret_ok: true, capi_ok: capiOk,
+      message: `PEDIDO SEM checkout_id — não gravado (colidiria com os outros sem id)`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {})
+    return
+  }
+
   const row = {
-    checkout_id: String(o.checkoutId || ''),
+    checkout_id: cid,
     sale_id: o.saleId ? String(o.saleId) : null,
     gateway: o.gateway || null, // de onde veio a venda (kirvano/kiwify/hotmart)
     event: o.event,
