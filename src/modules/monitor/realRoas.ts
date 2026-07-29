@@ -14,8 +14,16 @@ export interface RealAgg {
 
 /** Extrai o ID da campanha do utm_campaign "NOME|123..." (macro {{campaign.id}}). */
 export function campIdFromUtm(utm?: string | null): string | null {
-  const s = (utm || '').trim()
+  let s = (utm || '').trim()
   if (!s) return null
+  // Parâmetro repetido na URL (?utm_campaign=X&utm_campaign=X) chega na Kirvano
+  // como ARRAY JSON e o campo é cortado em 255 chars — aí o valor não termina
+  // mais em "|<id>" e a venda ficava órfã (14 vendas / R$1.213 em 30d).
+  // O 1º elemento do array vem inteiro, então é dele que se tira o id.
+  if (s.startsWith('[')) {
+    const first = s.match(/^\[\s*"((?:[^"\\]|\\.)*)"/)
+    if (first) s = first[1].replace(/\\"/g, '"')
+  }
   const m = s.match(/\|(\d{8,})\s*$/)
   return m ? m[1] : null
 }

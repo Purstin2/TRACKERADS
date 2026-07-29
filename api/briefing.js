@@ -93,7 +93,14 @@ async function fetchReal(url, key, sinceISO) {
   const rows = (await r.json()) || []
   const map = {} // campId → { dia → {sales, revenue} }
   for (const o of Array.isArray(rows) ? rows : []) {
-    const m = String(o.utm_campaign || '').match(/\|(\d{8,})\s*$/)
+    // mesma tolerância do dashboard (src/modules/monitor/realRoas.ts): utm repetida
+    // na URL vira array JSON cortado em 255 chars → tira o id do 1º elemento
+    let u = String(o.utm_campaign || '').trim()
+    if (u.startsWith('[')) {
+      const f = u.match(/^\[\s*"((?:[^"\\]|\\.)*)"/)
+      if (f) u = f[1].replace(/\\"/g, '"')
+    }
+    const m = u.match(/\|(\d{8,})\s*$/)
     if (!m) continue
     const dia = dayBR(new Date(o.created_at).getTime())
     const byDay = (map[m[1]] ??= {})
