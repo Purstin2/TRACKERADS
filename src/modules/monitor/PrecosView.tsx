@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from '@/components/ui/toast'
 import { usePersistentState } from '@/lib/appState'
 
 interface PriceTest {
   price: number
-  conv: number
+  conv: number   // 0 = preço aplicado, resultado ainda não medido
   views: number
   tipo: string
   note: string
@@ -12,6 +12,7 @@ interface PriceTest {
 }
 interface Tracker {
   products: Record<string, PriceTest[]>
+  imported?: string[] // lotes de baseline já importados (não reimportar)
 }
 
 const SEED: Tracker = {
@@ -45,6 +46,59 @@ const SEED: Tracker = {
   },
 }
 
+/* ── Baseline medido no export Kirvano de 29/07/2026 ──────────────────────────
+ * Fonte: report_sales 01/04→29/07 (6.405 aprovadas) cruzado com LPV do Meta.
+ *
+ * DENOMINADORES (não misture com linhas antigas sem olhar):
+ *  · Principal → conv = vendas ÷ VISITAS na página (LPV do Meta). É conversão de verdade.
+ *    Não dá pra usar checkout iniciado: o `omni_initiated_checkout` do Meta está quebrado
+ *    no período (reporta mais compras do que checkouts em abr/mai).
+ *  · Order bumps → conv = take rate ENTRE COMPRADORES (% dos pedidos da oferta principal
+ *    que levaram o bump). Contagem exata.
+ *
+ * ⚠ Os PREÇOS dos bumps são ESTIMADOS: o CSV da Kirvano só traz o Total somado do pedido,
+ * então preço-base e preço-de-bump foram resolvidos juntos por mínimos quadrados
+ * (erro médio R$1,08; 74% dos pedidos dentro de R$1). Os take rates são exatos, os preços
+ * unitários não. Corrija pela UI se souber o valor real.
+ */
+const BASELINE_ID = '2026-07-29-ultrapack'
+const PEND = 'PREÇO APLICADO 29/07 — aguardando resultado'
+const MEDIDO = 'medido CSV 29/07'
+
+const BASELINE: Record<string, PriceTest[]> = {
+  'ULTRA PACK STL (principal)': [
+    { price: 49.9, conv: 3.5, views: 30325, tipo: 'Principal', date: '2026-04-20', note: `${MEDIDO} · regime A · ROAS 1,60x` },
+    { price: 64.9, conv: 2.95, views: 26037, tipo: 'Principal', date: '2026-05-18', note: `${MEDIDO} · regime B · melhor ROAS 1,76x` },
+    { price: 59.9, conv: 3.4, views: 36590, tipo: 'Principal', date: '2026-06-15', note: `${MEDIDO} · regime C · ROAS 1,23 = breakeven; custo/visita +51%` },
+    { price: 64.9, conv: 0, views: 0, tipo: 'Principal', date: '2026-07-29', note: `${PEND} · volta ao preço do regime B` },
+  ],
+  'Mascotes (OB)': [
+    { price: 23.9, conv: 54.2, views: 853, tipo: 'OB', date: '2026-04-30', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 24.9, conv: 38.1, views: 1432, tipo: 'OB', date: '2026-05-31', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 24.9, conv: 33.5, views: 825, tipo: 'OB', date: '2026-06-30', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 25.9, conv: 16.2, views: 874, tipo: 'OB', date: '2026-07-29', note: `${MEDIDO} · QUEDA ESTRUTURAL (54%→16% desde abr), não é preço — não aumentar` },
+  ],
+  'Chaveiros (OB)': [
+    { price: 25.9, conv: 31.1, views: 1239, tipo: 'OB', date: '2026-05-31', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 24.9, conv: 31.6, views: 825, tipo: 'OB', date: '2026-06-30', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 25.9, conv: 18.9, views: 874, tipo: 'OB', date: '2026-07-29', note: `${MEDIDO} · o mais resiliente do grupo · testar 29,90` },
+  ],
+  'Virais da Internet (OB)': [
+    { price: 24.9, conv: 25.1, views: 1306, tipo: 'OB', date: '2026-05-31', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 25.9, conv: 28.6, views: 825, tipo: 'OB', date: '2026-06-30', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 34.9, conv: 13.7, views: 874, tipo: 'OB', date: '2026-07-29', note: `${MEDIDO} · +35% e manteve posição relativa — tem espaço p/ 39,90` },
+  ],
+  'Guia Impressão 3D PDF (OB)': [
+    { price: 22.9, conv: 27.9, views: 852, tipo: 'OB', date: '2026-04-30', note: `${MEDIDO} · ⚠ preço ≈estimado, diverge do log manual (17,90) — conferir` },
+    { price: 23.9, conv: 20.9, views: 1432, tipo: 'OB', date: '2026-05-31', note: `${MEDIDO} · preço ≈estimado` },
+    { price: 23.9, conv: 23.0, views: 825, tipo: 'OB', date: '2026-06-30', note: `${MEDIDO} · preço congelado desde mai` },
+    { price: 23.9, conv: 12.8, views: 874, tipo: 'OB', date: '2026-07-29', note: `${MEDIDO} · caiu 44% SEM mexer no preço = prova da canibalização do Mega Combo` },
+  ],
+  'Mega Combo (OB) — DESATIVADO': [
+    { price: 65.9, conv: 15.1, views: 874, tipo: 'OB', date: '2026-07-29', note: `${MEDIDO} · trouxe R$9,95/chk e destruiu R$15,13 dos individuais = LÍQUIDO −R$5,18. Desativado em 29/07` },
+  ],
+}
+
 const revPerVisit = (price: number, conv: number) => price * (conv / 100)
 const fmtDate = (iso: string) => {
   if (!iso) return '—'
@@ -54,8 +108,37 @@ const fmtDate = (iso: string) => {
 
 export default function PrecosView() {
   // tracker de preços persistido no Supabase
-  const [tracker, save] = usePersistentState<Tracker>('meta_price_tracker', JSON.parse(JSON.stringify(SEED)))
+  const [tracker, save, loaded] = usePersistentState<Tracker>('meta_price_tracker', JSON.parse(JSON.stringify(SEED)))
   const [form, setForm] = useState({ prod: '', price: '', conv: '', views: '', date: '', tipo: 'OB', note: '' })
+
+  /* Importa o baseline medido uma única vez. Mexer só no SEED não bastaria: o
+   * usePersistentState prioriza o Supabase, então quem já tem tracker salvo nunca
+   * veria o lote novo. O ref evita reentrada enquanto o save faz o round-trip. */
+  const merging = useRef(false)
+  useEffect(() => {
+    if (!loaded) return // sem isto, mesclaria no cache e gravaria por cima do remoto
+    if (merging.current) return
+    if (tracker.imported?.includes(BASELINE_ID)) return
+    merging.current = true
+    const t: Tracker = {
+      products: { ...tracker.products },
+      imported: [...(tracker.imported || []), BASELINE_ID],
+    }
+    let novos = 0
+    for (const [prod, tests] of Object.entries(BASELINE)) {
+      const cur = t.products[prod] ? [...t.products[prod]] : []
+      for (const nt of tests) {
+        // dedupe por data+preço: reimportar não duplica linha
+        if (cur.some((x) => x.date === nt.date && Math.abs(x.price - nt.price) < 0.01)) continue
+        cur.push({ ...nt })
+        novos++
+      }
+      cur.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      t.products[prod] = cur
+    }
+    save(t)
+    if (novos) toast(`✓ ${novos} registros de preço importados (baseline 29/07)`, 'ok')
+  }, [tracker, save, loaded])
 
   function addTest() {
     const prod = form.prod.trim()
@@ -168,11 +251,15 @@ function ProductTable({
   onDelProd: (p: string) => void
 }) {
   const withRev = tests.map((t) => ({ ...t, rev: revPerVisit(t.price, t.conv) }))
-  const maxRev = Math.max(...withRev.map((t) => t.rev))
-  const winner = withRev.reduce((a, b) => (a.rev >= b.rev ? a : b))
-  const sorted = [...withRev].sort((a, b) => b.rev - a.rev)
-  const margin = sorted[1] ? (winner.rev - sorted[1].rev).toFixed(2) : null
-  const next = winner.price + 5
+  // conv 0 = preço aplicado mas ainda não medido: fica fora de vencedor/veredicto,
+  // senão uma linha pendente vira "RUIM −100%" e rouba o pódio de quem tem dado real.
+  const measured = withRev.filter((t) => t.conv > 0)
+  const pendentes = withRev.length - measured.length
+  const maxRev = measured.length ? Math.max(...measured.map((t) => t.rev)) : 0
+  const winner = measured.length ? measured.reduce((a, b) => (a.rev >= b.rev ? a : b)) : null
+  const sorted = [...measured].sort((a, b) => b.rev - a.rev)
+  const margin = winner && sorted[1] ? (winner.rev - sorted[1].rev).toFixed(2) : null
+  const next = winner ? winner.price + 5 : 0
 
   return (
     <div className="card">
@@ -202,9 +289,12 @@ function ProductTable({
           </thead>
           <tbody>
             {withRev.map((t, i) => {
-              const prev = i > 0 ? withRev[i - 1] : null
+              const pendente = t.conv <= 0
+              // compara com o último ponto MEDIDO anterior (pula pendentes)
+              const prev = pendente ? null : withRev.slice(0, i).filter((x) => x.conv > 0).pop() || null
               let verdict = <span className="text-muted2">—</span>
-              if (prev) {
+              if (pendente) verdict = <span className="font-semibold text-brand-2">⏳ aguardando</span>
+              else if (prev) {
                 const diff = t.rev - prev.rev
                 const up = t.price > prev.price
                 const pct = prev.rev > 0 ? Math.abs((diff / prev.rev) * 100).toFixed(0) : '?'
@@ -213,16 +303,21 @@ function ProductTable({
                   verdict = <span className="font-semibold text-ok">{up ? '↑ Subir' : '↓ Baixar'} foi BOM +{pct}%</span>
                 else verdict = <span className="font-semibold text-danger">{up ? '↑ Subir' : '↓ Baixar'} foi RUIM −{pct}%</span>
               }
-              const isWin = Math.abs(t.rev - maxRev) < 0.001
+              const isWin = !pendente && measured.length > 0 && Math.abs(t.rev - maxRev) < 0.001
               return (
-                <tr key={i} className={`border-b border-border/50 ${isWin ? 'bg-ok/[0.05]' : ''}`}>
+                <tr
+                  key={i}
+                  className={`border-b border-border/50 ${isWin ? 'bg-ok/[0.05]' : ''} ${pendente ? 'bg-brand/[0.04]' : ''}`}
+                >
                   <td className="py-1.5 pl-4">
                     {isWin ? '🏆 ' : ''}
                     <b>R${t.price.toFixed(2)}</b>
                   </td>
                   <td className="py-1.5 text-[11px] text-muted2">{fmtDate(t.date)}</td>
-                  <td className="py-1.5">{t.conv.toFixed(1)}%</td>
-                  <td className="py-1.5 font-mono font-semibold text-brand-2">R${t.rev.toFixed(2)}</td>
+                  <td className="py-1.5">{pendente ? <span className="text-muted2">—</span> : `${t.conv.toFixed(1)}%`}</td>
+                  <td className="py-1.5 font-mono font-semibold text-brand-2">
+                    {pendente ? <span className="font-sans font-normal text-muted2">—</span> : `R$${t.rev.toFixed(2)}`}
+                  </td>
                   <td className="py-1.5 text-muted">{t.views || '—'}</td>
                   <td className="py-1.5 text-[11px] text-muted2">{t.tipo || 'OB'}</td>
                   <td className="py-1.5">{verdict}</td>
@@ -239,10 +334,21 @@ function ProductTable({
         </table>
       </div>
       <div className="border-t border-border px-4 py-2.5 text-[12px] text-muted">
-        🏆 Melhor: <b className="text-ink">R${winner.price.toFixed(2)}</b> com <b className="text-ink">{winner.conv.toFixed(1)}%</b> →{' '}
-        <b className="text-brand-2">R${winner.rev.toFixed(2)}/visitante</b>
-        {margin ? ` (+R$${margin} vs 2º)` : ''}.{tests.length < 3 ? ' Poucos dados — continue testando.' : ''} Próximo: teste{' '}
-        <b className="text-ink">R${next.toFixed(2)}</b> e compare.
+        {winner ? (
+          <>
+            🏆 Melhor: <b className="text-ink">R${winner.price.toFixed(2)}</b> com <b className="text-ink">{winner.conv.toFixed(1)}%</b> →{' '}
+            <b className="text-brand-2">R${winner.rev.toFixed(2)}/visitante</b>
+            {margin ? ` (+R$${margin} vs 2º)` : ''}.{measured.length < 3 ? ' Poucos dados — continue testando.' : ''} Próximo: teste{' '}
+            <b className="text-ink">R${next.toFixed(2)}</b> e compare.
+          </>
+        ) : (
+          <>⏳ Preço aplicado, sem medição ainda. Registre a conversão quando tiver o próximo export.</>
+        )}
+        {pendentes > 0 && winner ? (
+          <span className="ml-1 text-brand-2">
+            · {pendentes} preço{pendentes > 1 ? 's' : ''} aplicado{pendentes > 1 ? 's' : ''} aguardando medição.
+          </span>
+        ) : null}
       </div>
     </div>
   )
