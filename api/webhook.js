@@ -877,7 +877,14 @@ export default async function handler(req, res) {
   // fire_on_pix (opcional): em mercado Pix-pesado, conta Pix gerado já como Purchase.
   let eventsToSend = []
   if (o.approved) {
-    eventsToSend = ['Purchase']
+    // Quem comprou TAMBEM passou pelo checkout e pelo pagamento. Mandando só
+    // Purchase, o funil do Meta ficava com MENOS InitiateCheckout do que compras
+    // (STL, 14d: 503 IC para 590 compras — impossivel na realidade), e o
+    // algoritmo otimizava o meio do funil com dado furado.
+    // Sem risco de duplicar: o event_id de IC/AddPaymentInfo e
+    // `${nome}_${checkout_id}`, entao se o carrinho ja disparou como PENDING o
+    // Meta dedupa por (nome + event_id).
+    eventsToSend = ['InitiateCheckout', 'AddPaymentInfo', 'Purchase']
   } else if (route?.fireOnPix && o.status === 'PENDING') {
     eventsToSend = ['Purchase']
   } else if (o.status === 'PENDING' || o.status === 'REFUSED') {
