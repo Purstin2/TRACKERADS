@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { usePersistentState } from '@/lib/appState'
 import { fetchOrders, brl, type KirvanoOrder } from '@/modules/pixel/orders'
 import { readSnapshot } from '@/lib/adsDaily'
-import { loadOfferDefs } from '@/modules/monitor/offers'
+
 
 /* ── Ofertas testadas ────────────────────────────────────────────────────────
  * Números reais. A ATRIBUIÇÃO vem dos grupos que você monta em Monitor › Por
@@ -54,7 +54,14 @@ const SIT: Record<string, { label: string; dot: string; txt: string }> = {
 }
 const INP = 'w-full rounded-[8px] border border-border bg-[#0a0c19] px-2.5 py-1.5 text-[12.5px] text-ink'
 
+interface OfferDef { id: string; name: string; members: string[] }
+
 export default function OfertasPage() {
+  /* Os grupos vêm da MESMA chave que o Monitor grava, agora no Supabase — então
+   * agrupar numa máquina e consultar noutra funciona. */
+  const [defs] = usePersistentState<OfferDef[]>('meta_oferta_defs', [])
+  /* Nota indexada pelo NOME da oferta, não pelo id: id é gerado na máquina e
+   * muda se a oferta for recriada; o nome é o que você reconhece e digita. */
   const [notas, saveNotas] = usePersistentState<Record<string, Nota>>('meta_ofertas_notas', {})
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [fora, setFora] = useState({ gasto: 0, vendas: 0, faturamento: 0, semUtm: 0 })
@@ -67,7 +74,6 @@ export default function OfertasPage() {
   async function carregar() {
     setLoading(true); setErro('')
     try {
-      const defs = loadOfferDefs()
       setSemGrupos(!defs.length)
 
       const orders = await fetchOrders()
@@ -128,13 +134,13 @@ export default function OfertasPage() {
       setLoading(false)
     }
   }
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar() }, [defs])
 
   const tot = useMemo(
     () => linhas.reduce((s, l) => ({ v: s.v + l.vendas, f: s.f + l.faturamento, g: s.g + l.gasto }), { v: 0, f: 0, g: 0 }),
     [linhas],
   )
-  const setNota = (id: string, n: Nota) => { saveNotas({ ...notas, [id]: n }); setEditando(null) }
+  const setNota = (nome: string, n: Nota) => { saveNotas({ ...notas, [nome]: n }); setEditando(null) }
 
   return (
     <div className="flex flex-col gap-4">
@@ -179,7 +185,7 @@ export default function OfertasPage() {
           </thead>
           <tbody>
             {linhas.map((l) => {
-              const nota = notas[l.id]
+              const nota = notas[l.nome]
               const s = situacao(l, nota)
               const roas = l.gasto > 0 ? l.faturamento / l.gasto : null
               const margem = l.vendas > 0 && l.gasto > 0 ? (l.faturamento - l.gasto) / l.vendas : null
@@ -215,7 +221,7 @@ export default function OfertasPage() {
                     <tr className="border-b border-border/50 bg-surface2/40">
                       <td colSpan={10} className="px-4 py-3">
                         {editando === l.id ? (
-                          <EditorNota nota={nota || { veredito: '', motivo: '' }} onSave={(n) => setNota(l.id, n)} onCancel={() => setEditando(null)} />
+                          <EditorNota nota={nota || { veredito: '', motivo: '' }} onSave={(n) => setNota(l.nome, n)} onCancel={() => setEditando(null)} />
                         ) : (
                           <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1">

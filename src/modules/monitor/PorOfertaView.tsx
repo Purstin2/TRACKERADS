@@ -4,6 +4,7 @@ import { fetchOffer, getRevenue, getSales, campUrl } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
 import { STATUS_FILTERS, DATE_OPTIONS, curSym, accName, trunc } from './config'
 import { toast } from '@/components/ui/toast'
+import { usePersistentState } from '@/lib/appState'
 
 interface CampMetric {
   key: string
@@ -22,18 +23,16 @@ interface OfferDef {
 }
 
 const DEFS_KEY = 'meta_oferta_defs'
-const loadDefs = (): OfferDef[] => {
-  try {
-    return JSON.parse(localStorage.getItem(DEFS_KEY) || '[]')
-  } catch {
-    return []
-  }
-}
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
 
 export default function PorOfertaView() {
   const m = useMonitor()
-  const [defs, setDefs] = useState<OfferDef[]>(loadDefs)
+  /* Antes isto vivia só no localStorage: agrupar 232 campanhas numa máquina e
+   * abrir noutra devolvia a tela vazia. Agora vai pro Supabase como o resto do
+   * app. A chave é a MESMA, e o usePersistentState lê o cache local primeiro —
+   * então o agrupamento que já existe na máquina sobe pro banco sozinho na
+   * primeira abertura, sem ninguém precisar refazer. */
+  const [defs, setDefs] = usePersistentState<OfferDef[]>(DEFS_KEY, [])
   const [period, setPeriod] = useState('last_7d')
   const [customSince, setCustomSince] = useState('')
   const [customUntil, setCustomUntil] = useState('')
@@ -45,10 +44,8 @@ export default function PorOfertaView() {
   const [editor, setEditor] = useState<{ id?: string; name: string; members: Set<string> } | null>(null)
   const [sortBy, setSortBy] = useState<'spend' | 'roas'>('spend')
 
-  const save = (d: OfferDef[]) => {
-    setDefs(d)
-    localStorage.setItem(DEFS_KEY, JSON.stringify(d))
-  }
+  // setDefs já grava no cache local E no Supabase (usePersistentState)
+  const save = (d: OfferDef[]) => setDefs(d)
 
   async function load() {
     if (!m.token.trim()) return alert('Cole o token.')
