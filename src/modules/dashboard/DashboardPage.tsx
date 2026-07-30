@@ -513,20 +513,38 @@ export default function DashboardPage() {
   }, [trackerPadrao, snapAgg, selectedCamps, dailyByCamp])
   // gasto BRL por conta + mapa campanha→conta (pro widget "Performance por Conta")
   // a key do CampMetric é `accId::campId` — separo os dois aqui.
+  /* "Performance por Conta" quer o gasto REAL da conta no período — o que saiu
+   * do cartão, incluindo campanha pausada, arquivada e excluída. Por isso usa o
+   * snapshot (ads_daily) e não a lista de campanhas: a busca da API respeita o
+   * filtro de status da tela, então campanha excluída simplesmente não volta e
+   * o gasto dela sumia do card. O snapshot guarda o histórico do nosso lado.
+   * Só cai pro somatório das campanhas quando o snapshot ainda está vazio
+   * (primeira carga, Supabase fora do ar) — aí é melhor um número parcial que
+   * um card zerado. */
   const accountSpend = useMemo(() => {
-    if (trackerPadrao) return snapAgg.accountSpend
+    if (snapAgg.accountSpend.length) return snapAgg.accountSpend
     const m: Record<string, { id: string; name: string; spend: number }> = {}
     selectedCamps.forEach((c) => {
       const a = (m[c.accId] ||= { id: c.accId, name: c.accName, spend: 0 })
       a.spend += c.spend
     })
     return Object.values(m)
-  }, [trackerPadrao, snapAgg, selectedCamps])
+  }, [snapAgg, selectedCamps])
+  /* Mapa campanha→conta usado pra atribuir CADA VENDA a uma conta (o id da
+   * campanha vem no utm_campaign do pedido). Antes saía só de selectedCamps —
+   * ou seja, só campanha ativa e ainda selecionada na tela. Venda de campanha
+   * desativada ou excluída não achava a conta e caía em "sem atribuição", que
+   * é de onde vinham as 353 vendas órfãs. O snapshot entra como base porque
+   * cobre todos os status; a seleção atual sobrescreve por ser mais fresca. */
   const campToAccount = useMemo(() => {
     const m: Record<string, string> = {}
+    snapAgg.porCamp.forEach((c) => {
+      const campId = c.key.split('::')[1]
+      if (campId) m[campId] = c.accId
+    })
     selectedCamps.forEach((c) => { const campId = c.key.split('::')[1]; if (campId) m[campId] = c.accId })
     return m
-  }, [selectedCamps])
+  }, [snapAgg, selectedCamps])
 
   // dados sempre reais (da API). Antes de carregar, tudo zero — sem mockup.
   const data: DashboardData = useMemo(
