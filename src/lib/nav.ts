@@ -7,6 +7,7 @@ import {
   Crosshair,
   Percent,
   LifeBuoy,
+  FlaskConical,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -53,6 +54,12 @@ export const NAV: NavItem[] = [
     label: 'Recuperação',
     icon: LifeBuoy,
     to: '/recuperacao',
+  },
+  {
+    id: 'ofertas',
+    label: 'Ofertas testadas',
+    icon: FlaskConical,
+    to: '/ofertas',
   },
   {
     id: 'taxas',

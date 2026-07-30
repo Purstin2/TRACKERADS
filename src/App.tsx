@@ -9,6 +9,7 @@ const UploaderPage = lazy(() => import('./modules/uploader/UploaderPage'))
 const PixelPage = lazy(() => import('./modules/pixel/PixelPage'))
 const TaxasPage = lazy(() => import('./modules/taxas/TaxasPage'))
 const RecuperacaoPage = lazy(() => import('./modules/recuperacao/RecuperacaoPage'))
+const OfertasPage = lazy(() => import('./modules/ofertas/OfertasPage'))
 const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
 
 function Loading() {
@@ -45,6 +46,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loading />}>
               <RecuperacaoPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="ofertas"
+          element={
+            <Suspense fallback={<Loading />}>
+              <OfertasPage />
             </Suspense>
           }
         />
