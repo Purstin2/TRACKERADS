@@ -247,6 +247,14 @@ function stateFromDDD(phone) {
  * checkout_id de verdade e nasce OUTRA linha. Por isso o recover.js precisa
  * checar por e-mail se já comprou antes de disparar.
  */
+/* A Kirvano manda `checkout_id` como a STRING "null" no carrinho abandonado —
+ * não como nulo. Isso engana qualquer `a || b`: o campo parece preenchido, e o
+ * pedido acabava gravado com checkout_id "null". Como a coluna é UNIQUE, TODOS
+ * os abandonos viravam a mesma linha, atualizada infinitas vezes. */
+function realId(v) {
+  const s = String(v ?? '').trim()
+  return s && s !== 'null' && s !== 'undefined' && s !== 'NULL' ? s : null
+}
 function abandonedKey(body, email) {
   const slug =
     String(body.checkout_url || '')
@@ -301,13 +309,14 @@ function parseOrder(gateway, body) {
       abandoned: status === 'ABANDONED',
       offerId: offerId || null,
       productId: main.id ? String(main.id) : null,
-      // abandono não traz id nenhum → chave sintética (ver abandonedKey)
+      // abandono não traz id utilizável → chave sintética (ver abandonedKey).
+      // realId() é obrigatório aqui: sem ele a string "null" passa como id válido.
       checkoutId:
-        body.checkout_id ||
-        body.sale_id ||
-        body.id ||
+        realId(body.checkout_id) ||
+        realId(body.sale_id) ||
+        realId(body.id) ||
         (status === 'ABANDONED' ? abandonedKey(body, c.email) : null),
-      saleId: body.sale_id || null,
+      saleId: realId(body.sale_id),
       value: toNumber(body.total_price ?? body.amount ?? body.value),
       product: main.name || body.product_name || 'Produto',
       products,
@@ -792,7 +801,9 @@ async function upsertOrder(o, capiOk) {
   // Sem checkout_id, `String(undefined || '')` vira '' — e como a coluna é UNIQUE,
   // TODOS os pedidos sem id colidem numa linha só, sobrescrevendo uns aos outros
   // silenciosamente. Melhor gritar no log do que fingir que gravou.
-  const cid = String(o.checkoutId || '').trim()
+  // realId() e não `|| ''`: o gateway manda a string "null", que passaria batido
+  // e colidiria com todos os outros pedidos sem id na coluna UNIQUE.
+  const cid = realId(o.checkoutId)
   if (!cid) {
     await logHit({
       gateway: o.gateway, event: o.event, status: o.status, ok: false,
