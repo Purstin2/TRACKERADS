@@ -1006,6 +1006,23 @@ export default async function handler(req, res) {
     eventsToSend = ['InitiateCheckout']
   }
 
+  // ── eventos que NÃO são do ciclo de compra ────────────────────────────────
+  // A Hotmart manda avisos de área de membros, assinatura e logística pelo MESMO
+  // webhook. Eles não têm funil, mas caíam no `return s || 'PENDING'` do
+  // canonicalStatus e viravam InitiateCheckout+AddPaymentInfo:
+  //   CLUB_FIRST_ACCESS     → dispara quando o cliente ABRE a área de membros
+  //   CLUB_MODULE_COMPLETED → quando ele termina um módulo
+  //   SWITCH_PLAN / UPDATE_SUBSCRIPTION_CHARGE_DATE → mexidas na assinatura
+  //   ORDER_FULFILLMENT     → dados logísticos; vem com purchase.status=APPROVED
+  //                           e chegava a virar um segundo Purchase
+  // No teste de configuração eles passaram batido só porque não tinham oferta
+  // casada; numa venda real vêm com o offer code certo e sujariam o funil a cada
+  // login do cliente. Continuam sendo GRAVADOS (o painel quer o dado) — só não
+  // viram evento de anúncio.
+  const NAO_COMPRA = /^(CLUB_|SWITCH_PLAN|UPDATE_SUBSCRIPTION|ORDER_FULFILLMENT|SUBSCRIPTION_)/
+  const ehNaoCompra = NAO_COMPRA.test(String(o.event || '').toUpperCase())
+  if (ehNaoCompra) eventsToSend = []
+
   // Sem rota de pixel pra esta oferta → NÃO envia (não contamina pixel errado).
   const hasRoute = !!(route && route.pixelId && route.token)
 
@@ -1024,7 +1041,10 @@ export default async function handler(req, res) {
 
   const eventLabel = eventsToSend.length ? eventsToSend.join('+') : o.status
   let message
-  if (!eventsToSend.length) {
+  if (ehNaoCompra) {
+    // deixa explícito no painel que foi ignorado de propósito, e não por falta de rota
+    message = `registrado (${o.event}) — fora do ciclo de compra, nao vira evento de anuncio`
+  } else if (!eventsToSend.length) {
     message = `registrado (${o.status})`
   } else if (!hasRoute) {
     // tem evento pra mandar mas NENHUMA rota casou → pulado de propósito
