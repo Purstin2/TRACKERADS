@@ -115,23 +115,51 @@ export default async function handler(req, res) {
   const route = await resolvePixel(supabaseUrl, supabaseKey, o)
   if (!route) return res.status(422).json({ error: 'nenhuma rota de pixel encontrada pra esse pedido — cadastre uma rota na aba Pixels' })
 
-  // 3. Sinais de clique/geo/IP vivem dentro do raw (a tabela não tem colunas fbc/fbp/country)
+  // 3. Sinais de clique/geo/IP vivem dentro do raw (a tabela não tem colunas fbc/fbp/country).
+  //    O formato do raw MUDA por gateway: a Kirvano guarda cookies._fbc/_fbp na raiz,
+  //    a Hotmart embute tudo num blob "fbc:...|fbp:..." dentro de data.purchase.origin.
+  //    Sem esse desvio, reenviar um pedido da Hotmart mandava um Purchase SEM fbc/fbp
+  //    (e com país 'br'), que é justamente o sinal que a gente quer recuperar.
   const raw = o.raw || {}
+  const ehHotmart = o.gateway === 'hotmart' || !!(raw.data && raw.data.purchase)
+
   const cookies = raw.cookies || {}
-  const addr = (raw.customer && raw.customer.address) || {}
-  // fbclidManual (colado da UTMIFY = clique de anúncio real) tem prioridade — é o que
-  // reatribui a campanha no Meta. Sem ele, usa o fbclid que veio na venda (pode ser orgânico).
+  const hmPurchase = (raw.data && raw.data.purchase) || {}
+  const hmBuyer = (raw.data && raw.data.buyer) || {}
+  const hmOrigin = hmPurchase.origin || {}
+  const hmBlob = [hmOrigin.src, hmOrigin.sck, hmOrigin.xcod].filter(Boolean).join('|')
+  const pickBlob = (campo) => {
+    const m = hmBlob.match(new RegExp(campo + '[:=]([^|;,&]+)'))
+    return m ? m[1].trim() : null
+  }
+
+  const addr = ehHotmart
+    ? (hmBuyer.address || {})
+    : ((raw.customer && raw.customer.address) || {})
+
+  // fbclidManual (colado da biblioteca de anúncios = clique real) tem prioridade — é o
+  // que reatribui a campanha no Meta. Sem ele, usa o que veio na venda.
   const hasManual = !!(fbclidManual && String(fbclidManual).trim())
-  const fbclid = hasManual ? String(fbclidManual).trim() : (cookies.fbclid || raw.fbclid || null)
-  // se o usuário colou um fbclid de anúncio, ignora o _fbc orgânico que veio na venda
-  const rawFbc = hasManual ? null : (cookies._fbc || raw.fbc || null)
-  const rawFbp = cookies._fbp || raw.fbp || null
+  const fbclid = hasManual
+    ? String(fbclidManual).trim()
+    : (ehHotmart ? pickBlob('fbclid') : (cookies.fbclid || raw.fbclid || null))
+  // se o usuário colou um fbclid de anúncio, ignora o _fbc que veio na venda
+  const rawFbc = hasManual ? null : (ehHotmart ? pickBlob('fbc') : (cookies._fbc || raw.fbc || null))
+  const rawFbp = ehHotmart ? pickBlob('fbp') : (cookies._fbp || raw.fbp || null)
   const fbc = buildFbc(fbclid, rawFbc, o.ordered_at || o.created_at)
   const fbp = rawFbp && /^fb\.1\./.test(rawFbp) ? rawFbp : (rawFbp ? `fb.1.${Date.now()}.${rawFbp}` : null)
-  const clientIp = raw.ip || null
+  // a Hotmart não manda IP do comprador; a Kirvano manda em raw.ip
+  const clientIp = ehHotmart ? null : (raw.ip || null)
 
-  const iso = isoCountry(addr.country || (raw.customer && raw.customer.country) || 'br')
-  const { fn, ln } = hashName(o.customer_name)
+  const iso = isoCountry(
+    ehHotmart
+      ? ((hmPurchase.checkout_country && hmPurchase.checkout_country.iso) || addr.country_iso || addr.country || 'br')
+      : (addr.country || (raw.customer && raw.customer.country) || 'br')
+  )
+  // a Hotmart já separa first_name/last_name — mais confiável que quebrar o nome cheio
+  const { fn, ln } = ehHotmart && (hmBuyer.first_name || hmBuyer.last_name)
+    ? { fn: sha256(hmBuyer.first_name), ln: hmBuyer.last_name ? sha256(hmBuyer.last_name) : undefined }
+    : hashName(o.customer_name)
 
   const userData = {}
   const em = hashEmail(o.customer_email)

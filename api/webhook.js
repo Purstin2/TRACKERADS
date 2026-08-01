@@ -151,6 +151,10 @@ function centsToNumber(v) {
 function canonicalStatus(event, rawStatus) {
   const e = String(event || '').toUpperCase()
   const s = String(rawStatus || '').toUpperCase()
+  // A Hotmart chama o carrinho abandonado de PURCHASE_OUT_OF_SHOPPING_CART — não
+  // contém "ABANDON", então sem esta linha ele caía no fim da função e virava um
+  // status cru que não dispara nada.
+  if (e.includes('OUT_OF_SHOPPING_CART')) return 'ABANDONED'
   if (e.includes('ABANDONED') || e.includes('ABANDON')) return 'ABANDONED'
   if (e.includes('CHARGEBACK') || s.includes('CHARGEBACK')) return 'CHARGEBACK'
   if (e.includes('REFUND') || s.includes('REFUND') || s.includes('REEMBOLS')) return 'REFUNDED'
@@ -158,7 +162,15 @@ function canonicalStatus(event, rawStatus) {
   if (e.includes('CANCEL') || s.includes('CANCEL')) return 'CANCELED'
   if (e.includes('APPROVED') || s.includes('APPROVED') || s.includes('PAID') || s.includes('APROVAD') || s.includes('COMPLETED')) return 'APPROVED'
   if (e.includes('EXPIRED') || s.includes('EXPIRED') || s.includes('EXPIRAD')) return 'EXPIRED'
-  if (e.includes('GENERATED') || e.includes('PIX') || e.includes('SLIP') || s.includes('PENDING') || s.includes('PENDENT')) return 'PENDING'
+  // Pendente. Os nomes da Hotmart não casavam com nenhum dos termos acima e caíam
+  // no `return s` cru (ex.: "WAITING_PAYMENT"), que não dispara etapa de funil
+  // nenhuma. Em LATAM isso é o grosso do meio do funil: OXXO no México, boleto,
+  // PIX — o comprador chega no checkout e só paga horas depois.
+  //   BILLET_PRINTED / PRINTED_BILLET → boleto impresso
+  //   WAITING_PAYMENT / STARTED       → aguardando pagamento
+  if (e.includes('GENERATED') || e.includes('PIX') || e.includes('SLIP') || e.includes('BILLET') ||
+      s.includes('PENDING') || s.includes('PENDENT') || s.includes('WAITING') ||
+      s.includes('BILLET') || s.includes('STARTED')) return 'PENDING'
   return s || 'PENDING'
 }
 
@@ -189,6 +201,31 @@ function parseTrkField(blob, field) {
   // pares chave:valor ou chave=valor separados por | ; , &
   const m = s.match(new RegExp(field + '[:=]([^|;,&]+)'))
   return m ? m[1].trim() : null
+}
+
+/* ── xcod da Hotmart: o único campo que sobra pra campanha ──────────────────
+ * A Hotmart devolve no webhook APENAS src/sck/xcod — os utm_* que vão na URL do
+ * checkout não voltam. E ela corta src/sck em 255 chars (medido no payload real:
+ * o blob de 410 chegou com 255), e o fbc sozinho já come 188. Ou seja: fbc/fbp
+ * ocupam src/sck, e a campanha só cabe no xcod.
+ *
+ * O uploader (src/modules/uploader/types.ts → UTM_XCOD) já monta o xcod assim:
+ *   FB <sep> {{campaign.name}}|{{campaign.id}} <sep> {{adset.name}}|{{adset.id}}
+ *      <sep> {{ad.name}}|{{ad.id}} <sep> {{placement}}
+ * O separador é alfanumérico de propósito: a Hotmart come caracteres especiais.
+ * Aqui a gente desmonta de volta em utm_source/campaign/medium/content/term. */
+const XCOD_SEP = 'hQwK21wXxR'
+
+function parseXcod(v) {
+  const empty = { source: null, campaign: null, medium: null, content: null, term: null }
+  if (!v) return empty
+  const s = String(v)
+  // blob de fbc/fbp não é xcod de campanha — não tenta interpretar
+  if (/fb[cp]:/.test(s)) return empty
+  const parts = s.split(new RegExp(XCOD_SEP, 'i')).map((x) => x.trim())
+  if (parts.length < 2) return empty          // sem separador = não é o nosso formato
+  const at = (i) => (parts[i] && parts[i] !== '' ? parts[i] : null)
+  return { source: at(0), campaign: at(1), medium: at(2), content: at(3), term: at(4) }
 }
 
 // procura fbclid em URL (?fbclid=) ou string solta
@@ -279,6 +316,9 @@ function parseOrder(gateway, body) {
     const phone = c.phone_number || c.phone
     // IP real do comprador (Kirvano manda body.ip)
     const buyerIp = body.ip || null
+    // UA do NAVEGADOR do comprador, se a Kirvano mandar (nunca o UA do request,
+    // que é o do robô dela). Ausente = campo omitido no CAPI, que é o certo.
+    const buyerUa = body.user_agent || body.userAgent || cookies.user_agent || null
 
     // event_source_url: a Kirvano não manda checkout_url no payload de venda,
     // mas dá pra montar do offer_id (URL real da oferta) — melhor que vazio.
@@ -326,6 +366,7 @@ function parseOrder(gateway, body) {
       phone,
       doc: c.document,
       buyerIp,
+      buyerUa,
       // geo — Kirvano manda address (city/state podem ser null, fallback p/ DDD)
       city: addr.city || c.city || null,
       state: addr.state || c.state || stateFromDDD(phone),
@@ -402,6 +443,7 @@ function parseOrder(gateway, body) {
       phone,
       doc: c.CPF || c.cpf || null,
       buyerIp: c.ip || null,
+      buyerUa: trk.user_agent || body.user_agent || null,
       city: c.city || null,
       state: c.state || stateFromDDD(phone),
       zip: c.zipcode || c.zip || null,
@@ -454,10 +496,15 @@ function parseOrder(gateway, body) {
     const fbpRaw = origin.fbp || parseTrkField(trkBlob, 'fbp') || null
     const fbclid = findFbclid(origin.fbclid, parseTrkField(trkBlob, 'fbclid'))
     const fbc = buildFbc({ rawFbc: fbcRaw, fbclid, createdAt: body.creation_date })
-    // se sck/xcod carregam o blob de fbc/fbp (fbtrack.js empurrou), não usar como
-    // nome de campanha — pega o utm_campaign real. Senão, sck/xcod É a campanha.
     const trkHasFb = /fb[cp]:/.test(trkBlob)
-    const campaign = origin.utm_campaign || (trkHasFb ? null : (origin.xcod || origin.sck)) || null
+    // campanha: vem do xcod montado pelo uploader (ver parseXcod). Tenta xcod
+    // primeiro, depois sck/src — quem tiver o separador ganha.
+    const xc = [origin.xcod, origin.sck, origin.src]
+      .map(parseXcod).find((x) => x.campaign) || parseXcod(null)
+    // fallback: xcod/sck sem o nosso separador = string livre que o próprio
+    // anunciante pôs lá; ainda é melhor que nada como nome de campanha.
+    const campaignCru = trkHasFb ? null : (origin.xcod || origin.sck)
+    const campaign = origin.utm_campaign || xc.campaign || campaignCru || null
 
     return {
       gateway,
@@ -479,17 +526,20 @@ function parseOrder(gateway, body) {
       email: buyer.email,
       phone: buyer.checkout_phone || buyer.phone || null,
       doc: buyer.document || null,                 // Hotmart costuma mandar "" → vira null
+      // A Hotmart NÃO manda IP nem user-agent do comprador em nenhum campo do
+      // payload 2.0.0 — ficam null de propósito, e o CAPI omite os dois.
       buyerIp: d.ip || buyer.ip || null,
+      buyerUa: null,
       city: addr.city || null,                     // costuma vir "" → null
       state: addr.state || null,
       zip: addr.zipcode || addr.zip_code || null,  // costuma vir "" → null
       country: iso,
       currency: (price.currency_value || '').toUpperCase() || null,
-      utmSource: trkHasFb ? (origin.utm_source || 'FB') : (origin.src || null),
-      utmMedium: origin.utm_medium || null,
+      utmSource: origin.utm_source || xc.source || (trkHasFb ? 'FB' : origin.src) || null,
+      utmMedium: origin.utm_medium || xc.medium || null,
       utmCampaign: campaign,
-      utmContent: origin.utm_content || null,
-      utmTerm: origin.utm_term || null,
+      utmContent: origin.utm_content || xc.content || null,
+      utmTerm: origin.utm_term || xc.term || null,
       checkoutUrl: offer.code ? `https://pay.hotmart.com/${offer.code}` : null,
       fbc,
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
@@ -611,9 +661,14 @@ async function sendCAPI(o, req, route, eventName) {
   const numItems = o.products?.length || 1
   const totalValue = o.value || contents.reduce((s, c) => s + (c.item_price * c.quantity), 0)
 
-  // IP real do comprador vem no body.ip (Kirvano); fallback para header do request
-  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
-  const clientUa = req.headers['user-agent'] || null
+  // IP/UA do COMPRADOR — nunca do request. Quem faz este POST é o robô do gateway,
+  // então x-forwarded-for é o servidor dele (Hotmart: 54.167.x.x na AWS/Virgínia) e
+  // user-agent é "Jodd HTTP". Mandar isso pro Meta é pior que não mandar: o IP diz
+  // que um comprador mexicano estava nos EUA (briga com o `country` hasheado) e o UA
+  // não é de navegador. O Meta manda omitir quando não se tem o valor real do browser.
+  // Kirvano manda body.ip (comprador de verdade); Hotmart não manda IP nenhum.
+  const clientIp = o.buyerIp || null
+  const clientUa = o.buyerUa || null
 
   const isPurchase = eventName === 'Purchase'
 
@@ -728,8 +783,9 @@ async function sendTikTok(o, req) {
   if (!token || !pixelCode) return false
 
   const iso = isoCountry(o.country)
-  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
-  const clientUa = req.headers['user-agent'] || null
+  // mesma regra do CAPI: só o IP/UA real do comprador (ver comentário no sendCAPI)
+  const clientIp = o.buyerIp || null
+  const clientUa = o.buyerUa || null
   const currency = o.currency || currencyOf(iso)
   const value = o.value || 0
 
