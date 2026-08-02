@@ -906,23 +906,38 @@ async function loadFx() {
  * menos as taxas cadastradas na aba Taxas (9,9% + US$0,10), da exatamente o
  * liquido que ela credita — R$67,99 calculado contra R$68,03 real.
  *
- * Devolve null quando nao da pra confiar (sem comissoes, sem conversao pra BRL,
- * ou moedas misturadas) — aí cai na tabela de cambio normal. */
-function hotmartBRL(body) {
+ * Devolve TAMBEM a taxa real da venda: tudo que NAO foi pro produtor (comissao
+ * da Hotmart + afiliado + coprodutor, se houver). Assim o painel para de
+ * depender do "9,9%" cadastrado na aba Taxas ficar atualizado — se a Hotmart
+ * reclassificar por volume, ou entrar um afiliado dividindo a venda, o numero
+ * certo ja vem no proprio webhook.
+ *
+ * Devolve null quando nao da pra confiar (sem comissoes, sem a parte do
+ * produtor, ou moedas misturadas) — aí cai na tabela de cambio + % da aba Taxas. */
+function hotmartMoney(body) {
   const com = body?.data?.commissions
   if (!Array.isArray(com) || !com.length) return null
   const conv = com.find(
     (c) => c?.currency_conversion?.converted_to_currency === 'BRL' && +c.currency_conversion.conversion_rate > 0,
   )
-  if (!conv) return null                       // venda ja em BRL, ou sem conversao
-  const base = conv.currency_value
-  const rate = +conv.currency_conversion.conversion_rate
-  let soma = 0
+  const base = conv ? conv.currency_value : com[0]?.currency_value
+  // venda internacional: taxa que a propria Hotmart aplicou. Venda ja em BRL: 1.
+  const rate = conv
+    ? +conv.currency_conversion.conversion_rate
+    : (String(base || '').toUpperCase() === 'BRL' ? 1 : null)
+  if (!rate) return null
+  let total = 0
+  let produtor = 0
   for (const c of com) {
-    if (c?.currency_value !== base) return null // moedas misturadas: nao arrisca
-    soma += +c.value || 0
+    if (c?.currency_value !== base) return null  // moedas misturadas: nao arrisca
+    const v = +c.value || 0
+    total += v
+    if (String(c.source || '').toUpperCase() === 'PRODUCER') produtor += v
   }
-  return soma > 0 ? Math.round(soma * rate * 100) / 100 : null
+  // sem a parte do produtor nao da pra separar o que e taxa
+  if (!(total > 0) || !(produtor > 0)) return null
+  const r2 = (n) => Math.round(n * 100) / 100
+  return { grossBRL: r2(total * rate), feeBRL: r2((total - produtor) * rate) }
 }
 
 /** valor na moeda do comprador → BRL. Moeda desconhecida: devolve null (não
@@ -962,9 +977,9 @@ async function upsertOrder(o, capiOk) {
   const moeda = o.currency || currencyOf(isoCountry(o.country))
   // `value` é BRL SEMPRE — é o que o painel inteiro soma. O original fica ao lado.
   // Prioridade: taxa da PRÓPRIA Hotmart (exata, por transação) → nossa tabela.
-  const cambioHotmart = o.gateway === 'hotmart' ? hotmartBRL(o.raw) : null
-  const fx = cambioHotmart === null ? await loadFx() : null
-  const brl = cambioHotmart !== null ? cambioHotmart : toBRL(o.value, moeda, fx)
+  const hm = o.gateway === 'hotmart' ? hotmartMoney(o.raw) : null
+  const fx = hm ? null : await loadFx()
+  const brl = hm ? hm.grossBRL : toBRL(o.value, moeda, fx)
   if (brl === null) {
     await logHit({
       gateway: o.gateway, event: o.event, status: o.status, ok: false,
@@ -984,6 +999,9 @@ async function upsertOrder(o, capiOk) {
     value: brl === null ? o.value : brl,
     value_orig: o.value,          // quanto o comprador pagou, na moeda dele
     currency: moeda,              // ...e qual era a moeda
+    // taxa REAL desta venda, quando o gateway informa. NULL = painel usa o % da
+    // aba Taxas (Kirvano/Kiwify nao mandam a comissao no webhook).
+    fee_gateway: hm ? hm.feeBRL : null,
     product: o.product,
     products: o.products?.length ? o.products : null,
     payment_method: o.paymentMethod,

@@ -140,7 +140,7 @@ export default function MobileApp() {
     const [{ data }, adsRes] = await Promise.all([
       sb
         .from('kirvano_orders')
-        .select('id,product,products,value,customer_name,payment_method,status,ordered_at,created_at')
+        .select('id,product,products,value,fee_gateway,customer_name,payment_method,status,ordered_at,created_at')
         .gte('created_at', brtTodayStartISO())
         .order('created_at', { ascending: false })
         .limit(200),
@@ -219,7 +219,11 @@ export default function MobileApp() {
     orders.forEach((o) => {
       const s = sumFees(feeItemsForOrder(taxasCfg, o as unknown as KirvanoOrder))
       const v = o.value || 0
-      taxasVal += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+      // taxa REAL quando o gateway informou (ver realbuild.ts) — mesma regra
+      const feeReal = (o as { fee_gateway?: number | null }).fee_gateway
+      taxasVal += feeReal != null
+        ? Number(feeReal)
+        : (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
       impostoVal += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
       custoVal += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
     })
