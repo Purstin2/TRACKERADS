@@ -896,6 +896,35 @@ async function loadFx() {
   return out
 }
 
+/* A Hotmart manda a PRÓPRIA taxa de câmbio dela em cada venda internacional,
+ * dentro de commissions[].currency_conversion. Usar essa taxa em vez da nossa
+ * tabela elimina o erro de spread: a nossa media (5,40 USD→BRL) estava 6% acima
+ * da que ela realmente aplica (5,0805), inflando o faturamento LATAM.
+ *
+ * O bruto em BRL = soma de TODAS as comissoes (a parte dela + a sua) na moeda
+ * base, vezes a taxa dela. Conferido nas 3 primeiras vendas reais: esse bruto,
+ * menos as taxas cadastradas na aba Taxas (9,9% + US$0,10), da exatamente o
+ * liquido que ela credita — R$67,99 calculado contra R$68,03 real.
+ *
+ * Devolve null quando nao da pra confiar (sem comissoes, sem conversao pra BRL,
+ * ou moedas misturadas) — aí cai na tabela de cambio normal. */
+function hotmartBRL(body) {
+  const com = body?.data?.commissions
+  if (!Array.isArray(com) || !com.length) return null
+  const conv = com.find(
+    (c) => c?.currency_conversion?.converted_to_currency === 'BRL' && +c.currency_conversion.conversion_rate > 0,
+  )
+  if (!conv) return null                       // venda ja em BRL, ou sem conversao
+  const base = conv.currency_value
+  const rate = +conv.currency_conversion.conversion_rate
+  let soma = 0
+  for (const c of com) {
+    if (c?.currency_value !== base) return null // moedas misturadas: nao arrisca
+    soma += +c.value || 0
+  }
+  return soma > 0 ? Math.round(soma * rate * 100) / 100 : null
+}
+
 /** valor na moeda do comprador → BRL. Moeda desconhecida: devolve null (não
  *  chuta uma taxa; melhor gravar o original e o log avisar do que inventar). */
 function toBRL(value, currency, fx) {
@@ -932,8 +961,10 @@ async function upsertOrder(o, capiOk) {
   // moeda real do pedido (a que o gateway mandou, senão deriva do país)
   const moeda = o.currency || currencyOf(isoCountry(o.country))
   // `value` é BRL SEMPRE — é o que o painel inteiro soma. O original fica ao lado.
-  const fx = await loadFx()
-  const brl = toBRL(o.value, moeda, fx)
+  // Prioridade: taxa da PRÓPRIA Hotmart (exata, por transação) → nossa tabela.
+  const cambioHotmart = o.gateway === 'hotmart' ? hotmartBRL(o.raw) : null
+  const fx = cambioHotmart === null ? await loadFx() : null
+  const brl = cambioHotmart !== null ? cambioHotmart : toBRL(o.value, moeda, fx)
   if (brl === null) {
     await logHit({
       gateway: o.gateway, event: o.event, status: o.status, ok: false,
