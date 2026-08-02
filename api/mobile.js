@@ -36,10 +36,15 @@ async function metaToday(req, res) {
     const results = await Promise.all(
       accounts.map(async (acc) => {
         try {
-          const r = await fetch(
-            `https://graph.facebook.com/v22.0/act_${acc.id}/insights` +
-              `?date_preset=today&fields=spend,impressions,clicks&level=account&access_token=${token}`,
-          )
+          // aceita periodo (o app agora tem seletor); sem parametro = hoje,
+          // que era o comportamento fixo de antes
+          const per = new URLSearchParams({
+            ...periodoDaQuery(req.query),
+            fields: 'spend,impressions,clicks',
+            level: 'account',
+            access_token: token,
+          })
+          const r = await fetch(`https://graph.facebook.com/v22.0/act_${acc.id}/insights?${per}`)
           const j = await r.json()
           const row = Array.isArray(j.data) ? j.data[0] : null
           if (!row) return { spend: 0, impressions: 0, clicks: 0 }
@@ -235,8 +240,19 @@ const findVal = (arr, keys) => {
 }
 // janelas iguais às do desktop (src/lib/meta.ts): last_Nd exclui hoje.
 // O Graph não tem last_4d nem "anteontem" → viram time_range.
-function campDateParams(preset) {
+const DIA_RE = /^\d{4}-\d{2}-\d{2}$/
+function campDateParams(preset, since, until) {
   const fmt = (d) => d.toISOString().split('T')[0]
+  // periodo personalizado escolhido no celular (datas ja no dia BR)
+  if (preset === 'custom') {
+    if (DIA_RE.test(since || '') && DIA_RE.test(until || '')) {
+      const [a, b] = since <= until ? [since, until] : [until, since]
+      return { time_range: JSON.stringify({ since: a, until: b }) }
+    }
+    // datas invalidas: NAO deixa vazar "date_preset=custom", que o Meta nao
+    // conhece e derruba a chamada inteira com erro 100
+    return { date_preset: 'today' }
+  }
   if (preset === 'day_before_yesterday') {
     const d = new Date(); d.setDate(d.getDate() - 2)
     return { time_range: JSON.stringify({ since: fmt(d), until: fmt(d) }) }
@@ -245,12 +261,15 @@ function campDateParams(preset) {
   const m = /^last_(\d+)d$/.exec(preset || '')
   if (m && !NATIVE.includes(preset)) {
     const n = parseInt(m[1], 10)
-    const until = new Date(); until.setDate(until.getDate() - 1)
-    const since = new Date(); since.setDate(since.getDate() - n)
-    return { time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }) }
+    const until2 = new Date(); until2.setDate(until2.getDate() - 1)
+    const since2 = new Date(); since2.setDate(since2.getDate() - n)
+    return { time_range: JSON.stringify({ since: fmt(since2), until: fmt(until2) }) }
   }
   return { date_preset: preset || 'today' }
 }
+/** le preset/since/until da query — usado pelo camps e pelo meta-today */
+const periodoDaQuery = (q) =>
+  campDateParams(String(q.preset || 'today'), String(q.since || ''), String(q.until || ''))
 const CAMP_STATUS = {
   active: ['ACTIVE'],
   active_paused: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES'],
@@ -286,7 +305,7 @@ async function camps(req, res) {
       const p = new URLSearchParams({
         level: 'campaign',
         fields: 'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,frequency',
-        ...campDateParams(preset),
+        ...periodoDaQuery(req.query),
         filtering: JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: statuses }]),
         access_token: token, limit: '300',
       })

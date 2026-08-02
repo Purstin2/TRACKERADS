@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone } from 'lucide-react'
 import MobileCamps from './MobileCamps'
+import PeriodBar from './PeriodBar'
+import { resolvePeriod, type PeriodValue } from './period'
 import { supabase } from '@/lib/supabase'
 import { loadTaxas, syncTaxas, feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 
-// dia comercial BR (UTC-3) — alinhado com a dashboard
-const BR_OFFSET_MS = 3 * 3600000
-function brtTodayStartISO() {
-  const brt = new Date(Date.now() - BR_OFFSET_MS)
-  brt.setUTCHours(0, 0, 0, 0)
-  return new Date(brt.getTime() + BR_OFFSET_MS).toISOString()
-}
+// o dia comercial BR agora vive em ./period (usado pelas 3 abas)
 const brl = (v?: number | null) =>
   'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -90,6 +86,7 @@ interface AdStats { spend: number; impressions: number; clicks: number }
 
 export default function MobileApp() {
   const [tab, setTab] = useState<'vendas' | 'dash' | 'camps'>('vendas')
+  const [periodo, setPeriodo] = useState<PeriodValue>({ id: 'today' })
   const [orders, setOrders] = useState<Order[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
   const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
@@ -103,7 +100,12 @@ export default function MobileApp() {
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set())
   const seen = useRef<Set<string>>(new Set())
   const firstLoad = useRef(true)
+  // qual janela está carregada agora — trocar de período recarrega vendas
+  // antigas, e sem isso o app tocaria o alerta de "venda nova" pra cada uma
+  const janelaRef = useRef('')
   const connected = !!supabase()
+  /** janela resolvida do período escolhido (rótulos e filtros da tela) */
+  const jan = useMemo(() => resolvePeriod(periodo), [periodo])
 
   function notifySale(o: Order) {
     beep()
@@ -137,19 +139,35 @@ export default function MobileApp() {
   async function fetchSales() {
     const sb = supabase()
     if (!sb) { setLoading(false); return }
+    const j = resolvePeriod(periodo)
+    const trocouJanela = janelaRef.current !== j.sinceISO + '|' + j.untilISO
+    janelaRef.current = j.sinceISO + '|' + j.untilISO
+
+    // Busca por created_at com 1 dia de folga dos dois lados e filtra depois pela
+    // data REAL da venda. Uma venda das 23h50 pode ser gravada às 00h05 do dia
+    // seguinte; filtrando direto por created_at ela sumiria do dia dela.
+    const folga = (iso: string, dias: number) =>
+      new Date(new Date(iso).getTime() + dias * 86400000).toISOString()
     const [{ data }, adsRes] = await Promise.all([
       sb
         .from('kirvano_orders')
         .select('id,product,products,value,fee_gateway,customer_name,payment_method,status,ordered_at,created_at')
-        .gte('created_at', brtTodayStartISO())
+        .gte('created_at', folga(j.sinceISO, -1))
+        .lt('created_at', folga(j.untilISO, 1))
         .order('created_at', { ascending: false })
-        .limit(200),
-      fetch('/api/mobile?fn=meta-today').then((r) => r.json()).catch(() => null),
+        .limit(2000),
+      fetch(`/api/mobile?fn=meta-today&${new URLSearchParams(j.apiParams)}`).then((r) => r.json()).catch(() => null),
     ])
-    const all = (data || []) as Order[]
+    const dentro = (o: Order) => {
+      const d = o.ordered_at || o.created_at
+      return !!d && d >= j.sinceISO && d < j.untilISO
+    }
+    const all = ((data || []) as Order[]).filter(dentro)
     setAllOrders(all)
     const approved = all.filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
-    if (!firstLoad.current) {
+    // só avisa venda nova quando estou olhando HOJE e não acabei de trocar de
+    // período (senão o app apitaria pra cada venda antiga que entrou na lista)
+    if (!firstLoad.current && !trocouJanela && periodo.id === 'today') {
       approved.filter((o) => !seen.current.has(o.id)).forEach(notifySale)
     }
     approved.forEach((o) => seen.current.add(o.id))
@@ -161,21 +179,28 @@ export default function MobileApp() {
   }
 
   useEffect(() => {
-    fetchSales()
     syncTaxas().then(setTaxasCfg)
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') subscribePush()
+    const onInstall = (e: Event) => { e.preventDefault(); setInstallEvt(e) }
+    window.addEventListener('beforeinstallprompt', onInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onInstall)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Busca + auto-refresh ficam AMARRADOS ao período: se o intervalo fosse criado
+  // só na montagem, o closure guardaria o período daquele instante e o refresh de
+  // 25s continuaria buscando "hoje" mesmo depois de você escolher 30 dias.
+  useEffect(() => {
+    fetchSales()
     const t = setInterval(fetchSales, 25000)
     const onVis = () => { if (document.visibilityState === 'visible') fetchSales() }
     document.addEventListener('visibilitychange', onVis)
-    const onInstall = (e: Event) => { e.preventDefault(); setInstallEvt(e) }
-    window.addEventListener('beforeinstallprompt', onInstall)
     return () => {
       clearInterval(t)
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('beforeinstallprompt', onInstall)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [periodo])
 
   async function askNotif() {
     if (typeof Notification === 'undefined') return
@@ -281,12 +306,15 @@ export default function MobileApp() {
       </header>
 
       <main className="mx-auto max-w-[560px] px-4 pb-28 pt-4">
+        {/* período — vale pras 3 abas de uma vez */}
+        <PeriodBar value={periodo} onChange={setPeriodo} />
+
         {tab === 'vendas' ? (
         <>
         {/* total do dia */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
           <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted2">
-            <TrendingUp className="h-3.5 w-3.5" /> Faturamento de hoje
+            <TrendingUp className="h-3.5 w-3.5" /> Faturamento · {jan.label}
           </div>
           <div className="mt-1 text-[40px] font-extrabold leading-none text-ok">{brl(total)}</div>
           <div className="mt-2 flex items-center gap-1.5 text-[13px] text-muted">
@@ -353,7 +381,7 @@ export default function MobileApp() {
 
         {/* lista de vendas */}
         <div className="mt-5 mb-2 flex items-center justify-between px-1">
-          <h2 className="text-[13px] font-bold text-muted">Vendas de hoje</h2>
+          <h2 className="text-[13px] font-bold text-muted">Vendas · {jan.label}</h2>
           {!connected && <span className="text-[11px] text-danger">sem conexão Supabase</span>}
         </div>
 
@@ -363,7 +391,7 @@ export default function MobileApp() {
           </div>
         ) : orders.length === 0 ? (
           <div className="rounded-xl2 border border-dashed border-border py-12 text-center text-[13px] text-muted2">
-            Nenhuma venda aprovada hoje ainda.<br />Os alertas chegam assim que a primeira cair. 💪
+            Nenhuma venda aprovada no período.<br />Os alertas chegam assim que a primeira cair. 💪
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -392,12 +420,12 @@ export default function MobileApp() {
 
         </>
         ) : tab === 'camps' ? (
-          <MobileCamps />
+          <MobileCamps periodo={periodo} />
         ) : (
         <>
         {/* ── DASHBOARD do dia ── */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
-          <div className="text-[12px] font-semibold uppercase tracking-wide text-muted2">Lucro de hoje</div>
+          <div className="text-[12px] font-semibold uppercase tracking-wide text-muted2">Lucro · {jan.label}</div>
           <div className={`mt-1 text-[40px] font-extrabold leading-none ${dash.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{brl(dash.lucro)}</div>
           <div className="mt-2 text-[12px] text-muted">
             líquido {brl(dash.fatLiquido)} − ads {brl(spend)} · taxas/custos por produto (aba Taxas)
@@ -422,7 +450,7 @@ export default function MobileApp() {
 
         <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
-            <div className="text-[12px] font-bold text-muted">Aprovação de hoje</div>
+            <div className="text-[12px] font-bold text-muted">Aprovação · {jan.label}</div>
             <div className={`text-[16px] font-extrabold ${dash.aprovPct !== null && dash.aprovPct >= 60 ? 'text-ok' : 'text-warn'}`}>
               {dash.aprovPct !== null ? dash.aprovPct.toFixed(0) + '%' : '—'}
             </div>
@@ -436,7 +464,7 @@ export default function MobileApp() {
         <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
           <div className="mb-2 text-[12px] font-bold text-muted">Vendas por produto</div>
           {dash.topProd.length === 0 ? (
-            <div className="py-4 text-center text-[12px] text-muted2">sem vendas ainda hoje</div>
+            <div className="py-4 text-center text-[12px] text-muted2">sem vendas no período</div>
           ) : (
             <div className="flex flex-col gap-1.5">
               {dash.topProd.map(([name, d]) => (
