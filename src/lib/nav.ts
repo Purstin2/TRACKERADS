@@ -8,6 +8,7 @@ import {
   Percent,
   LifeBuoy,
   FlaskConical,
+  Wallet,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -66,6 +67,12 @@ export const NAV: NavItem[] = [
     label: 'Taxas',
     icon: Percent,
     to: '/taxas',
+  },
+  {
+    id: 'gastos',
+    label: 'Gastos',
+    icon: Wallet,
+    to: '/gastos',
   },
   {
     id: 'tracker',

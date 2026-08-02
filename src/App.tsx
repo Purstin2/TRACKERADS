@@ -8,6 +8,7 @@ const TrackerPage = lazy(() => import('./modules/tracker/TrackerPage'))
 const UploaderPage = lazy(() => import('./modules/uploader/UploaderPage'))
 const PixelPage = lazy(() => import('./modules/pixel/PixelPage'))
 const TaxasPage = lazy(() => import('./modules/taxas/TaxasPage'))
+const GastosPage = lazy(() => import('./modules/gastos/GastosPage'))
 const RecuperacaoPage = lazy(() => import('./modules/recuperacao/RecuperacaoPage'))
 const OfertasPage = lazy(() => import('./modules/ofertas/OfertasPage'))
 const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
@@ -94,6 +95,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loading />}>
               <TaxasPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="gastos/*"
+          element={
+            <Suspense fallback={<Loading />}>
+              <GastosPage />
             </Suspense>
           }
         />
