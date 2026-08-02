@@ -191,8 +191,15 @@ export default async function handler(req, res) {
     ? products.map((p) => ({ id: p.id ? String(p.id) : (p.name || o.product || ''), quantity: p.quantity || 1, item_price: parseFloat(p.price ?? p.amount ?? 0) || 0, title: p.name || undefined }))
     : [{ id: o.product || '', quantity: 1, item_price: o.value || 0 }]
 
-  const currency = (o.currency || 'BRL').toUpperCase()
-  const value = o.value || contents.reduce((s, c) => s + c.item_price * c.quantity, 0)
+  // O Meta precisa do valor NA MOEDA ORIGINAL (ele converte com a taxa dele).
+  // A coluna `value` guarda BRL desde a correcao de moeda; o que o comprador
+  // pagou de fato esta em `value_orig` + `currency`. Sem isto, reenviar uma
+  // venda paraguaia mandava "45.93 PYG" — o valor em real com o rotulo errado.
+  const temOrig = o.value_orig != null && +o.value_orig > 0
+  const currency = temOrig ? (o.currency || 'BRL').toUpperCase() : 'BRL'
+  const value = temOrig
+    ? +o.value_orig
+    : (o.value || contents.reduce((s, c) => s + c.item_price * c.quantity, 0))
 
   const now = Math.floor(Date.now() / 1000)
   let eventTime = o.ordered_at ? Math.floor(new Date(o.ordered_at).getTime() / 1000) : now

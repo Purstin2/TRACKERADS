@@ -849,6 +849,65 @@ function sbHeaders(key, extra = {}) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...extra }
 }
 
+/* ── conversão pra BRL ────────────────────────────────────────────────────────
+ * Rodando LATAM, cada venda chega na moeda do país do comprador. O painel
+ * (dashboard, ROAS, financeiro) soma `value` CRU, sem olhar a moeda — então
+ * 3 vendas de 17 PAB + 274 MXN + 62.089 PYG (~R$218 de verdade) apareciam como
+ * "R$ 62.380". A venda paraguaia sozinha respondia por 99,5% do número.
+ *
+ * Correção na ENTRADA, não na leitura: `value` passa a ser sempre BRL e todo o
+ * resto do sistema (8 somas no realbuild, ROAS, financeiro, mobile, briefing,
+ * Melodify) fica certo sem tocar em nada. O valor original fica em `value_orig`
+ * + `currency`, e o payload cru continua em `raw`.
+ *
+ * ⚠ O CAPI NÃO usa isto: o Meta tem que receber o valor e a moeda ORIGINAIS
+ * (ele converte com a taxa dele). Por isso a conversão vive só no upsertOrder.
+ *
+ * Unidades por 1 USD. Ajustáveis sem deploy pela chave `fx_rates` do app_state
+ * (ex.: {"ARS": 1500}) — o ARS especialmente derrete rápido. */
+const USD_PER = {
+  USD: 1, PAB: 1,          // balboa é atrelado 1:1 ao dólar
+  EUR: 0.92, GBP: 0.79,
+  MXN: 18.5, PYG: 7300, ARS: 1400, COP: 4000, CLP: 950,
+  PEN: 3.7, UYU: 40, BOB: 6.9, CRC: 510, GTQ: 7.7,
+  DOP: 60, HNL: 25, NIO: 37, VES: 50,
+}
+
+/** Lê a taxa USD→BRL da MESMA config que o Monitor usa (app_state.meta_settings.fx,
+ *  padrão 5.4) + overrides de `fx_rates`. Um botão só pro sistema inteiro. */
+async function loadFx() {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  const out = { usdBrl: 5.4, perUsd: { ...USD_PER } }
+  if (!url || !key) return out
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/app_state?key=in.(meta_settings,fx_rates)&select=key,value`,
+      { headers: sbHeaders(key) },
+    )
+    const rows = await r.json()
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row.key === 'meta_settings' && +row.value?.fx > 0) out.usdBrl = +row.value.fx
+      if (row.key === 'fx_rates' && row.value && typeof row.value === 'object') {
+        for (const [c, v] of Object.entries(row.value)) if (+v > 0) out.perUsd[String(c).toUpperCase()] = +v
+      }
+    }
+  } catch { /* usa os padrões */ }
+  return out
+}
+
+/** valor na moeda do comprador → BRL. Moeda desconhecida: devolve null (não
+ *  chuta uma taxa; melhor gravar o original e o log avisar do que inventar). */
+function toBRL(value, currency, fx) {
+  const v = typeof value === 'number' ? value : toNumber(value)
+  if (!v) return 0
+  const cur = String(currency || 'BRL').toUpperCase()
+  if (cur === 'BRL') return v
+  const per = fx.perUsd[cur]
+  if (!per || per <= 0) return null
+  return Math.round((v / per) * fx.usdBrl * 100) / 100
+}
+
 async function upsertOrder(o, capiOk) {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_KEY
@@ -870,16 +929,30 @@ async function upsertOrder(o, capiOk) {
     return
   }
 
+  // moeda real do pedido (a que o gateway mandou, senão deriva do país)
+  const moeda = o.currency || currencyOf(isoCountry(o.country))
+  // `value` é BRL SEMPRE — é o que o painel inteiro soma. O original fica ao lado.
+  const fx = await loadFx()
+  const brl = toBRL(o.value, moeda, fx)
+  if (brl === null) {
+    await logHit({
+      gateway: o.gateway, event: o.event, status: o.status, ok: false,
+      http_status: 0, secret_ok: true, capi_ok: capiOk,
+      message: `MOEDA SEM TAXA: ${moeda} — valor gravado como veio (${o.value}). ` +
+               `Cadastre a taxa em app_state.fx_rates: {"${moeda}": <unidades por 1 USD>}`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {})
+  }
+
   const row = {
     checkout_id: cid,
     sale_id: o.saleId ? String(o.saleId) : null,
     gateway: o.gateway || null, // de onde veio a venda (kirvano/kiwify/hotmart)
     event: o.event,
     status: o.status,
-    value: o.value,
-    // moeda real do pedido (a que o gateway mandou, senão deriva do país) — antes
-    // gravava 'BRL' fixo, o que distorcia pedidos PT/CL/ES no Financeiro.
-    currency: o.currency || currencyOf(isoCountry(o.country)),
+    value: brl === null ? o.value : brl,
+    value_orig: o.value,          // quanto o comprador pagou, na moeda dele
+    currency: moeda,              // ...e qual era a moeda
     product: o.product,
     products: o.products?.length ? o.products : null,
     payment_method: o.paymentMethod,
