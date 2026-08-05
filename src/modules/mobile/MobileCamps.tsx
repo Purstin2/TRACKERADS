@@ -3,8 +3,10 @@ import {
   RefreshCw, Search, X, Pause, Play, AlertTriangle, DollarSign, History, ChevronRight,
   CheckSquare, Square, ArrowUpDown, Filter, Check, Zap,
 } from 'lucide-react'
-import { useLog, addAction, todayBR, KIND_LABEL } from '@/modules/monitor/actionLog'
+import { useLog, addAction, todayBR, KIND_LABEL, increasesForDay } from '@/modules/monitor/actionLog'
 import { campIdFromUtm } from '@/modules/monitor/realRoas'
+import { loadFinParamsForAccount, rowFin } from '@/modules/monitor/finance'
+import { buildCards, verdictOf, roasOf, hourBR, type Win } from '@/modules/monitor/trackerMath'
 import { supabase, fetchAll } from '@/lib/supabase'
 import { resolvePeriod, type PeriodValue } from './period'
 
@@ -51,13 +53,82 @@ interface Row {
   id: string; name: string; accId: string; accName: string
   spend: number; roas: number | null; sales: number; cpa: number | null
   revenue: number; freq: number; budget: number | null; status: string | null
+  /** gasto na moeda da CONTA (sem conversão) — é o que o tracker compara */
+  spendRaw?: number
+  /** moeda da conta (USD/BRL) */
+  cur?: string
 }
+/** total do dia de uma campanha, na moeda da conta (pro tracker do aumento) */
+type DiaWin = { win: Win | null; carregando: boolean }
 interface Params { roasGood: number; roasBe: number; cpaMax: number; fx: number }
 /** vendas REAIS do gateway, por campanha */
 interface Real { sales: number; revenue: number; salesHoje: number; revenueHoje: number }
 
 const SEL =
   'h-[42px] w-full rounded-[10px] border border-border bg-surface px-3 text-[13px] text-ink focus:border-brand focus:outline-none'
+
+/* ── Tracker do aumento (o "Mexidas hoje" do desktop) ────────────────────────
+ * Mostra o que o aumento de HOJE trouxe: antes→depois do orçamento, quantas
+ * vezes mexi, e quantas vendas / quanto de lucro entraram DEPOIS do aumento.
+ * É o número em que a decisão de subir de novo se apoia.
+ *
+ * Reusa a matemática do desktop (buildCards/verdictOf/rowFin) — só a fonte dos
+ * dados muda: lá o browser fala com a Meta direto, aqui vai pelo /api/mobile,
+ * porque o token não desce pro celular.
+ *
+ * ⚠ Unidade: `spendAtTime` no log e o `spend` do camp-daily estão os dois na
+ * MOEDA DA CONTA. Não dá pra usar o `spend` da listagem, que já vem convertido
+ * pra BRL — subtrair um do outro daria um "lucro" ~5x errado. */
+function TrackerAumento({
+  r, win, sym,
+}: { r: Row; win: DiaWin; sym: string }) {
+  const hoje = todayBR()
+  const incs = increasesForDay(r.id, hoje)
+  if (!incs.length) return null
+
+  const cards = buildCards(incs, win.win, hoje, hoje)
+  const c = cards[0]
+  if (!c) return null
+
+  const { lucro } = rowFin(c.after.spend, c.after.revenue, c.after.sales, loadFinParamsForAccount(r.accId))
+  const v = verdictOf(c, lucro)
+  const ra = roasOf(c.after)
+  const cor = v == null ? 'text-muted2' : v.ok == null ? 'text-muted' : v.ok ? 'text-ok' : 'text-danger'
+
+  return (
+    <div className="mt-2 rounded-[9px] border border-brand/25 bg-brand/[0.06] px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[13px] font-bold text-ink">
+          {sym}{(c.e.budgetBefore ?? 0).toFixed(0)}
+          <span className="text-ok"> → </span>
+          {sym}{(c.e.budgetAfter ?? 0).toFixed(0)}
+        </span>
+        {incs.length > 1 && <span className="text-[11px] text-muted2">({incs.length}×)</span>}
+        <span className="ml-auto text-[10.5px] text-muted2">
+          {hourBR(c.e.ts)} · {c.live ? 'ao vivo' : 'fechado'}
+        </span>
+      </div>
+
+      <div className={`mt-1 flex items-center gap-2 font-mono text-[12.5px] font-bold ${cor}`}>
+        {win.carregando && !v ? (
+          <span className="text-muted2">medindo…</span>
+        ) : v ? (
+          <>
+            <span>+{v.vendas}v</span>
+            <span className="text-muted2">·</span>
+            <span>{v.lucro >= 0 ? '+' : '−'}{sym}{Math.abs(v.lucro).toFixed(0)}</span>
+            <span>{v.ok == null ? '➖' : v.ok ? '✅' : '❌'}</span>
+            {ra != null && <span className="ml-auto text-[11px] font-normal text-muted2">roas {ra.toFixed(2)}</span>}
+          </>
+        ) : (
+          <span className="text-muted2">aguardando gasto depois do aumento</span>
+        )}
+      </div>
+
+      {v && <div className="mt-0.5 text-[11px] leading-snug text-muted2">{v.txt}</div>}
+    </div>
+  )
+}
 
 /* ── detalhe: ajuste fino do orçamento + histórico (o card já resolve o comum) ── */
 function Detalhe({ r, onClose, onBudget }: { r: Row; onClose: () => void; onBudget: (novo: number) => void }) {
@@ -92,7 +163,7 @@ function Detalhe({ r, onClose, onBudget }: { r: Row; onClose: () => void; onBudg
       else {
         addAction({
           accId: r.accId, name: r.name, campId: r.id, kind: 'orcamento', sim: false,
-          cur: 'BRL', roasAtTime: r.roas, spendAtTime: r.spend, salesAtTime: r.sales,
+          cur: r.cur || 'USD', roasAtTime: r.roas, spendAtTime: r.spendRaw ?? null, salesAtTime: r.sales,
           dateBR: todayBR(), budgetBefore: j.antes, budgetAfter: j.depois,
           detail: `${modo === 'pct' ? (pct >= 0 ? '+' : '') + pct + '%' : 'valor fixo'} (${j.nivel}) · pelo celular`,
         })
@@ -228,6 +299,8 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
   const [confirmarLote, setConfirmarLote] = useState(false)
   const [detalhe, setDetalhe] = useState<Row | null>(null)
   const [flash, setFlash] = useState<Record<string, string>>({})
+  /** total de HOJE por campanha que teve aumento — alimenta o tracker */
+  const [dias, setDias] = useState<Record<string, DiaWin>>({})
 
   const jan = useMemo(() => resolvePeriod(periodo), [periodo])
 
@@ -284,6 +357,39 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
     setLoading(false)
   }
   useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [periodo, status, acc])
+
+  /* Total do dia SÓ das campanhas que tiveram aumento hoje — é o "depois" do
+   * tracker. Buscar isso pra lista inteira seria uma chamada por campanha à
+   * Meta; normalmente são poucas (as "mexidas hoje"). */
+  useEffect(() => {
+    const hoje = todayBR()
+    const alvos = rows.filter((r) => increasesForDay(r.id, hoje).length > 0)
+    if (!alvos.length) return
+    let vivo = true
+    setDias((d) => {
+      const n = { ...d }
+      for (const r of alvos) if (!n[r.id]) n[r.id] = { win: null, carregando: true }
+      return n
+    })
+    ;(async () => {
+      for (const r of alvos) {
+        try {
+          const j = await (await fetch(`/api/mobile?fn=camp-daily&id=${r.id}&acc=${r.accId}&dias=2`)).json()
+          if (!vivo) return
+          const d = (j.dias || []).find((x: any) => x.dia === hoje)
+          // revenue reconstruído do ROAS, igual o desktop faz (getRevenue)
+          const win: Win = d
+            ? { spend: d.spend || 0, sales: d.sales || 0, revenue: (d.roas || 0) * (d.spend || 0) }
+            : { spend: 0, sales: 0, revenue: 0 }
+          setDias((prev) => ({ ...prev, [r.id]: { win, carregando: false } }))
+        } catch {
+          if (vivo) setDias((prev) => ({ ...prev, [r.id]: { win: null, carregando: false } }))
+        }
+      }
+    })()
+    return () => { vivo = false }
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [rows, log])
 
   /* ── o que eu já mexi (log local, sem chamada extra) ── */
   const mexi = useMemo(() => {
@@ -405,7 +511,7 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
           setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: st } : x)))
           addAction({
             accId: r.accId, name: r.name, campId: r.id, kind: 'pause', sim: false,
-            cur: 'BRL', roasAtTime: r.roas, spendAtTime: r.spend, salesAtTime: r.sales,
+            cur: r.cur || 'USD', roasAtTime: r.roas, spendAtTime: r.spendRaw ?? null, salesAtTime: r.sales,
             dateBR: todayBR(), detail: `desativada em lote (${jan.label}) · celular`,
           })
         }
@@ -432,7 +538,7 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
       if (!j.ok) { alert('Erro: ' + (j.error || 'falha')); setOrcando(null); return }
       addAction({
         accId: r.accId, name: r.name, campId: r.id, kind: 'orcamento', sim: false,
-        cur: 'BRL', roasAtTime: r.roas, spendAtTime: r.spend, salesAtTime: r.sales,
+        cur: r.cur || 'USD', roasAtTime: r.roas, spendAtTime: r.spendRaw ?? null, salesAtTime: r.sales,
         dateBR: todayBR(), budgetBefore: j.antes, budgetAfter: j.depois,
         detail: `${pct > 0 ? '+' : ''}${pct}% (${j.nivel}) · card do celular`,
       })
@@ -601,6 +707,9 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
                     </div>
                   ))}
                 </div>
+
+                {/* o que o aumento de hoje trouxe — mesma leitura do desktop */}
+                <TrackerAumento r={r} win={dias[r.id] || { win: null, carregando: false }} sym={(r.cur || 'USD') === 'BRL' ? 'R$' : '$'} />
 
                 {/* confirmação do ajuste que acabei de fazer */}
                 {flash[r.id] && (

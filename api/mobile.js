@@ -337,6 +337,12 @@ async function camps(req, res) {
             id: r.campaign_id, name: r.campaign_name || '',
             accId: acc.id, accName: acc.name,
             spend: +spend.toFixed(2), roas, sales,
+            // gasto na MOEDA DA CONTA (sem converter) + qual e ela. O tracker do
+            // aumento compara a foto do momento com o dia inteiro vindo do
+            // camp-daily, que responde na moeda da conta — misturar com o valor
+            // ja convertido pra BRL daria diferenca de ~5x na conta do lucro.
+            spendRaw: +(parseFloat(r.spend) || 0).toFixed(2),
+            cur: acc.cur || 'USD',
             cpa: cpa == null ? null : +(cpa * mult).toFixed(2),
             revenue: roas != null ? +(roas * spend).toFixed(2) : 0,
             freq: parseFloat(r.frequency || '0') || 0,
