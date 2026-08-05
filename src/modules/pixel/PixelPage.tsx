@@ -81,7 +81,8 @@ export default function PixelPage() {
         </div>
       </div>
 
-      <div className="mb-5 flex gap-1.5 border-b border-border pb-3">
+      {/* no celular as abas não cabem lado a lado: rolam em vez de serem cortadas */}
+      <div className="mb-5 flex gap-1.5 overflow-x-auto border-b border-border pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&>button]:shrink-0 [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => {
           const Icon = t.icon
           return (

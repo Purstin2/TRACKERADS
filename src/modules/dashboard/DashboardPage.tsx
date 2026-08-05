@@ -555,6 +555,22 @@ export default function DashboardPage() {
   const d = data
   const visibleLayout = useMemo(() => layout.filter((l) => enabled.includes(l.i) && WIDGET_MAP[l.i]), [layout, enabled])
 
+  /* No celular o grid vira UMA coluna: cada widget ocupa a largura toda, na
+   * mesma ordem em que aparecem no desktop (cima→baixo, esquerda→direita).
+   * Sem isto o grid mantinha as posições de 12 colunas — um widget de w:6
+   * virava 6 colunas de um grid de 1 e estourava 640px numa tela de 390. */
+  const mobileLayout = useMemo(
+    () =>
+      [...visibleLayout]
+        .sort((a, b) => (a.y - b.y) || (a.x - b.x))
+        .map((l, i) => ({ ...l, x: 0, y: i, w: 1, h: l.h })),
+    [visibleLayout],
+  )
+  /* qual breakpoint o grid está usando agora — o layout de celular NÃO pode ser
+   * salvo por cima do arranjo do desktop se você entrar no modo editar no celular */
+  const [bp, setBp] = useState<string>('lg')
+  const noCelular = bp === 'sm' || bp === 'xs'
+
   function startEdit() { savedSnap.current = { enabled: [...enabled], layout: layout.map((l) => ({ ...l })) }; setEditing(true); setDrawerOpen(true) }
   function cancelEdit() { setEnabled(savedSnap.current.enabled); setLayout(savedSnap.current.layout); setEditing(false); setDrawerOpen(false) }
   function saveEdit() {
@@ -630,7 +646,8 @@ export default function DashboardPage() {
             </select>
           </div>
           <MultiDropdown label="Produto" options={products} selected={selProducts} onChange={setSelProducts} width="w-[200px]" />
-          <div className="ml-auto flex items-end gap-2">
+          {/* no celular esta fileira de botões quebra em linhas em vez de vazar pra fora */}
+          <div className="flex flex-wrap items-end gap-2 lg:ml-auto lg:flex-nowrap">
             <button
               onClick={() => { const v = !trackerPadrao; setTrackerPadrao(v); localStorage.setItem('tracker_padrao', v ? '1' : '0') }}
               title={
@@ -656,8 +673,11 @@ export default function DashboardPage() {
         <p className="text-[11px] text-muted2">Valores em <b className="text-muted">R$</b> · gasto USD→BRL (R$ {getFx().toFixed(2)}). Faturamento/vendas/aprovação reais do gateway; taxas/impostos/custos por produto na aba <Link to="/taxas" className="font-semibold text-brand-2 underline underline-offset-2">Taxas</Link>.</p>
       </div>
 
-      <ResponsiveGrid className="-m-2" layouts={{ lg: visibleLayout, md: visibleLayout }} breakpoints={{ lg: 996, md: 768, sm: 480, xs: 0 }} cols={{ lg: 12, md: 12, sm: 1, xs: 1 }} rowHeight={58} margin={[14, 14]} isDraggable={editing} isResizable={editing} draggableHandle=".wdg-head" compactType="vertical" onLayoutChange={(cur: Layout[]) => {
+      <ResponsiveGrid className="-m-2" layouts={{ lg: visibleLayout, md: visibleLayout, sm: mobileLayout, xs: mobileLayout }} breakpoints={{ lg: 996, md: 768, sm: 480, xs: 0 }} cols={{ lg: 12, md: 12, sm: 1, xs: 1 }} rowHeight={58} margin={[14, 14]} isDraggable={editing && !noCelular} isResizable={editing && !noCelular} draggableHandle=".wdg-head" compactType="vertical" onBreakpointChange={(novo: string) => setBp(novo)} onLayoutChange={(cur: Layout[]) => {
           if (!editing) return
+          // no celular o layout é 1 coluna e NÃO representa o arranjo do desktop —
+          // salvar isso apagaria a organização que você montou no computador
+          if (noCelular) return
           // O grid só devolve os widgets VISÍVEIS. Antes isso substituía o layout
           // inteiro e APAGAVA o registro dos ocultos/removidos — aí o withNewWidgets
           // achava que eram widgets novos e re-adicionava no reload (a remoção "voltava").
@@ -668,9 +688,12 @@ export default function DashboardPage() {
             return [...byId.values()]
           })
         }}>
+        {/* sem `data-grid` aqui: ele sobrescreve o layout do breakpoint atual, e era
+            justamente ele que mantinha as posições de 12 colunas no celular. As
+            posições vêm de `layouts`, que agora tem versão de celular. */}
         {visibleLayout.map((item) => {
           const def = WIDGET_MAP[item.i]
-          return <div key={item.i} data-grid={item}><Frame title={def.title} editing={editing} onRemove={() => removeWidget(item.i)}>{def.render(d)}</Frame></div>
+          return <div key={item.i}><Frame title={def.title} editing={editing} onRemove={() => removeWidget(item.i)}>{def.render(d)}</Frame></div>
         })}
       </ResponsiveGrid>
 

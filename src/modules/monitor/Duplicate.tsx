@@ -531,29 +531,31 @@ export function DupProofModal({ dups, cur, onClose }: { dups: ActionEntry[]; cur
               {/* original: antes × depois */}
               <div className="rounded-xl2 border border-border overflow-hidden">
                 <div className="border-b border-border bg-surface2 px-3 py-2 text-[12px] font-bold">Original — média/dia antes × depois da cópia</div>
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="border-b border-border/60 text-[10px] uppercase tracking-wide text-muted2">
-                      <th className="py-1.5 pl-3 text-left">Métrica</th>
-                      <th className="py-1.5 text-right">Antes ({split.before.n}d)</th>
-                      <th className="py-1.5 pr-3 text-right">Depois ({split.after.n}d)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      { l: 'Faturamento/dia', b: `${sym}${split.before.revenue.toFixed(0)}`, a: `${sym}${split.after.revenue.toFixed(0)}`, good: split.after.revenue >= split.before.revenue },
-                      { l: 'Gasto/dia', b: `${sym}${split.before.spend.toFixed(0)}`, a: `${sym}${split.after.spend.toFixed(0)}`, good: null },
-                      { l: 'Vendas/dia', b: split.before.sales.toFixed(1), a: split.after.sales.toFixed(1), good: split.after.sales >= split.before.sales },
-                      { l: 'ROAS', b: split.before.roas?.toFixed(2) ?? '—', a: split.after.roas?.toFixed(2) ?? '—', good: split.before.roas != null && split.after.roas != null ? split.after.roas >= split.before.roas : null },
-                    ].map((r) => (
-                      <tr key={r.l} className="border-b border-border/40 last:border-0">
-                        <td className="py-1.5 pl-3 text-muted">{r.l}</td>
-                        <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{r.b}</td>
-                        <td className={`py-1.5 pr-3 text-right font-mono tabular-nums font-semibold ${r.good == null ? 'text-ink' : r.good ? 'text-ok' : 'text-danger'}`}>{r.a}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="border-b border-border/60 text-[10px] uppercase tracking-wide text-muted2">
+                        <th className="py-1.5 pl-3 text-left">Métrica</th>
+                        <th className="py-1.5 text-right">Antes ({split.before.n}d)</th>
+                        <th className="py-1.5 pr-3 text-right">Depois ({split.after.n}d)</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {[
+                        { l: 'Faturamento/dia', b: `${sym}${split.before.revenue.toFixed(0)}`, a: `${sym}${split.after.revenue.toFixed(0)}`, good: split.after.revenue >= split.before.revenue },
+                        { l: 'Gasto/dia', b: `${sym}${split.before.spend.toFixed(0)}`, a: `${sym}${split.after.spend.toFixed(0)}`, good: null },
+                        { l: 'Vendas/dia', b: split.before.sales.toFixed(1), a: split.after.sales.toFixed(1), good: split.after.sales >= split.before.sales },
+                        { l: 'ROAS', b: split.before.roas?.toFixed(2) ?? '—', a: split.after.roas?.toFixed(2) ?? '—', good: split.before.roas != null && split.after.roas != null ? split.after.roas >= split.before.roas : null },
+                      ].map((r) => (
+                        <tr key={r.l} className="border-b border-border/40 last:border-0">
+                          <td className="py-1.5 pl-3 text-muted">{r.l}</td>
+                          <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{r.b}</td>
+                          <td className={`py-1.5 pr-3 text-right font-mono tabular-nums font-semibold ${r.good == null ? 'text-ink' : r.good ? 'text-ok' : 'text-danger'}`}>{r.a}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* cópia: total acumulado */}
@@ -566,32 +568,34 @@ export function DupProofModal({ dups, cur, onClose }: { dups: ActionEntry[]; cur
 
               {/* dia a dia lado a lado */}
               <div className="rounded-xl2 border border-border overflow-hidden">
-                <table className="w-full text-[12px]">
-                  <thead>
-                    <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted2">
-                      <th className="py-1.5 pl-3 text-left">Dia</th>
-                      <th className="py-1.5 text-right">Orig. gasto</th>
-                      <th className="py-1.5 text-right">Orig. ROAS</th>
-                      <th className="py-1.5 text-right text-warn">Cópia gasto</th>
-                      <th className="py-1.5 pr-3 text-right text-warn">Cópia ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allDates.map((d) => {
-                      const o = orig?.[d], c = copy?.[d]
-                      const isDup = d === dupDate
-                      return (
-                        <tr key={d} className={`border-b border-border/40 last:border-0 ${isDup ? 'bg-warn/[0.05]' : ''}`}>
-                          <td className="py-1.5 pl-3 text-muted">{dmFmt(d)}{isDup && <span className="ml-1 rounded bg-warn/20 px-1 text-[9px] font-bold text-warn">dup</span>}</td>
-                          <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{o ? sym + o.spend.toFixed(0) : '—'}</td>
-                          <td className="py-1.5 text-right font-mono tabular-nums">{o && roasOf(o) != null ? roasOf(o)!.toFixed(2) : '—'}</td>
-                          <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{c ? sym + c.spend.toFixed(0) : '—'}</td>
-                          <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{c && roasOf(c) != null ? roasOf(c)!.toFixed(2) : '—'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12px]">
+                    <thead>
+                      <tr className="border-b border-border text-[10px] uppercase tracking-wide text-muted2">
+                        <th className="py-1.5 pl-3 text-left">Dia</th>
+                        <th className="py-1.5 text-right">Orig. gasto</th>
+                        <th className="py-1.5 text-right">Orig. ROAS</th>
+                        <th className="py-1.5 text-right text-warn">Cópia gasto</th>
+                        <th className="py-1.5 pr-3 text-right text-warn">Cópia ROAS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allDates.map((d) => {
+                        const o = orig?.[d], c = copy?.[d]
+                        const isDup = d === dupDate
+                        return (
+                          <tr key={d} className={`border-b border-border/40 last:border-0 ${isDup ? 'bg-warn/[0.05]' : ''}`}>
+                            <td className="py-1.5 pl-3 text-muted">{dmFmt(d)}{isDup && <span className="ml-1 rounded bg-warn/20 px-1 text-[9px] font-bold text-warn">dup</span>}</td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{o ? sym + o.spend.toFixed(0) : '—'}</td>
+                            <td className="py-1.5 text-right font-mono tabular-nums">{o && roasOf(o) != null ? roasOf(o)!.toFixed(2) : '—'}</td>
+                            <td className="py-1.5 text-right font-mono tabular-nums text-muted2">{c ? sym + c.spend.toFixed(0) : '—'}</td>
+                            <td className="py-1.5 pr-3 text-right font-mono tabular-nums">{c && roasOf(c) != null ? roasOf(c)!.toFixed(2) : '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               <p className="text-[10px] text-muted2">Gasto/vendas/fat vêm do Meta por dia. "Antes" = dias da original antes da cópia; "Depois" = a partir do dia da duplicação. A original caiu? A cópia roubou o resultado.</p>
             </>

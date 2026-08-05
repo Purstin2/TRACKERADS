@@ -25,6 +25,73 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* ── celular ───────────────────────────────────────────────────────────────
+     A página inteira NUNCA desliza pro lado. Quem rola é a tabela, dentro do
+     próprio quadro. Sem isso, uma tabela larga arrasta o layout todo e o menu
+     e os botões saem da tela — o jeito mais rápido de tornar o app inutilizável
+     no celular. */
+  @media (max-width: 1023px) {
+    html,
+    body {
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+
+    /* rolagem horizontal com inércia, como o resto do sistema operacional */
+    .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* tabela não encolhe a ponto de virar sopa de letrinha: prefere rolar */
+    table {
+      min-width: max-content;
+    }
+
+    /* alvo de toque: no dedo, botão de 24px é loteria */
+    .btn-sm {
+      @apply px-3 py-2 text-[12px];
+      min-height: 34px;
+    }
+    .btn {
+      min-height: 38px;
+    }
+
+    /* respiro menor nos cards — a tela é estreita, cada pixel conta */
+    .card-body {
+      @apply p-3.5;
+    }
+    .card-header {
+      @apply px-3.5 py-3;
+    }
+
+    /* ── Dashboard: grid arrastável vira uma pilha ─────────────────────────
+       O react-grid-layout posiciona tudo por `transform` e largura calculada
+       em px, a partir de uma medição do container (ResizeObserver). Quando
+       essa medição atrasa — ou não chega — ele usa 1280px de largura padrão e
+       um widget de 6/12 vira 640px numa tela de 390: metade do dashboard sai
+       da tela e não tem como alcançar.
+       No celular ninguém arrasta widget de qualquer forma, então aqui a
+       posição calculada é ignorada: cada widget ocupa a largura toda e empilha
+       na ordem, com altura pelo conteúdo. */
+    .react-grid-layout {
+      height: auto !important;
+    }
+    .react-grid-item {
+      position: relative !important;
+      top: auto !important;
+      left: auto !important;
+      transform: none !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 190px;
+      margin-bottom: 14px;
+    }
+    /* alças de arrastar/redimensionar não fazem sentido no dedo */
+    .react-resizable-handle {
+      display: none !important;
+    }
+  }
+
   /* leve realce no topo (profundidade discreta) — sem brilho colorido de template */
   body::before {
     content: '';

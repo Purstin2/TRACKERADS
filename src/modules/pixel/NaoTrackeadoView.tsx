@@ -167,111 +167,113 @@ export default function NaoTrackeadoView() {
         </div>
       ) : (
         <div className="card overflow-hidden">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
-                <th className="w-6 py-2.5 pl-3" />
-                <th className="py-2.5 text-left">Quando</th>
-                <th className="py-2.5 text-left">Cliente</th>
-                <th className="py-2.5 text-left">Motivo</th>
-                <th className="py-2.5 text-right">Valor</th>
-                <th className="py-2.5 text-left">UTM source / campanha</th>
-                <th className="py-2.5 pr-3 text-right">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((o) => {
-                const r = rows[o.id]
-                if (!r) return null
-                const m = ISSUE_META[o.issue]
-                return (
-                  <RowGroup key={o.id}>
-                    <tr className="border-b border-border/50 hover:bg-surface2/40">
-                      <td className="py-2 pl-3">
-                        <button onClick={() => setRow(o.id, { open: !r.open })} className="text-muted2">
-                          {r.open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        </button>
-                      </td>
-                      <td className="py-2 font-mono text-[11px] text-muted2">
-                        {o.created_at ? new Date(o.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </td>
-                      <td className="py-2">
-                        <div className="font-semibold">{o.customer_name || '—'}</div>
-                        <div className="text-[10.5px] text-muted2">{o.customer_email || o.customer_phone || ''}</div>
-                      </td>
-                      <td className="py-2">
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${m.cls}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} /> {m.label}
-                        </span>
-                      </td>
-                      <td className="py-2 text-right font-mono font-semibold">{brl(o.value)}</td>
-                      <td className="max-w-[200px] truncate py-2 text-[11px] text-muted2" title={`${o.utm_source || ''} / ${o.utm_campaign || ''}`}>
-                        {o.utm_source || '—'}{o.utm_campaign ? ` · ${o.utm_campaign}` : ''}
-                      </td>
-                      <td className="py-2 pr-3 text-right">
-                        {r.done ? (
-                          <CheckCircle2 className="ml-auto h-4 w-4 text-ok" />
-                        ) : (
-                          <button className="btn btn-ghost btn-sm" onClick={() => setRow(o.id, { open: true })}>
-                            {o.issue === 'erro_envio' ? 'Reenviar' : 'Reatribuir'}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
+                  <th className="w-6 py-2.5 pl-3" />
+                  <th className="py-2.5 text-left">Quando</th>
+                  <th className="py-2.5 text-left">Cliente</th>
+                  <th className="py-2.5 text-left">Motivo</th>
+                  <th className="py-2.5 text-right">Valor</th>
+                  <th className="py-2.5 text-left">UTM source / campanha</th>
+                  <th className="py-2.5 pr-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((o) => {
+                  const r = rows[o.id]
+                  if (!r) return null
+                  const m = ISSUE_META[o.issue]
+                  return (
+                    <RowGroup key={o.id}>
+                      <tr className="border-b border-border/50 hover:bg-surface2/40">
+                        <td className="py-2 pl-3">
+                          <button onClick={() => setRow(o.id, { open: !r.open })} className="text-muted2">
+                            {r.open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                           </button>
-                        )}
-                      </td>
-                    </tr>
-                    {r.open && !r.done && (
-                      <tr className="border-b border-border/50 bg-[#0a0c19]">
-                        <td colSpan={7} className="px-4 py-3">
-                          <div className="mb-2 text-[11px] text-muted2">{m.desc}</div>
-                          {/* UTMs capturadas — referência p/ rastrear conjunto|id e anúncio|id no gerenciador */}
-                          <div className="mb-2 grid gap-1 rounded-[7px] border border-border bg-surface2/40 px-3 py-2 text-[11px] sm:grid-cols-2">
-                            {([
-                              ['campanha', o.utm_campaign],
-                              ['source', o.utm_source],
-                              ['conjunto (medium)', o.utm_medium],
-                              ['anúncio (content)', o.utm_content],
-                            ] as const).map(([lbl, val]) => (
-                              <div key={lbl} className="flex items-baseline gap-1.5">
-                                <span className="shrink-0 text-[9.5px] uppercase tracking-wide text-muted2">{lbl}:</span>
-                                <span className="truncate font-mono text-ink" title={val || ''}>{val || '—'}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {o.issue !== 'erro_envio' && (
-                            <div className="field mb-2">
-                              <label className="!text-[10.5px] !text-brand-2">fbclid do anúncio real (cole da UTMIFY / link do anúncio) — é o que reatribui a campanha</label>
-                              <input
-                                value={r.fbclid}
-                                onChange={(e) => setRow(o.id, { fbclid: e.target.value })}
-                                className="!text-[11px] font-mono"
-                                placeholder="IwAR... ou PAZ...adid..."
-                              />
-                            </div>
-                          )}
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <div className="field">
-                              <label className="!text-[10px]">utm_source</label>
-                              <input value={r.utmSource} onChange={(e) => setRow(o.id, { utmSource: e.target.value })} className="!text-[11px]" placeholder="FB" />
-                            </div>
-                            <div className="field">
-                              <label className="!text-[10px]">utm_campaign (registro)</label>
-                              <input value={r.utmCampaign} onChange={(e) => setRow(o.id, { utmCampaign: e.target.value })} className="!text-[11px]" />
-                            </div>
-                          </div>
-                          {r.err && <div className="mt-2 text-[11px] text-danger">✗ {r.err}</div>}
-                          <button className="btn btn-primary btn-sm mt-2" onClick={() => fire(o)} disabled={r.loading}>
-                            {r.loading ? 'Enviando…' : <><Send className="h-3 w-3" /> Disparar Purchase</>}
-                          </button>
-                          {o.issue !== 'erro_envio' && !r.fbclid.trim() && (
-                            <span className="ml-2 text-[10.5px] text-warn">⚠ sem fbclid, o Meta continua sem atribuir a campanha</span>
+                        </td>
+                        <td className="py-2 font-mono text-[11px] text-muted2">
+                          {o.created_at ? new Date(o.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td className="py-2">
+                          <div className="font-semibold">{o.customer_name || '—'}</div>
+                          <div className="text-[10.5px] text-muted2">{o.customer_email || o.customer_phone || ''}</div>
+                        </td>
+                        <td className="py-2">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${m.cls}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} /> {m.label}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right font-mono font-semibold">{brl(o.value)}</td>
+                        <td className="max-w-[200px] truncate py-2 text-[11px] text-muted2" title={`${o.utm_source || ''} / ${o.utm_campaign || ''}`}>
+                          {o.utm_source || '—'}{o.utm_campaign ? ` · ${o.utm_campaign}` : ''}
+                        </td>
+                        <td className="py-2 pr-3 text-right">
+                          {r.done ? (
+                            <CheckCircle2 className="ml-auto h-4 w-4 text-ok" />
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" onClick={() => setRow(o.id, { open: true })}>
+                              {o.issue === 'erro_envio' ? 'Reenviar' : 'Reatribuir'}
+                            </button>
                           )}
                         </td>
                       </tr>
-                    )}
-                  </RowGroup>
-                )
-              })}
-            </tbody>
-          </table>
+                      {r.open && !r.done && (
+                        <tr className="border-b border-border/50 bg-[#0a0c19]">
+                          <td colSpan={7} className="px-4 py-3">
+                            <div className="mb-2 text-[11px] text-muted2">{m.desc}</div>
+                            {/* UTMs capturadas — referência p/ rastrear conjunto|id e anúncio|id no gerenciador */}
+                            <div className="mb-2 grid gap-1 rounded-[7px] border border-border bg-surface2/40 px-3 py-2 text-[11px] sm:grid-cols-2">
+                              {([
+                                ['campanha', o.utm_campaign],
+                                ['source', o.utm_source],
+                                ['conjunto (medium)', o.utm_medium],
+                                ['anúncio (content)', o.utm_content],
+                              ] as const).map(([lbl, val]) => (
+                                <div key={lbl} className="flex items-baseline gap-1.5">
+                                  <span className="shrink-0 text-[9.5px] uppercase tracking-wide text-muted2">{lbl}:</span>
+                                  <span className="truncate font-mono text-ink" title={val || ''}>{val || '—'}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {o.issue !== 'erro_envio' && (
+                              <div className="field mb-2">
+                                <label className="!text-[10.5px] !text-brand-2">fbclid do anúncio real (cole da UTMIFY / link do anúncio) — é o que reatribui a campanha</label>
+                                <input
+                                  value={r.fbclid}
+                                  onChange={(e) => setRow(o.id, { fbclid: e.target.value })}
+                                  className="!text-[11px] font-mono"
+                                  placeholder="IwAR... ou PAZ...adid..."
+                                />
+                              </div>
+                            )}
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="field">
+                                <label className="!text-[10px]">utm_source</label>
+                                <input value={r.utmSource} onChange={(e) => setRow(o.id, { utmSource: e.target.value })} className="!text-[11px]" placeholder="FB" />
+                              </div>
+                              <div className="field">
+                                <label className="!text-[10px]">utm_campaign (registro)</label>
+                                <input value={r.utmCampaign} onChange={(e) => setRow(o.id, { utmCampaign: e.target.value })} className="!text-[11px]" />
+                              </div>
+                            </div>
+                            {r.err && <div className="mt-2 text-[11px] text-danger">✗ {r.err}</div>}
+                            <button className="btn btn-primary btn-sm mt-2" onClick={() => fire(o)} disabled={r.loading}>
+                              {r.loading ? 'Enviando…' : <><Send className="h-3 w-3" /> Disparar Purchase</>}
+                            </button>
+                            {o.issue !== 'erro_envio' && !r.fbclid.trim() && (
+                              <span className="ml-2 text-[10.5px] text-warn">⚠ sem fbclid, o Meta continua sem atribuir a campanha</span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </RowGroup>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

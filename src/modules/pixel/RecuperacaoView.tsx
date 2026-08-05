@@ -314,30 +314,32 @@ export default function RecuperacaoView() {
             <div className="border-b border-border px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-muted2">
               Conversão por mensagem da cadência
             </div>
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
-                  <th className="py-2 pl-3 text-left">Mensagem</th>
-                  <th className="py-2 text-center">Enviadas</th>
-                  <th className="py-2 text-center">Convertidas</th>
-                  <th className="py-2 pr-3 text-right">Taxa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[1, 2, 3].map((d) => {
-                  const row = stats.byDay[d] || { sent: 0, converted: 0 }
-                  const rate = row.sent ? (row.converted / row.sent) * 100 : 0
-                  return (
-                    <tr key={d} className="border-b border-border/50">
-                      <td className="py-2 pl-3 font-semibold">{STEP_LABEL[d]}</td>
-                      <td className="py-2 text-center">{row.sent}</td>
-                      <td className="py-2 text-center text-ok">{row.converted}</td>
-                      <td className="py-2 pr-3 text-right font-semibold">{rate.toFixed(1)}%</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
+                    <th className="py-2 pl-3 text-left">Mensagem</th>
+                    <th className="py-2 text-center">Enviadas</th>
+                    <th className="py-2 text-center">Convertidas</th>
+                    <th className="py-2 pr-3 text-right">Taxa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3].map((d) => {
+                    const row = stats.byDay[d] || { sent: 0, converted: 0 }
+                    const rate = row.sent ? (row.converted / row.sent) * 100 : 0
+                    return (
+                      <tr key={d} className="border-b border-border/50">
+                        <td className="py-2 pl-3 font-semibold">{STEP_LABEL[d]}</td>
+                        <td className="py-2 text-center">{row.sent}</td>
+                        <td className="py-2 text-center text-ok">{row.converted}</td>
+                        <td className="py-2 pr-3 text-right font-semibold">{rate.toFixed(1)}%</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* lista das vendas recuperadas */}
@@ -348,34 +350,36 @@ export default function RecuperacaoView() {
             {stats.conversions.length === 0 ? (
               <div className="py-10 text-center text-[12px] text-muted2">Nenhuma conversão registrada ainda.</div>
             ) : (
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
-                    <th className="py-2 pl-3 text-left">Quando</th>
-                    <th className="py-2 text-left">Cliente</th>
-                    <th className="py-2 text-left">Produto</th>
-                    <th className="py-2 text-center">Convertido no</th>
-                    <th className="py-2 pr-3 text-right">Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.conversions.map(({ order: o, day }) => (
-                    <tr key={o.id} className="border-b border-border/50 hover:bg-surface2/40">
-                      <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
-                        {o.updated_at ? new Date(o.updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </td>
-                      <td className="py-2 font-semibold">{o.customer_name || '—'}</td>
-                      <td className="max-w-[200px] truncate py-2 text-muted2" title={o.product || ''}>{o.product || '—'}</td>
-                      <td className="py-2 text-center">
-                        <span className="rounded-full border border-ok/30 bg-ok/10 px-2 py-0.5 text-[10px] font-semibold text-ok">
-                          {day ? STEP_LABEL[day] : '—'}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-right font-semibold">{brl(o.value)}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
+                      <th className="py-2 pl-3 text-left">Quando</th>
+                      <th className="py-2 text-left">Cliente</th>
+                      <th className="py-2 text-left">Produto</th>
+                      <th className="py-2 text-center">Convertido no</th>
+                      <th className="py-2 pr-3 text-right">Valor</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {stats.conversions.map(({ order: o, day }) => (
+                      <tr key={o.id} className="border-b border-border/50 hover:bg-surface2/40">
+                        <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
+                          {o.updated_at ? new Date(o.updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td className="py-2 font-semibold">{o.customer_name || '—'}</td>
+                        <td className="max-w-[200px] truncate py-2 text-muted2" title={o.product || ''}>{o.product || '—'}</td>
+                        <td className="py-2 text-center">
+                          <span className="rounded-full border border-ok/30 bg-ok/10 px-2 py-0.5 text-[10px] font-semibold text-ok">
+                            {day ? STEP_LABEL[day] : '—'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 text-right font-semibold">{brl(o.value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
@@ -386,65 +390,67 @@ export default function RecuperacaoView() {
           {waMessages.length === 0 ? (
             <div className="py-10 text-center text-[12px] text-muted2">Nenhuma mensagem WA enviada ainda.</div>
           ) : (
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
-                  <th className="py-2.5 pl-3 text-left">Quando</th>
-                  <th className="py-2.5 text-left">Cliente</th>
-                  <th className="py-2.5 text-left">Produto</th>
-                  <th className="py-2.5 text-center">Passo</th>
-                  <th className="py-2.5 text-left">Telefone</th>
-                  <th className="py-2.5 text-center">Status</th>
-                  <th className="py-2.5 pr-3 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {waMessages.map((m) => {
-                  const isOk = m.ok === true
-                  const day = waDay(m.body)
-                  const wamid = m.response?.messages?.[0]?.id || null
-                  const errMsg = m.response?.error?.message || (isOk ? null : 'falhou')
-                  return (
-                    <tr key={m.id} className="border-b border-border/50 hover:bg-surface2/40">
-                      <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
-                        {m.created_at ? new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </td>
-                      <td className="py-2 font-semibold">{m.customer_name || '—'}</td>
-                      <td className="max-w-[160px] truncate py-2 text-muted2" title={m.product || ''}>{m.product || '—'}</td>
-                      <td className="py-2 text-center">
-                        <span className="rounded-full border border-border2 bg-surface2 px-2 py-0.5 text-[10px] font-semibold text-muted">
-                          {day ? STEP_LABEL[day] : '—'}
-                        </span>
-                      </td>
-                      <td className="py-2 font-mono text-[11px] text-muted2">{m.phone || '—'}</td>
-                      <td className="py-2 text-center">
-                        {isOk ? (
-                          <span title={wamid || ''}>
-                            <CheckCircle2 className="mx-auto h-4 w-4 text-ok" />
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
+                    <th className="py-2.5 pl-3 text-left">Quando</th>
+                    <th className="py-2.5 text-left">Cliente</th>
+                    <th className="py-2.5 text-left">Produto</th>
+                    <th className="py-2.5 text-center">Passo</th>
+                    <th className="py-2.5 text-left">Telefone</th>
+                    <th className="py-2.5 text-center">Status</th>
+                    <th className="py-2.5 pr-3 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {waMessages.map((m) => {
+                    const isOk = m.ok === true
+                    const day = waDay(m.body)
+                    const wamid = m.response?.messages?.[0]?.id || null
+                    const errMsg = m.response?.error?.message || (isOk ? null : 'falhou')
+                    return (
+                      <tr key={m.id} className="border-b border-border/50 hover:bg-surface2/40">
+                        <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
+                          {m.created_at ? new Date(m.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td className="py-2 font-semibold">{m.customer_name || '—'}</td>
+                        <td className="max-w-[160px] truncate py-2 text-muted2" title={m.product || ''}>{m.product || '—'}</td>
+                        <td className="py-2 text-center">
+                          <span className="rounded-full border border-border2 bg-surface2 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                            {day ? STEP_LABEL[day] : '—'}
                           </span>
-                        ) : (
-                          <span title={errMsg || 'falhou'}>
-                            <XCircle className="mx-auto h-4 w-4 text-danger" />
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-3 text-right">
-                        {(!isOk || true) && m.order_id && (
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => resendMessage(m.order_id!)}
-                            disabled={firingId === m.order_id}
-                            title={isOk ? 'Avançar próximo passo' : 'Reenviar este passo'}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="py-2 font-mono text-[11px] text-muted2">{m.phone || '—'}</td>
+                        <td className="py-2 text-center">
+                          {isOk ? (
+                            <span title={wamid || ''}>
+                              <CheckCircle2 className="mx-auto h-4 w-4 text-ok" />
+                            </span>
+                          ) : (
+                            <span title={errMsg || 'falhou'}>
+                              <XCircle className="mx-auto h-4 w-4 text-danger" />
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3 text-right">
+                          {(!isOk || true) && m.order_id && (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => resendMessage(m.order_id!)}
+                              disabled={firingId === m.order_id}
+                              title={isOk ? 'Avançar próximo passo' : 'Reenviar este passo'}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
@@ -528,51 +534,53 @@ export default function RecuperacaoView() {
         {pending.length === 0 ? (
           <div className="py-10 text-center text-[12px] text-muted2">Nenhum carrinho pendente de recuperação. 🎉</div>
         ) : (
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
-                <th className="py-2 pl-3 text-left">Quando</th>
-                <th className="py-2 text-left">Cliente</th>
-                <th className="py-2 text-left">Produto</th>
-                <th className="py-2 text-right">Valor</th>
-                <th className="py-2 text-center">WA</th>
-                <th className="py-2 pr-3 text-right">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.map((o) => (
-                <tr key={o.id} className="border-b border-border/50 hover:bg-surface2/40">
-                  <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
-                    {o.created_at ? new Date(o.created_at).toLocaleString('pt-BR') : '—'}
-                  </td>
-                  <td className="py-2">
-                    <div>{o.customer_name || '—'}</div>
-                    <div className="font-mono text-[10.5px] text-muted2">{o.customer_phone || 'sem telefone'}</div>
-                  </td>
-                  <td className="py-2">{o.product || '—'}</td>
-                  <td className="py-2 text-right">{brl(o.value)}</td>
-                  <td className="py-2 text-center">
-                    {o.wa_status === 'failed' ? (
-                      <span className="text-danger">falhou</span>
-                    ) : o.wa_sent_at ? (
-                      <span className="text-ok">enviado</span>
-                    ) : (
-                      <span className="text-muted2">—</span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-3 text-right">
-                    {o.customer_phone ? (
-                      <button className="btn btn-ghost btn-sm" onClick={() => fire([o.id])} disabled={firing} title="Disparar pra este">
-                        <MessageCircle className="h-3.5 w-3.5 text-ok" />
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-muted2">—</span>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-border text-[10.5px] uppercase tracking-wide text-muted2">
+                  <th className="py-2 pl-3 text-left">Quando</th>
+                  <th className="py-2 text-left">Cliente</th>
+                  <th className="py-2 text-left">Produto</th>
+                  <th className="py-2 text-right">Valor</th>
+                  <th className="py-2 text-center">WA</th>
+                  <th className="py-2 pr-3 text-right">Ação</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pending.map((o) => (
+                  <tr key={o.id} className="border-b border-border/50 hover:bg-surface2/40">
+                    <td className="py-2 pl-3 font-mono text-[11px] text-muted2">
+                      {o.created_at ? new Date(o.created_at).toLocaleString('pt-BR') : '—'}
+                    </td>
+                    <td className="py-2">
+                      <div>{o.customer_name || '—'}</div>
+                      <div className="font-mono text-[10.5px] text-muted2">{o.customer_phone || 'sem telefone'}</div>
+                    </td>
+                    <td className="py-2">{o.product || '—'}</td>
+                    <td className="py-2 text-right">{brl(o.value)}</td>
+                    <td className="py-2 text-center">
+                      {o.wa_status === 'failed' ? (
+                        <span className="text-danger">falhou</span>
+                      ) : o.wa_sent_at ? (
+                        <span className="text-ok">enviado</span>
+                      ) : (
+                        <span className="text-muted2">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {o.customer_phone ? (
+                        <button className="btn btn-ghost btn-sm" onClick={() => fire([o.id])} disabled={firing} title="Disparar pra este">
+                          <MessageCircle className="h-3.5 w-3.5 text-ok" />
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-muted2">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
       </>}

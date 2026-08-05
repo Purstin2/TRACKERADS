@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone, LayoutGrid, ChevronRight } from 'lucide-react'
+import { NAV } from '@/lib/nav'
 import MobileCamps from './MobileCamps'
 import PeriodBar from './PeriodBar'
 import { resolvePeriod, type PeriodValue } from './period'
@@ -84,8 +86,74 @@ function beep() {
 
 interface AdStats { spend: number; impressions: number; clicks: number }
 
+/* ── Aba "Mais": ponte pro app completo ──────────────────────────────────────
+ * As 3 abas nativas cobrem o dia a dia (vender, escalar, conferir). O resto do
+ * sistema — Públicos, Pixel, Recuperação/WhatsApp, Gastos, Taxas, Uploader —
+ * já existe e já é responsivo no shell principal; o que faltava era CHEGAR nele
+ * pelo celular. Cada item abre a tela completa, com menu lateral e tudo.
+ *
+ * Isso só funciona porque o scope do manifest virou "/": com "/app" o celular
+ * jogava esses links pro navegador e você saía do app instalado. */
+function MaisTab() {
+  return (
+    <div className="mt-1">
+      <div className="rounded-xl2 border border-brand/25 bg-brand/[0.06] px-4 py-3 text-[12.5px] leading-snug text-brand-2">
+        Tudo que tem no computador está aqui. Abre a tela cheia, com o menu lateral —
+        as tabelas rolam pro lado quando não cabem.
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2">
+        {NAV.map((item) => {
+          const Icon = item.icon
+          return (
+            <div key={item.id} className="overflow-hidden rounded-xl2 border border-border bg-surface">
+              <Link
+                to={item.to}
+                className="flex items-center gap-3 px-4 py-3.5 active:bg-surface2"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-surface2">
+                  <Icon className="h-[18px] w-[18px] text-brand-2" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold text-ink">{item.label}</span>
+                  {item.children && (
+                    <span className="block truncate text-[11.5px] text-muted2">
+                      {item.children.map((c) => c.label).join(' · ')}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted2" />
+              </Link>
+
+              {/* subtelas do Monitor viram atalho direto — no celular, chegar em
+                  "Públicos" ou "Criativos" sem passar por 2 menus importa */}
+              {item.children && item.children.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 border-t border-border/60 px-3 py-2.5">
+                  {item.children.map((c) => (
+                    <Link
+                      key={c.to}
+                      to={c.to}
+                      className="rounded-full border border-border bg-surface2 px-3 py-1.5 text-[11.5px] font-semibold text-muted active:scale-[0.97]"
+                    >
+                      {c.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-muted2">
+        Pra voltar pra cá, é só tocar no ⚡ no topo da tela cheia.
+      </p>
+    </div>
+  )
+}
+
 export default function MobileApp() {
-  const [tab, setTab] = useState<'vendas' | 'dash' | 'camps'>('vendas')
+  const [tab, setTab] = useState<'vendas' | 'dash' | 'camps' | 'mais'>('vendas')
   const [periodo, setPeriodo] = useState<PeriodValue>({ id: 'today' })
   const [orders, setOrders] = useState<Order[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
@@ -290,7 +358,7 @@ export default function MobileApp() {
         </span>
         <div className="flex-1">
           <div className="text-[15px] font-extrabold leading-none">
-            {tab === 'vendas' ? 'Vendas' : tab === 'dash' ? 'Dashboard' : 'Campanhas'}
+            {tab === 'vendas' ? 'Vendas' : tab === 'dash' ? 'Dashboard' : tab === 'mais' ? 'Mais' : 'Campanhas'}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted2">
             <span className="relative flex h-2 w-2">
@@ -306,10 +374,12 @@ export default function MobileApp() {
       </header>
 
       <main className="mx-auto max-w-[560px] px-4 pb-28 pt-4">
-        {/* período — vale pras 3 abas de uma vez */}
-        <PeriodBar value={periodo} onChange={setPeriodo} />
+        {/* o período vale pras abas de dados; em "Mais" não faz sentido */}
+        {tab !== 'mais' && <PeriodBar value={periodo} onChange={setPeriodo} />}
 
-        {tab === 'vendas' ? (
+        {tab === 'mais' ? (
+          <MaisTab />
+        ) : tab === 'vendas' ? (
         <>
         {/* total do dia */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
@@ -494,7 +564,7 @@ export default function MobileApp() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-[560px]">
-          {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard]] as const).map(([id, label, Icon]) => (
+          {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard], ['mais', 'Mais', LayoutGrid]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
