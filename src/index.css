@@ -82,9 +82,12 @@
       left: auto !important;
       transform: none !important;
       width: 100% !important;
-      height: auto !important;
-      min-height: 190px;
       margin-bottom: 14px;
+      /* A ALTURA fica com o grid (`height` inline, vinda de h × rowHeight).
+         Forçar `height:auto` aqui foi um erro: gráfico dimensionado em % do pai
+         colapsava pra zero e sobrava um retângulo preto, e widget que pedia
+         274px era espremido num min-height de 190 e tinha o conteúdo cortado.
+         Só a POSIÇÃO e a LARGURA precisam ser neutralizadas no celular. */
     }
     /* alças de arrastar/redimensionar não fazem sentido no dedo */
     .react-resizable-handle {
