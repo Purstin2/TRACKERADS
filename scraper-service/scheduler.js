@@ -93,8 +93,10 @@ async function processOffer(offer, context, index, total) {
 /**
  * Executa o scraping para todas as ofertas.
  * Reusa UM navegador para todo o job e processa em paralelo controlado.
+ * @param {string|null} [userId] - se vier de um clique manual no site, restringe
+ *   às ofertas desse usuário. undefined/null = todas (uso do cron interno).
  */
-export async function runScrapingJob() {
+export async function runScrapingJob(userId = null) {
     console.log('\n====================================');
     console.log('🚀 INICIANDO JOB DE SCRAPING');
     console.log(`⏰ ${new Date().toLocaleString('pt-BR')}`);
@@ -103,7 +105,7 @@ export async function runScrapingJob() {
     let browser = null;
 
     try {
-        const offers = await getOffersWithFacebookLinks();
+        const offers = await getOffersWithFacebookLinks(userId);
 
         if (offers.length === 0) {
             console.log('⚠️  Nenhuma oferta com link do Facebook encontrada.');

@@ -10,6 +10,7 @@ import { discoverOffersByKeyword } from './discoveryService.js';
 import { getOffersWithFacebookLinks, getActiveDiscoveryKeywords, saveDiscoveredOffers, updateKeywordLastRun, updateOfferName } from './supabaseService.js';
 import { getLastScrapingInfo } from './lastScraping.js';
 import { getJobState, requestStop, isRunning, loadSettings, loadSettingsAsync, saveSettingsRemote, loadBlocklist, saveBlocklist } from './jobState.js';
+import { requireAuth } from './authMiddleware.js';
 
 dotenv.config();
 
@@ -54,6 +55,9 @@ app.get('/', (req, res) => {
     });
 });
 
+// Tudo abaixo exige login (sessão Supabase válida) — só o health check acima fica público.
+app.use('/api', requireAuth);
+
 // Status do serviço
 app.get('/api/status', async (req, res) => {
     try {
@@ -96,25 +100,28 @@ app.get('/api/status', async (req, res) => {
 });
 
 // Endpoint para executar scraping manualmente
+// Escopado ao usuário que clicou: só re-raspa AS OFERTAS DELE, nunca a base toda —
+// senão o "Atualizar Todas" de qualquer pessoa dispararia um job pesado (browser +
+// puppeteer) sobre os dados de todo mundo, inclusive os seus.
 app.post('/api/scrape/run', async (req, res) => {
     try {
-        console.log('📡 Requisição manual de scraping recebida');
-        
+        console.log(`📡 Requisição manual de scraping recebida (user ${req.user.id})`);
+
         // Executa o job em background
-        runScrapingJob()
+        runScrapingJob(req.user.id)
             .then(results => {
                 console.log('✅ Job manual concluído:', results);
             })
             .catch(error => {
                 console.error('❌ Erro no job manual:', error);
             });
-        
+
         res.json({
             success: true,
             message: 'Job de scraping iniciado em background',
             timestamp: new Date().toISOString()
         });
-        
+
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -313,31 +320,6 @@ app.post('/api/discovery/test', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Endpoint para listar ofertas monitoradas
-app.get('/api/offers', async (req, res) => {
-    try {
-        const offers = await getOffersWithFacebookLinks();
-        
-        res.json({
-            success: true,
-            count: offers.length,
-            offers: offers.map(o => ({
-                id: o.id,
-                name: o.name,
-                link: o.link,
-                lastAdCount: o.last_ad_count,
-                lastUpdate: o.last_ad_count_timestamp
-            }))
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
 
 // ── BOOKMARKS IMPORT ─────────────────────────────────────────────────────────
 

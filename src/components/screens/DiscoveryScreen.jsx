@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Plus, Play, RefreshCw, ExternalLink, CheckCircle, X, Clock, Zap, Tag, TrendingUp, Square, Terminal, SlidersHorizontal } from 'lucide-react';
+import { scraperFetch } from '../../utils/scraperAuth';
 
 const SCRAPER_URL = import.meta.env.VITE_SCRAPER_URL || 'http://localhost:3001';
 
@@ -85,7 +86,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     // ── Status do robô (pill + logs + settings vêm daqui) ────────────────────
     const fetchStatus = useCallback(async () => {
         try {
-            const r = await fetch(`${SCRAPER_URL}/api/discovery/status`);
+            const r = await scraperFetch(`${SCRAPER_URL}/api/discovery/status`);
             const data = await r.json();
             setScraperOnline(true);
             setJob(data.job || null);
@@ -99,7 +100,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
 
     const fetchSettings = useCallback(async () => {
         try {
-            const r = await fetch(`${SCRAPER_URL}/api/discovery/settings`);
+            const r = await scraperFetch(`${SCRAPER_URL}/api/discovery/settings`);
             const data = await r.json();
             if (data.settings) setSettings(s => ({ ...s, ...data.settings }));
         } catch { /* offline — mantém defaults */ }
@@ -217,7 +218,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
         }
         setStarting(true);
         try {
-            const res = await fetch(`${SCRAPER_URL}/api/discovery/run`, {
+            const res = await scraperFetch(`${SCRAPER_URL}/api/discovery/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings), // usa os filtros da tela
@@ -240,7 +241,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
 
     const handleStopDiscovery = async () => {
         try {
-            const res = await fetch(`${SCRAPER_URL}/api/discovery/stop`, { method: 'POST' });
+            const res = await scraperFetch(`${SCRAPER_URL}/api/discovery/stop`, { method: 'POST' });
             const data = await res.json();
             showToast(data.message || 'Parada solicitada', data.success ? 'info' : 'error');
             setTimeout(fetchStatus, 1000);
@@ -253,7 +254,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            const res = await fetch(`${SCRAPER_URL}/api/discovery/settings`, {
+            const res = await scraperFetch(`${SCRAPER_URL}/api/discovery/settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),

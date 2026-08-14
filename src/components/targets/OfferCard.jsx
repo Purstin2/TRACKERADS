@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'rec
 import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 import { smartClassifyOffer } from '../../utils/smartClassification';
+import { scraperFetch } from '../../utils/scraperAuth';
 
 const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast, selectionMode, isSelected, onToggleSelect }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
@@ -105,7 +106,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000);
             
-            const response = await fetch(scraperUrl, {
+            const response = await scraperFetch(scraperUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -113,16 +114,16 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (data.success && data.adCount !== null) {
                 // Adiciona a contagem automaticamente
                 const { error: adCountInsertError } = await supabaseClient
@@ -192,7 +193,7 @@ const OfferCard = ({ offer, onViewDetails, onEditOffer, onToggleArchive, onDelet
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000);
-            const response = await fetch(scraperUrl, {
+            const response = await scraperFetch(scraperUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: offer.link }),

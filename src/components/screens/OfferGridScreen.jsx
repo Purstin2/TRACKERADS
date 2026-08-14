@@ -5,6 +5,7 @@ import OfferCard from '../targets/OfferCard';
 import OfferList from '../targets/OfferList';
 import AdvancedFilters from '../ui/AdvancedFilters';
 import ImportBookmarksModal from '../ui/ImportBookmarksModal';
+import { scraperFetch } from '../../utils/scraperAuth';
 
 const OfferGridScreen = ({ 
     offers, 
@@ -233,7 +234,7 @@ const OfferGridScreen = ({
                                 setLoading(true);
                                 try {
                                     showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
-                                    const response = await fetch(`${baseUrl}/api/scrape/run`, {
+                                    const response = await scraperFetch(`${baseUrl}/api/scrape/run`, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' }
                                     });

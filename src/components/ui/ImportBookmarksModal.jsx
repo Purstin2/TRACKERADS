@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Bookmark, Check, AlertTriangle, Loader2, ExternalLink, CheckSquare, Square } from 'lucide-react';
+import { scraperFetch } from '../../utils/scraperAuth';
 
 const ImportBookmarksModal = ({ onClose, onImport, userId, supabaseClient, showToast }) => {
     const [bookmarks, setBookmarks] = useState([]);
@@ -11,7 +12,7 @@ const ImportBookmarksModal = ({ onClose, onImport, userId, supabaseClient, showT
     const [imported, setImported] = useState(new Set());
 
     useEffect(() => {
-        fetch('http://localhost:3001/api/bookmarks/ofertas')
+        scraperFetch('http://localhost:3001/api/bookmarks/ofertas')
             .then(r => r.json())
             .then(data => {
                 if (!data.success) {

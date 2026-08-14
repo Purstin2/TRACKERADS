@@ -2,6 +2,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Eye, Trash2, Archive, ArchiveRestore, CheckSquare, XSquare, TrendingDown, Zap, Activity, ArrowLeft, RefreshCw } from 'lucide-react';
 import { getSafeTimestamp, formatDateForAxis, analyzeOfferPerformance } from '../../utils/helpers';
+import { scraperFetch } from '../../utils/scraperAuth';
 
 const OfferDetailScreen = ({ 
     offerId, 
@@ -269,7 +270,7 @@ const OfferDetailScreen = ({
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 segundos (2 minutos)
             
-            const response = await fetch(scraperUrl, {
+            const response = await scraperFetch(scraperUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -277,9 +278,9 @@ const OfferDetailScreen = ({
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             // Verifica se a resposta é válida
             if (!response.ok) {
                 const errorText = await response.text();
@@ -355,7 +356,7 @@ const OfferDetailScreen = ({
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000);
-            const response = await fetch(scraperUrl, {
+            const response = await scraperFetch(scraperUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: offer.link }),

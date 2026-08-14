@@ -15,18 +15,25 @@ if (!supabaseUrl || !supabaseServiceKey) {
 export const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
- * Busca todas as ofertas que têm link da biblioteca do Facebook
+ * Busca todas as ofertas que têm link da biblioteca do Facebook.
+ * @param {string|null} [userId] - se informado, restringe às ofertas DESSE usuário
+ *   (usado no disparo manual pelo site, pra um clique de uma pessoa não raspar a
+ *   base de todo mundo). Sem userId = todas (uso do cron/scheduler interno).
  * @returns {Promise<Array>}
  */
-export async function getOffersWithFacebookLinks() {
+export async function getOffersWithFacebookLinks(userId = null) {
     try {
-        const { data, error } = await supabase
+        let query = supabase
             .from('offers')
             .select('*')
             .not('link', 'is', null)
             .neq('link', '')
             .eq('is_archived', false);
-        
+
+        if (userId) query = query.eq('user_id', userId);
+
+        const { data, error } = await query;
+
         if (error) throw error;
         
         // Filtra apenas links do Facebook Ads Library
