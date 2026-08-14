@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Zap, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Zap, PanelLeftClose, PanelLeftOpen, LogOut } from 'lucide-react'
 import { NAV } from '@/lib/nav'
+import { signOut, useSession } from '@/lib/supabase'
 
 interface Props {
   open: boolean
@@ -11,6 +12,7 @@ interface Props {
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: Props) {
   const loc = useLocation()
+  const { email } = useSession()
   // quando recolhido, escondemos textos só no desktop (lg+); no mobile sempre completo
   const hideLg = collapsed ? 'lg:hidden' : ''
 
@@ -114,12 +116,19 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }: 
         <div className={`border-t border-border py-3 ${collapsed ? 'lg:px-0' : 'px-4'} px-4`}>
           <div className={`flex items-center gap-2.5 ${collapsed ? 'lg:justify-center' : ''}`}>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface2 text-[12px] font-bold text-brand-2">
-              P
+              {(email || 'P')[0].toUpperCase()}
             </div>
             <div className={`min-w-0 flex-1 ${hideLg}`}>
-              <div className="truncate text-[12px] font-semibold text-ink">Operação Purstin</div>
+              <div className="truncate text-[12px] font-semibold text-ink">{email || 'Operação Purstin'}</div>
               <div className="text-[10px] text-muted2">tráfego pago</div>
             </div>
+            <button
+              onClick={() => signOut()}
+              title="Sair"
+              className={`shrink-0 rounded-md p-1.5 text-muted2 hover:bg-surface2 hover:text-danger ${hideLg}`}
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </aside>
