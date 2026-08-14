@@ -845,9 +845,9 @@ export default async function handler(req, res) {
   let secretOk
   if (gateway === 'hotmart') {
     const hottok = req.headers['x-hotmart-hottok'] || (typeof req.body === 'object' ? req.body?.hottok : null)
-    secretOk = !process.env.HOTMART_HOTTOK || hottok === process.env.HOTMART_HOTTOK
+    secretOk = !!process.env.HOTMART_HOTTOK && hottok === process.env.HOTMART_HOTTOK
   } else {
-    secretOk = !process.env.WEBHOOK_SECRET || secret === process.env.WEBHOOK_SECRET
+    secretOk = !!process.env.WEBHOOK_SECRET && secret === process.env.WEBHOOK_SECRET
   }
   if (!secretOk) {
     await logHit({ gateway, event: null, status: null, ok: false, http_status: 401, secret_ok: false, capi_ok: false, message: 'token/segredo inválido', ip, created_at: new Date().toISOString() })

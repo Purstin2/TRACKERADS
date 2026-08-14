@@ -178,7 +178,7 @@ export default async function handler(req, res) {
 
   const isCron = !!req.headers['x-vercel-cron']
   const secret = req.query.secret
-  if (!isCron && process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
+  if (!isCron && (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET)) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 

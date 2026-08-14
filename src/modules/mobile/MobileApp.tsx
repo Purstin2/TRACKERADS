@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, authHeaders } from '@/lib/supabase'
 import { loadTaxas, syncTaxas, feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 
@@ -63,7 +63,7 @@ async function subscribePush() {
       (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(vapid) as unknown as BufferSource }))
     await fetch('/api/mobile?fn=push-subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ subscription: sub }),
     })
   } catch {}
@@ -143,7 +143,7 @@ export default function MobileApp() {
         .gte('created_at', brtTodayStartISO())
         .order('created_at', { ascending: false })
         .limit(200),
-      fetch('/api/mobile?fn=meta-today').then((r) => r.json()).catch(() => null),
+      authHeaders().then((h) => fetch('/api/mobile?fn=meta-today', { headers: h })).then((r) => r.json()).catch(() => null),
     ])
     const all = (data || []) as Order[]
     setAllOrders(all)

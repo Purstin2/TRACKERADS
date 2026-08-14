@@ -40,7 +40,7 @@ async function uploadVideoHandle(appId, token, videoUrl) {
 
 export default async function handler(req, res) {
   const secret = req.query.secret
-  if (process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
+  if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 

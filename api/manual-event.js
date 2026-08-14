@@ -44,7 +44,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
 
   const secret = req.query.secret
-  if (process.env.WEBHOOK_SECRET && secret !== process.env.WEBHOOK_SECRET) {
+  if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'secret inválido' })
   }
   const url = process.env.SUPABASE_URL

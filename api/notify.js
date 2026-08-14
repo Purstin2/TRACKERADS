@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   if (!url || !key) return res.status(500).json({ error: 'supabase não configurado' })
 
   const isCron = !!req.headers['x-vercel-cron']
-  if (!isCron && process.env.WEBHOOK_SECRET && req.query.secret !== process.env.WEBHOOK_SECRET) {
+  if (!isCron && (!process.env.WEBHOOK_SECRET || req.query.secret !== process.env.WEBHOOK_SECRET)) {
     return res.status(401).json({ error: 'secret inválido' })
   }
   if (!process.env.VAPID_PUBLIC || !process.env.VAPID_PRIVATE) {

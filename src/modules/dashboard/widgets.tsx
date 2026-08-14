@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { authHeaders } from '@/lib/supabase'
 import {
   ResponsiveContainer,
   PieChart,
@@ -491,7 +492,7 @@ function LimitesEnvio() {
   const [erro, setErro] = useState(false)
   useEffect(() => {
     let vivo = true
-    const puxa = () => fetch('/api/mobile?fn=limites').then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setErro(true))
+    const puxa = () => authHeaders().then((h) => fetch('/api/mobile?fn=limites', { headers: h })).then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setErro(true))
     puxa()
     const t = setInterval(puxa, 5 * 60000) // re-checa a cada 5 min
     return () => { vivo = false; clearInterval(t) }
@@ -549,7 +550,7 @@ function RecupMelodify() {
   const [d, setD] = useState<RecupData | null>(null)
   useEffect(() => {
     let vivo = true
-    const puxa = () => fetch('/api/mobile?fn=recup-melodify&dias=7').then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setD({ ok: false, reason: 'erro' }))
+    const puxa = () => authHeaders().then((h) => fetch('/api/mobile?fn=recup-melodify&dias=7', { headers: h })).then((r) => r.json()).then((j) => vivo && setD(j)).catch(() => vivo && setD({ ok: false, reason: 'erro' }))
     puxa()
     const t = setInterval(puxa, 10 * 60000)
     return () => { vivo = false; clearInterval(t) }

@@ -36,7 +36,7 @@ function isRealGclid(g, utmSource) {
 }
 
 export default async function handler(req, res) {
-  if (process.env.WEBHOOK_SECRET && req.query.secret !== process.env.WEBHOOK_SECRET) {
+  if (!process.env.WEBHOOK_SECRET || req.query.secret !== process.env.WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'invalid secret' })
   }
   const url = process.env.SUPABASE_URL

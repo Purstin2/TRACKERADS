@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw, MessageCircle, Mail, Music } from 'lucide-react'
 import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
+import { authHeaders } from '@/lib/supabase'
 
 const CUSTO_ZAP = 0.34 // R$ por mensagem de marketing (WhatsApp Cloud API)
 const BRL = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -47,8 +48,8 @@ export default function RecuperacaoPage() {
     setCarregando(true)
     const desde = new Date(Date.now() - dias * 86400000).toISOString()
     try { setOrders(await fetchOrders(desde)) } catch { setOrders([]) }
-    fetch(`/api/mobile?fn=recup-email&dias=${dias}`).then((r) => r.json()).then((j) => setEmails(j.ok ? j.campanhas : [])).catch(() => setEmails([]))
-    fetch(`/api/mobile?fn=recup-melodify&dias=${dias}`).then((r) => r.json()).then(setMel).catch(() => setMel({ ok: false }))
+    authHeaders().then((h) => fetch(`/api/mobile?fn=recup-email&dias=${dias}`, { headers: h })).then((r) => r.json()).then((j) => setEmails(j.ok ? j.campanhas : [])).catch(() => setEmails([]))
+    authHeaders().then((h) => fetch(`/api/mobile?fn=recup-melodify&dias=${dias}`, { headers: h })).then((r) => r.json()).then(setMel).catch(() => setMel({ ok: false }))
     setCarregando(false)
   }
   useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dias])

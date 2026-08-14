@@ -24,6 +24,11 @@ function sbHeaders(key) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
 
+  const secret = req.query.secret
+  if (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET) {
+    return res.status(401).json({ error: 'secret inválido' })
+  }
+
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return res.status(500).json({ error: 'Supabase service key não configurada na Vercel' })

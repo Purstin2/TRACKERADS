@@ -15,6 +15,11 @@ import {
 
 const GATEWAYS = ['kirvano', 'hotmart']
 
+const LS_SECRET = 'purstin_pixel' // reaproveita o webhookSecret salvo na aba Conexões
+function getSecret(): string {
+  try { return JSON.parse(localStorage.getItem(LS_SECRET) || '{}').webhookSecret || '' } catch { return '' }
+}
+
 const MATCH_LABEL: Record<string, string> = {
   offer: 'Por oferta',
   product: 'Por produto',
@@ -106,8 +111,10 @@ export default function PixelsView() {
     if (!r.test_code) {
       return toast('Defina o Test Event Code neste pixel (pegue na aba Test Events do Meta) e salve antes de testar.', 'err')
     }
+    const secret = getSecret()
+    if (!secret) return toast('Defina o Segredo do Webhook na aba Conexões primeiro', 'err')
     setTesting(r.id)
-    const res = await testRoute(r.id, 'Purchase')
+    const res = await testRoute(secret, r.id, 'Purchase')
     setTesting(null)
     if (res.ok) {
       toast(`✓ Evento enviado ao pixel ${res.pixel}. Veja na aba Test Events (código ${res.testCode}).`, 'ok')

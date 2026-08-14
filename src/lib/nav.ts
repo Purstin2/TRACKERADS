@@ -7,6 +7,7 @@ import {
   Crosshair,
   Percent,
   LifeBuoy,
+  KeyRound,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -78,5 +79,11 @@ export const NAV: NavItem[] = [
     icon: Crosshair,
     to: '/pixel',
     badge: 'v2',
+  },
+  {
+    id: 'config',
+    label: 'Configuração',
+    icon: KeyRound,
+    to: '/config',
   },
 ]

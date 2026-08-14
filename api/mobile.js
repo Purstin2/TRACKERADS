@@ -6,6 +6,29 @@ function sbHeaders(key, extra = {}) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...extra }
 }
 
+// Estas rotas são chamadas automaticamente por telas que já ficam atrás do
+// login (App.tsx/RequireAuth) — não é uma ação manual de admin com secret
+// colado, então em vez do WEBHOOK_SECRET a gente valida a própria sessão
+// Supabase de quem chamou (evita expor gasto/receita/push a quem não logou).
+async function requireSession(req, res) {
+  const url = process.env.SUPABASE_URL
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  const auth = req.headers.authorization || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
+  if (!url || !anonKey || !token) {
+    res.status(401).json({ error: 'login necessário' })
+    return false
+  }
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: anonKey, Authorization: `Bearer ${token}` } })
+    if (!r.ok) { res.status(401).json({ error: 'sessão inválida ou expirada' }); return false }
+    return true
+  } catch {
+    res.status(401).json({ error: 'sessão inválida ou expirada' })
+    return false
+  }
+}
+
 async function stateGet(url, key, k) {
   try {
     const r = await fetch(`${url}/rest/v1/app_state?key=eq.${encodeURIComponent(k)}&select=value`, { headers: sbHeaders(key) })
@@ -221,6 +244,7 @@ async function recupEmail(req, res) {
 }
 
 export default async function handler(req, res) {
+  if (!(await requireSession(req, res))) return
   const fn = String(req.query.fn || '')
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)

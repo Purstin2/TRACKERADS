@@ -119,9 +119,9 @@ export interface TestResult {
 }
 
 /** Dispara um evento de teste pra esta rota (via /api/test-event no servidor). */
-export async function testRoute(routeId: string, eventName = 'Purchase', testCode?: string): Promise<TestResult> {
+export async function testRoute(secret: string, routeId: string, eventName = 'Purchase', testCode?: string): Promise<TestResult> {
   try {
-    const r = await fetch('/api/test-event', {
+    const r = await fetch(`/api/test-event?secret=${encodeURIComponent(secret)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ routeId, eventName, testCode }),

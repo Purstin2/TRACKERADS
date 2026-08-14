@@ -88,6 +88,15 @@ export async function signOut() {
   await sb?.auth.signOut()
 }
 
+/** Header Authorization com o token da sessão atual — pra chamar api/mobile.js
+ *  (que agora exige login, não o WEBHOOK_SECRET colado na aba Conexões). */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const sb = supabase()
+  if (!sb) return {}
+  const { data: { session } } = await sb.auth.getSession()
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
 /** Hook reativo: e-mail do usuário logado, ou null. */
 export function useSession(): { email: string | null; loading: boolean } {
   const [email, setEmail] = useState<string | null>(null)

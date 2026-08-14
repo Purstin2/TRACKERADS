@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import AppShell from './components/layout/AppShell'
+import RequireAuth from './components/auth/RequireAuth'
 
 const DashboardPage = lazy(() => import('./modules/dashboard/DashboardPage'))
 const MonitorPage = lazy(() => import('./modules/monitor/MonitorPage'))
@@ -10,6 +11,7 @@ const PixelPage = lazy(() => import('./modules/pixel/PixelPage'))
 const TaxasPage = lazy(() => import('./modules/taxas/TaxasPage'))
 const RecuperacaoPage = lazy(() => import('./modules/recuperacao/RecuperacaoPage'))
 const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
+const ConfiguracaoPage = lazy(() => import('./modules/config/ConfiguracaoPage'))
 
 function Loading() {
   return (
@@ -21,6 +23,7 @@ function Loading() {
 
 export default function App() {
   return (
+    <RequireAuth>
     <Routes>
       {/* App mobile instalável (PWA) — tela cheia, sem sidebar */}
       <Route
@@ -88,8 +91,17 @@ export default function App() {
             </Suspense>
           }
         />
+        <Route
+          path="config"
+          element={
+            <Suspense fallback={<Loading />}>
+              <ConfiguracaoPage />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </RequireAuth>
   )
 }
