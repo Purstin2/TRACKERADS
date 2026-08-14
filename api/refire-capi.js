@@ -115,23 +115,51 @@ export default async function handler(req, res) {
   const route = await resolvePixel(supabaseUrl, supabaseKey, o)
   if (!route) return res.status(422).json({ error: 'nenhuma rota de pixel encontrada pra esse pedido — cadastre uma rota na aba Pixels' })
 
-  // 3. Sinais de clique/geo/IP vivem dentro do raw (a tabela não tem colunas fbc/fbp/country)
+  // 3. Sinais de clique/geo/IP vivem dentro do raw (a tabela não tem colunas fbc/fbp/country).
+  //    O formato do raw MUDA por gateway: a Kirvano guarda cookies._fbc/_fbp na raiz,
+  //    a Hotmart embute tudo num blob "fbc:...|fbp:..." dentro de data.purchase.origin.
+  //    Sem esse desvio, reenviar um pedido da Hotmart mandava um Purchase SEM fbc/fbp
+  //    (e com país 'br'), que é justamente o sinal que a gente quer recuperar.
   const raw = o.raw || {}
+  const ehHotmart = o.gateway === 'hotmart' || !!(raw.data && raw.data.purchase)
+
   const cookies = raw.cookies || {}
-  const addr = (raw.customer && raw.customer.address) || {}
-  // fbclidManual (colado da UTMIFY = clique de anúncio real) tem prioridade — é o que
-  // reatribui a campanha no Meta. Sem ele, usa o fbclid que veio na venda (pode ser orgânico).
+  const hmPurchase = (raw.data && raw.data.purchase) || {}
+  const hmBuyer = (raw.data && raw.data.buyer) || {}
+  const hmOrigin = hmPurchase.origin || {}
+  const hmBlob = [hmOrigin.src, hmOrigin.sck, hmOrigin.xcod].filter(Boolean).join('|')
+  const pickBlob = (campo) => {
+    const m = hmBlob.match(new RegExp(campo + '[:=]([^|;,&]+)'))
+    return m ? m[1].trim() : null
+  }
+
+  const addr = ehHotmart
+    ? (hmBuyer.address || {})
+    : ((raw.customer && raw.customer.address) || {})
+
+  // fbclidManual (colado da biblioteca de anúncios = clique real) tem prioridade — é o
+  // que reatribui a campanha no Meta. Sem ele, usa o que veio na venda.
   const hasManual = !!(fbclidManual && String(fbclidManual).trim())
-  const fbclid = hasManual ? String(fbclidManual).trim() : (cookies.fbclid || raw.fbclid || null)
-  // se o usuário colou um fbclid de anúncio, ignora o _fbc orgânico que veio na venda
-  const rawFbc = hasManual ? null : (cookies._fbc || raw.fbc || null)
-  const rawFbp = cookies._fbp || raw.fbp || null
+  const fbclid = hasManual
+    ? String(fbclidManual).trim()
+    : (ehHotmart ? pickBlob('fbclid') : (cookies.fbclid || raw.fbclid || null))
+  // se o usuário colou um fbclid de anúncio, ignora o _fbc que veio na venda
+  const rawFbc = hasManual ? null : (ehHotmart ? pickBlob('fbc') : (cookies._fbc || raw.fbc || null))
+  const rawFbp = ehHotmart ? pickBlob('fbp') : (cookies._fbp || raw.fbp || null)
   const fbc = buildFbc(fbclid, rawFbc, o.ordered_at || o.created_at)
   const fbp = rawFbp && /^fb\.1\./.test(rawFbp) ? rawFbp : (rawFbp ? `fb.1.${Date.now()}.${rawFbp}` : null)
-  const clientIp = raw.ip || null
+  // a Hotmart não manda IP do comprador; a Kirvano manda em raw.ip
+  const clientIp = ehHotmart ? null : (raw.ip || null)
 
-  const iso = isoCountry(addr.country || (raw.customer && raw.customer.country) || 'br')
-  const { fn, ln } = hashName(o.customer_name)
+  const iso = isoCountry(
+    ehHotmart
+      ? ((hmPurchase.checkout_country && hmPurchase.checkout_country.iso) || addr.country_iso || addr.country || 'br')
+      : (addr.country || (raw.customer && raw.customer.country) || 'br')
+  )
+  // a Hotmart já separa first_name/last_name — mais confiável que quebrar o nome cheio
+  const { fn, ln } = ehHotmart && (hmBuyer.first_name || hmBuyer.last_name)
+    ? { fn: sha256(hmBuyer.first_name), ln: hmBuyer.last_name ? sha256(hmBuyer.last_name) : undefined }
+    : hashName(o.customer_name)
 
   const userData = {}
   const em = hashEmail(o.customer_email)
@@ -163,8 +191,15 @@ export default async function handler(req, res) {
     ? products.map((p) => ({ id: p.id ? String(p.id) : (p.name || o.product || ''), quantity: p.quantity || 1, item_price: parseFloat(p.price ?? p.amount ?? 0) || 0, title: p.name || undefined }))
     : [{ id: o.product || '', quantity: 1, item_price: o.value || 0 }]
 
-  const currency = (o.currency || 'BRL').toUpperCase()
-  const value = o.value || contents.reduce((s, c) => s + c.item_price * c.quantity, 0)
+  // O Meta precisa do valor NA MOEDA ORIGINAL (ele converte com a taxa dele).
+  // A coluna `value` guarda BRL desde a correcao de moeda; o que o comprador
+  // pagou de fato esta em `value_orig` + `currency`. Sem isto, reenviar uma
+  // venda paraguaia mandava "45.93 PYG" — o valor em real com o rotulo errado.
+  const temOrig = o.value_orig != null && +o.value_orig > 0
+  const currency = temOrig ? (o.currency || 'BRL').toUpperCase() : 'BRL'
+  const value = temOrig
+    ? +o.value_orig
+    : (o.value || contents.reduce((s, c) => s + c.item_price * c.quantity, 0))
 
   const now = Math.floor(Date.now() / 1000)
   let eventTime = o.ordered_at ? Math.floor(new Date(o.ordered_at).getTime() / 1000) : now

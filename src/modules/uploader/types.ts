@@ -115,8 +115,22 @@ export const DEFAULTS: FormState = {
   dsa_beneficiary: '',
 }
 
-export const UTM_XCOD =
-  'FBhQwK21wXxR{{campaign.name}}|{{campaign.id}}hQwK21wXxR{{adset.name}}|{{adset.id}}hQwK21wXxR{{ad.name}}|{{ad.id}}hQwK21wXxR{{placement}}'
+/** Separador dos campos dentro do xcod da Hotmart. Alfanumérico de propósito:
+ *  a Hotmart come caracteres especiais (|, ;, &) nesse campo.
+ *  ⚠ Tem uma cópia deste valor em api/webhook.js (XCOD_SEP) — bundles diferentes,
+ *  servidor não importa de src/. Se mudar aqui, muda lá. */
+export const XCOD_SEP = 'hQwK21wXxR'
+
+/** xcod = o ÚNICO campo em que a campanha volta no webhook da Hotmart (src/sck
+ *  ficam ocupados pelo fbc/fbp e ela ainda corta os dois em 255 chars).
+ *  Ordem: source ~ campanha ~ adset ~ anúncio ~ placement. */
+export const UTM_XCOD = [
+  'FB',
+  '{{campaign.name}}|{{campaign.id}}',
+  '{{adset.name}}|{{adset.id}}',
+  '{{ad.name}}|{{ad.id}}',
+  '{{placement}}',
+].join(XCOD_SEP)
 
 export interface CountryGroup {
   label: string

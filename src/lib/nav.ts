@@ -8,6 +8,8 @@ import {
   Percent,
   LifeBuoy,
   KeyRound,
+  FlaskConical,
+  Wallet,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -56,10 +58,22 @@ export const NAV: NavItem[] = [
     to: '/recuperacao',
   },
   {
+    id: 'ofertas',
+    label: 'Ofertas testadas',
+    icon: FlaskConical,
+    to: '/ofertas',
+  },
+  {
     id: 'taxas',
     label: 'Taxas',
     icon: Percent,
     to: '/taxas',
+  },
+  {
+    id: 'gastos',
+    label: 'Gastos',
+    icon: Wallet,
+    to: '/gastos',
   },
   {
     id: 'tracker',

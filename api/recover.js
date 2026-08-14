@@ -53,6 +53,16 @@ function cleanParam(v, fallback) {
   return s || fallback
 }
 
+// Quantos passos da cadência realmente disparam. Medição 20/06–28/07:
+//   dia 1 → 297 disparos, 17 vendas   |   dia 2 + dia 3 → 43 disparos, ZERO venda.
+// Os dias 2/3 só insistiam com quem já tinha ignorado — é bloqueio/denúncia, que é
+// o que derruba a nota do número pra RED. Default 1 (só o dia 1); WA_MAX_STEPS
+// permite voltar a 2 ou 3 sem mexer no código.
+const MAX_STEPS = Math.max(1, Math.min(3, parseInt(process.env.WA_MAX_STEPS || '1', 10) || 1))
+// wa_step = 3 é o marcador de "encerrado" (o filtro da query usa wa_step < 3),
+// independente de quantos passos a cadência tem.
+const STEP_FIM = 3
+
 // ── definição dos 3 passos da cadência (lidos de env) ────────────────────────
 function getSteps() {
   const lang = process.env.WA_TEMPLATE_LANG || 'pt_BR'
@@ -91,7 +101,7 @@ function getSteps() {
 //   -1 = ainda não é hora   |   -2 = expirou (velho demais p/ iniciar)
 function dueStep(o, cfg, now) {
   const step = o.wa_step || 0
-  if (step >= 3) return -1
+  if (step >= MAX_STEPS) return -1
   const delayMs = (cfg.delay_minutes ?? 60) * 60000
   const gapMs = (cfg.step_gap_hours ?? 24) * 3600000
   const windowMs = (cfg.window_hours ?? 24) * 3600000
@@ -223,8 +233,27 @@ export default async function handler(req, res) {
     // Só vendas >= R$ MIN_VALUE (evita gastar disparo/risco de ban em pedido pequeno).
     // Para sozinho ao virar APPROVED (sai do filtro) ou recovered.
     const MIN_VALUE = parseFloat(process.env.WA_MIN_VALUE || '17')
+
+    /* RAMPA DE VOLUME — ABANDONED fica FORA por padrão.
+     *
+     * O webhook só passou a gravar carrinho abandonado em 29/07 (antes todos
+     * colidiam numa linha só). São ~25/dia, contra ~9/dia de disparo hoje: ligar
+     * junto seria 3,7x da noite pro dia, e salto súbito é o que faz a API do
+     * WhatsApp bloquear número — derrubando junto a recuperação de PIX que já
+     * funciona (22,6% de conversão).
+     *
+     * Os dados são gravados desde já; só o DISPARO está represado. Pra liberar,
+     * defina WA_ABANDONED=1 nas variáveis de ambiente da Vercel (sem redeploy do
+     * código). Recomendado só depois de 3-4 dias com o CANCELED rodando estável.
+     *
+     * CANCELED entrou agora porque PIX_EXPIRED cai nele: quem gerava PIX e
+     * expirava ANTES do cron passar saía da fila pra sempre (17 pedidos /
+     * R$1.260 parados só no ULTRA PACK). Volume ~igual ao de hoje. */
+    const statuses = ['PENDING', 'REFUSED', 'CANCELED']
+    if (process.env.WA_ABANDONED === '1') statuses.unshift('ABANDONED')
+
     query =
-      `${url}/rest/v1/kirvano_orders?status=in.(ABANDONED,PENDING,REFUSED)` +
+      `${url}/rest/v1/kirvano_orders?status=in.(${statuses.join(',')})` +
       `&or=(wa_step.is.null,wa_step.lt.3)&customer_phone=not.is.null&value=gte.${MIN_VALUE}` +
       `&created_at=gte.${cutoff}&select=*&order=created_at.asc&limit=80`
   }
@@ -238,13 +267,60 @@ export default async function handler(req, res) {
   }
   if (!Array.isArray(orders)) orders = []
 
+  /* GUARDA POR E-MAIL — não mandar "volte e finalize" pra quem já pagou.
+   * O guard de status logo abaixo só pega quem converteu NA MESMA linha. Isso
+   * funciona pra PIX/cartão (mesmo checkout_id do começo ao fim), mas NÃO pro
+   * carrinho abandonado: a Kirvano não manda id no abandono, então a venda que
+   * vem depois nasce numa linha nova e a linha abandonada fica ABANDONED pra
+   * sempre. Sem esta checagem, ligar o abandono = mensagear cliente já pago. */
+  const emails = [
+    ...new Set(orders.map((o) => (o.customer_email || '').toLowerCase().trim()).filter(Boolean)),
+  ]
+  const jaComprou = new Set()
+  if (emails.length) {
+    try {
+      const inList = emails.map((e) => `"${encodeURIComponent(e)}"`).join(',')
+      const r = await fetch(
+        `${url}/rest/v1/kirvano_orders?status=eq.APPROVED&customer_email=in.(${inList})&select=customer_email`,
+        { headers: sbHeaders(key) },
+      )
+      const pagos = await r.json()
+      if (Array.isArray(pagos)) {
+        for (const p of pagos) jaComprou.add((p.customer_email || '').toLowerCase().trim())
+      }
+    } catch {
+      /* falhou a checagem: segue com o guard de status. Não trava a fila. */
+    }
+  }
+
   const results = []
   for (const o of orders) {
     if (o.status === 'APPROVED' || o.recovered) {
-      await patchOrder(url, key, o.id, { wa_status: 'converted', wa_step: 3 })
-      results.push({ id: o.id, skipped: 'já comprou' })
+      // "converted" = RECUPERADA, e só é recuperada quem recebeu mensagem ANTES de
+      // pagar. Sem o teste do wa_sent_at, todo pedido que já estava pago quando o
+      // cron passava virava "converted" — 426 dos 428 "recuperados" de 23–27/07
+      // nunca tinham recebido nada, e o painel somava isso como receita (R$23 mil
+      // fantasma contra R$1,3 mil reais).
+      const recebeuMsg = !!o.wa_sent_at
+      await patchOrder(url, key, o.id, {
+        wa_status: recebeuMsg ? 'converted' : 'skipped',
+        wa_error: recebeuMsg ? null : 'pagou sem receber mensagem (não é recuperação)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: recebeuMsg ? 'recuperada' : 'já estava paga (sem disparo)' })
       continue
     }
+    const mail = (o.customer_email || '').toLowerCase().trim()
+    if (mail && jaComprou.has(mail)) {
+      await patchOrder(url, key, o.id, {
+        wa_status: 'skipped',
+        wa_error: 'já comprou em outro pedido (não mensagear)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: 'já comprou em outro pedido' })
+      continue
+    }
+
     const phone = waPhone(o.customer_phone)
     if (!phone) {
       await patchOrder(url, key, o.id, { wa_status: 'skipped', wa_error: 'sem telefone', wa_step: 3 })
@@ -252,11 +328,27 @@ export default async function handler(req, res) {
       continue
     }
 
-    // REGRA POR PRODUTO (decisão do usuário): só o STL faz a cadência completa
-    // (dias 1, 2, 3). TODOS os outros produtos recebem APENAS o dia 1.
-    if (!manualIds && !isStlOrder(o) && (o.wa_step || 0) >= 1) {
-      await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: 3 })
-      results.push({ id: o.id, skipped: 'não-STL: só o dia 1' })
+    // REGRA POR PRODUTO: só o STL entra na recuperação. Medição 20/06–28/07:
+    //   STL     → 178 disparos, 16 vendas, R$1.284,40 (9%)
+    //   não-STL → 119 disparos,  1 venda,  R$29,90    (1%)
+    // Os disparos de canecas/Melodify/Pedreiro/moldes não se pagavam e gastavam a
+    // reputação do número à toa. Envio manual (?ids=) ignora esta regra.
+    if (!manualIds && !isStlOrder(o)) {
+      await patchOrder(url, key, o.id, {
+        wa_status: 'skipped',
+        wa_error: 'produto fora da recuperação (só STL)',
+        wa_step: STEP_FIM,
+      })
+      results.push({ id: o.id, skipped: 'produto não-STL' })
+      continue
+    }
+
+    // Cadência já cumprida (inclusive os que ficaram em wa_step 1/2 de quando ela
+    // tinha 3 passos): encerra de vez. Sem isto eles voltariam em toda rodada só
+    // pra receber "waiting", ocupando as 80 vagas da fila sem nunca sair dela.
+    if (!manualIds && (o.wa_step || 0) >= MAX_STEPS) {
+      await patchOrder(url, key, o.id, { wa_status: 'done', wa_step: STEP_FIM })
+      results.push({ id: o.id, skipped: 'cadência concluída' })
       continue
     }
 
@@ -303,9 +395,11 @@ export default async function handler(req, res) {
       ]),
     })
 
+    // acabou a cadência? marca STEP_FIM pra sair da fila (a query filtra wa_step<3)
+    const acabou = idx + 1 >= MAX_STEPS
     await patchOrder(url, key, o.id, {
-      wa_step: out.ok ? idx + 1 : o.wa_step || 0, // só avança se enviou
-      wa_status: out.ok ? (idx + 1 >= 3 ? 'done' : 'sent') : 'failed',
+      wa_step: out.ok ? (acabou ? STEP_FIM : idx + 1) : o.wa_step || 0, // só avança se enviou
+      wa_status: out.ok ? (acabou ? 'done' : 'sent') : 'failed',
       wa_attempts: (o.wa_attempts || 0) + 1,
       wa_sent_at: out.ok ? new Date().toISOString() : o.wa_sent_at,
       wa_last_try: new Date().toISOString(),

@@ -151,6 +151,10 @@ function centsToNumber(v) {
 function canonicalStatus(event, rawStatus) {
   const e = String(event || '').toUpperCase()
   const s = String(rawStatus || '').toUpperCase()
+  // A Hotmart chama o carrinho abandonado de PURCHASE_OUT_OF_SHOPPING_CART — não
+  // contém "ABANDON", então sem esta linha ele caía no fim da função e virava um
+  // status cru que não dispara nada.
+  if (e.includes('OUT_OF_SHOPPING_CART')) return 'ABANDONED'
   if (e.includes('ABANDONED') || e.includes('ABANDON')) return 'ABANDONED'
   if (e.includes('CHARGEBACK') || s.includes('CHARGEBACK')) return 'CHARGEBACK'
   if (e.includes('REFUND') || s.includes('REFUND') || s.includes('REEMBOLS')) return 'REFUNDED'
@@ -158,7 +162,15 @@ function canonicalStatus(event, rawStatus) {
   if (e.includes('CANCEL') || s.includes('CANCEL')) return 'CANCELED'
   if (e.includes('APPROVED') || s.includes('APPROVED') || s.includes('PAID') || s.includes('APROVAD') || s.includes('COMPLETED')) return 'APPROVED'
   if (e.includes('EXPIRED') || s.includes('EXPIRED') || s.includes('EXPIRAD')) return 'EXPIRED'
-  if (e.includes('GENERATED') || e.includes('PIX') || e.includes('SLIP') || s.includes('PENDING') || s.includes('PENDENT')) return 'PENDING'
+  // Pendente. Os nomes da Hotmart não casavam com nenhum dos termos acima e caíam
+  // no `return s` cru (ex.: "WAITING_PAYMENT"), que não dispara etapa de funil
+  // nenhuma. Em LATAM isso é o grosso do meio do funil: OXXO no México, boleto,
+  // PIX — o comprador chega no checkout e só paga horas depois.
+  //   BILLET_PRINTED / PRINTED_BILLET → boleto impresso
+  //   WAITING_PAYMENT / STARTED       → aguardando pagamento
+  if (e.includes('GENERATED') || e.includes('PIX') || e.includes('SLIP') || e.includes('BILLET') ||
+      s.includes('PENDING') || s.includes('PENDENT') || s.includes('WAITING') ||
+      s.includes('BILLET') || s.includes('STARTED')) return 'PENDING'
   return s || 'PENDING'
 }
 
@@ -189,6 +201,31 @@ function parseTrkField(blob, field) {
   // pares chave:valor ou chave=valor separados por | ; , &
   const m = s.match(new RegExp(field + '[:=]([^|;,&]+)'))
   return m ? m[1].trim() : null
+}
+
+/* ── xcod da Hotmart: o único campo que sobra pra campanha ──────────────────
+ * A Hotmart devolve no webhook APENAS src/sck/xcod — os utm_* que vão na URL do
+ * checkout não voltam. E ela corta src/sck em 255 chars (medido no payload real:
+ * o blob de 410 chegou com 255), e o fbc sozinho já come 188. Ou seja: fbc/fbp
+ * ocupam src/sck, e a campanha só cabe no xcod.
+ *
+ * O uploader (src/modules/uploader/types.ts → UTM_XCOD) já monta o xcod assim:
+ *   FB <sep> {{campaign.name}}|{{campaign.id}} <sep> {{adset.name}}|{{adset.id}}
+ *      <sep> {{ad.name}}|{{ad.id}} <sep> {{placement}}
+ * O separador é alfanumérico de propósito: a Hotmart come caracteres especiais.
+ * Aqui a gente desmonta de volta em utm_source/campaign/medium/content/term. */
+const XCOD_SEP = 'hQwK21wXxR'
+
+function parseXcod(v) {
+  const empty = { source: null, campaign: null, medium: null, content: null, term: null }
+  if (!v) return empty
+  const s = String(v)
+  // blob de fbc/fbp não é xcod de campanha — não tenta interpretar
+  if (/fb[cp]:/.test(s)) return empty
+  const parts = s.split(new RegExp(XCOD_SEP, 'i')).map((x) => x.trim())
+  if (parts.length < 2) return empty          // sem separador = não é o nosso formato
+  const at = (i) => (parts[i] && parts[i] !== '' ? parts[i] : null)
+  return { source: at(0), campaign: at(1), medium: at(2), content: at(3), term: at(4) }
 }
 
 // procura fbclid em URL (?fbclid=) ou string solta
@@ -231,6 +268,41 @@ function stateFromDDD(phone) {
   return map[ddd] || null
 }
 
+/**
+ * Chave estável para CARRINHO ABANDONADO da Kirvano.
+ *
+ * O payload de ABANDONED_CART vem com `checkout_id: null` e SEM `sale_id`/`id`.
+ * Como `checkout_id` é UNIQUE na tabela, todos caíam no mesmo `''` e se
+ * sobrescreviam: 77 abandonos em 3 dias viraram 1 linha só, e a recuperação
+ * nunca teve com quem falar.
+ *
+ * Chave sintética = slug do checkout + e-mail → 1 linha por pessoa por oferta
+ * (quem abandona 3x o mesmo checkout atualiza a mesma linha, que é o que a
+ * recuperação quer: uma cadência por pessoa, não três).
+ *
+ * ⚠ Não linka com a venda futura: quando a pessoa compra, a Kirvano manda um
+ * checkout_id de verdade e nasce OUTRA linha. Por isso o recover.js precisa
+ * checar por e-mail se já comprou antes de disparar.
+ */
+/* A Kirvano manda `checkout_id` como a STRING "null" no carrinho abandonado —
+ * não como nulo. Isso engana qualquer `a || b`: o campo parece preenchido, e o
+ * pedido acabava gravado com checkout_id "null". Como a coluna é UNIQUE, TODOS
+ * os abandonos viravam a mesma linha, atualizada infinitas vezes. */
+function realId(v) {
+  const s = String(v ?? '').trim()
+  return s && s !== 'null' && s !== 'undefined' && s !== 'NULL' ? s : null
+}
+function abandonedKey(body, email) {
+  const slug =
+    String(body.checkout_url || '')
+      .split('?')[0]
+      .split('/')
+      .filter(Boolean)
+      .pop() || 'sem-checkout'
+  const who = String(email || body.contactEmail || '').toLowerCase().trim()
+  return `ab:${slug}:${who || 'ip:' + (body.ip || 'x')}`
+}
+
 /** Normaliza o payload de cada gateway num pedido comum. */
 function parseOrder(gateway, body) {
   if (gateway === 'kirvano') {
@@ -244,6 +316,9 @@ function parseOrder(gateway, body) {
     const phone = c.phone_number || c.phone
     // IP real do comprador (Kirvano manda body.ip)
     const buyerIp = body.ip || null
+    // UA do NAVEGADOR do comprador, se a Kirvano mandar (nunca o UA do request,
+    // que é o do robô dela). Ausente = campo omitido no CAPI, que é o certo.
+    const buyerUa = body.user_agent || body.userAgent || cookies.user_agent || null
 
     // event_source_url: a Kirvano não manda checkout_url no payload de venda,
     // mas dá pra montar do offer_id (URL real da oferta) — melhor que vazio.
@@ -274,8 +349,14 @@ function parseOrder(gateway, body) {
       abandoned: status === 'ABANDONED',
       offerId: offerId || null,
       productId: main.id ? String(main.id) : null,
-      checkoutId: body.checkout_id || body.sale_id || body.id,
-      saleId: body.sale_id || null,
+      // abandono não traz id utilizável → chave sintética (ver abandonedKey).
+      // realId() é obrigatório aqui: sem ele a string "null" passa como id válido.
+      checkoutId:
+        realId(body.checkout_id) ||
+        realId(body.sale_id) ||
+        realId(body.id) ||
+        (status === 'ABANDONED' ? abandonedKey(body, c.email) : null),
+      saleId: realId(body.sale_id),
       value: toNumber(body.total_price ?? body.amount ?? body.value),
       product: main.name || body.product_name || 'Produto',
       products,
@@ -285,6 +366,7 @@ function parseOrder(gateway, body) {
       phone,
       doc: c.document,
       buyerIp,
+      buyerUa,
       // geo — Kirvano manda address (city/state podem ser null, fallback p/ DDD)
       city: addr.city || c.city || null,
       state: addr.state || c.state || stateFromDDD(phone),
@@ -361,6 +443,7 @@ function parseOrder(gateway, body) {
       phone,
       doc: c.CPF || c.cpf || null,
       buyerIp: c.ip || null,
+      buyerUa: trk.user_agent || body.user_agent || null,
       city: c.city || null,
       state: c.state || stateFromDDD(phone),
       zip: c.zipcode || c.zip || null,
@@ -413,10 +496,15 @@ function parseOrder(gateway, body) {
     const fbpRaw = origin.fbp || parseTrkField(trkBlob, 'fbp') || null
     const fbclid = findFbclid(origin.fbclid, parseTrkField(trkBlob, 'fbclid'))
     const fbc = buildFbc({ rawFbc: fbcRaw, fbclid, createdAt: body.creation_date })
-    // se sck/xcod carregam o blob de fbc/fbp (fbtrack.js empurrou), não usar como
-    // nome de campanha — pega o utm_campaign real. Senão, sck/xcod É a campanha.
     const trkHasFb = /fb[cp]:/.test(trkBlob)
-    const campaign = origin.utm_campaign || (trkHasFb ? null : (origin.xcod || origin.sck)) || null
+    // campanha: vem do xcod montado pelo uploader (ver parseXcod). Tenta xcod
+    // primeiro, depois sck/src — quem tiver o separador ganha.
+    const xc = [origin.xcod, origin.sck, origin.src]
+      .map(parseXcod).find((x) => x.campaign) || parseXcod(null)
+    // fallback: xcod/sck sem o nosso separador = string livre que o próprio
+    // anunciante pôs lá; ainda é melhor que nada como nome de campanha.
+    const campaignCru = trkHasFb ? null : (origin.xcod || origin.sck)
+    const campaign = origin.utm_campaign || xc.campaign || campaignCru || null
 
     return {
       gateway,
@@ -438,17 +526,20 @@ function parseOrder(gateway, body) {
       email: buyer.email,
       phone: buyer.checkout_phone || buyer.phone || null,
       doc: buyer.document || null,                 // Hotmart costuma mandar "" → vira null
+      // A Hotmart NÃO manda IP nem user-agent do comprador em nenhum campo do
+      // payload 2.0.0 — ficam null de propósito, e o CAPI omite os dois.
       buyerIp: d.ip || buyer.ip || null,
+      buyerUa: null,
       city: addr.city || null,                     // costuma vir "" → null
       state: addr.state || null,
       zip: addr.zipcode || addr.zip_code || null,  // costuma vir "" → null
       country: iso,
       currency: (price.currency_value || '').toUpperCase() || null,
-      utmSource: trkHasFb ? (origin.utm_source || 'FB') : (origin.src || null),
-      utmMedium: origin.utm_medium || null,
+      utmSource: origin.utm_source || xc.source || (trkHasFb ? 'FB' : origin.src) || null,
+      utmMedium: origin.utm_medium || xc.medium || null,
       utmCampaign: campaign,
-      utmContent: origin.utm_content || null,
-      utmTerm: origin.utm_term || null,
+      utmContent: origin.utm_content || xc.content || null,
+      utmTerm: origin.utm_term || xc.term || null,
       checkoutUrl: offer.code ? `https://pay.hotmart.com/${offer.code}` : null,
       fbc,
       fbp: fbpRaw && /^fb\.1\./.test(fbpRaw) ? fbpRaw : (fbpRaw ? `fb.1.${Date.now()}.${fbpRaw}` : null),
@@ -570,9 +661,14 @@ async function sendCAPI(o, req, route, eventName) {
   const numItems = o.products?.length || 1
   const totalValue = o.value || contents.reduce((s, c) => s + (c.item_price * c.quantity), 0)
 
-  // IP real do comprador vem no body.ip (Kirvano); fallback para header do request
-  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
-  const clientUa = req.headers['user-agent'] || null
+  // IP/UA do COMPRADOR — nunca do request. Quem faz este POST é o robô do gateway,
+  // então x-forwarded-for é o servidor dele (Hotmart: 54.167.x.x na AWS/Virgínia) e
+  // user-agent é "Jodd HTTP". Mandar isso pro Meta é pior que não mandar: o IP diz
+  // que um comprador mexicano estava nos EUA (briga com o `country` hasheado) e o UA
+  // não é de navegador. O Meta manda omitir quando não se tem o valor real do browser.
+  // Kirvano manda body.ip (comprador de verdade); Hotmart não manda IP nenhum.
+  const clientIp = o.buyerIp || null
+  const clientUa = o.buyerUa || null
 
   const isPurchase = eventName === 'Purchase'
 
@@ -687,8 +783,9 @@ async function sendTikTok(o, req) {
   if (!token || !pixelCode) return false
 
   const iso = isoCountry(o.country)
-  const clientIp = o.buyerIp || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || null
-  const clientUa = req.headers['user-agent'] || null
+  // mesma regra do CAPI: só o IP/UA real do comprador (ver comentário no sendCAPI)
+  const clientIp = o.buyerIp || null
+  const clientUa = o.buyerUa || null
   const currency = o.currency || currencyOf(iso)
   const value = o.value || 0
 
@@ -752,21 +849,159 @@ function sbHeaders(key, extra = {}) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...extra }
 }
 
+/* ── conversão pra BRL ────────────────────────────────────────────────────────
+ * Rodando LATAM, cada venda chega na moeda do país do comprador. O painel
+ * (dashboard, ROAS, financeiro) soma `value` CRU, sem olhar a moeda — então
+ * 3 vendas de 17 PAB + 274 MXN + 62.089 PYG (~R$218 de verdade) apareciam como
+ * "R$ 62.380". A venda paraguaia sozinha respondia por 99,5% do número.
+ *
+ * Correção na ENTRADA, não na leitura: `value` passa a ser sempre BRL e todo o
+ * resto do sistema (8 somas no realbuild, ROAS, financeiro, mobile, briefing,
+ * Melodify) fica certo sem tocar em nada. O valor original fica em `value_orig`
+ * + `currency`, e o payload cru continua em `raw`.
+ *
+ * ⚠ O CAPI NÃO usa isto: o Meta tem que receber o valor e a moeda ORIGINAIS
+ * (ele converte com a taxa dele). Por isso a conversão vive só no upsertOrder.
+ *
+ * Unidades por 1 USD. Ajustáveis sem deploy pela chave `fx_rates` do app_state
+ * (ex.: {"ARS": 1500}) — o ARS especialmente derrete rápido. */
+const USD_PER = {
+  USD: 1, PAB: 1,          // balboa é atrelado 1:1 ao dólar
+  EUR: 0.92, GBP: 0.79,
+  MXN: 18.5, PYG: 7300, ARS: 1400, COP: 4000, CLP: 950,
+  PEN: 3.7, UYU: 40, BOB: 6.9, CRC: 510, GTQ: 7.7,
+  DOP: 60, HNL: 25, NIO: 37, VES: 50,
+}
+
+/** Lê a taxa USD→BRL da MESMA config que o Monitor usa (app_state.meta_settings.fx,
+ *  padrão 5.4) + overrides de `fx_rates`. Um botão só pro sistema inteiro. */
+async function loadFx() {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  const out = { usdBrl: 5.4, perUsd: { ...USD_PER } }
+  if (!url || !key) return out
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/app_state?key=in.(meta_settings,fx_rates)&select=key,value`,
+      { headers: sbHeaders(key) },
+    )
+    const rows = await r.json()
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (row.key === 'meta_settings' && +row.value?.fx > 0) out.usdBrl = +row.value.fx
+      if (row.key === 'fx_rates' && row.value && typeof row.value === 'object') {
+        for (const [c, v] of Object.entries(row.value)) if (+v > 0) out.perUsd[String(c).toUpperCase()] = +v
+      }
+    }
+  } catch { /* usa os padrões */ }
+  return out
+}
+
+/* A Hotmart manda a PRÓPRIA taxa de câmbio dela em cada venda internacional,
+ * dentro de commissions[].currency_conversion. Usar essa taxa em vez da nossa
+ * tabela elimina o erro de spread: a nossa media (5,40 USD→BRL) estava 6% acima
+ * da que ela realmente aplica (5,0805), inflando o faturamento LATAM.
+ *
+ * O bruto em BRL = soma de TODAS as comissoes (a parte dela + a sua) na moeda
+ * base, vezes a taxa dela. Conferido nas 3 primeiras vendas reais: esse bruto,
+ * menos as taxas cadastradas na aba Taxas (9,9% + US$0,10), da exatamente o
+ * liquido que ela credita — R$67,99 calculado contra R$68,03 real.
+ *
+ * Devolve TAMBEM a taxa real da venda: tudo que NAO foi pro produtor (comissao
+ * da Hotmart + afiliado + coprodutor, se houver). Assim o painel para de
+ * depender do "9,9%" cadastrado na aba Taxas ficar atualizado — se a Hotmart
+ * reclassificar por volume, ou entrar um afiliado dividindo a venda, o numero
+ * certo ja vem no proprio webhook.
+ *
+ * Devolve null quando nao da pra confiar (sem comissoes, sem a parte do
+ * produtor, ou moedas misturadas) — aí cai na tabela de cambio + % da aba Taxas. */
+function hotmartMoney(body) {
+  const com = body?.data?.commissions
+  if (!Array.isArray(com) || !com.length) return null
+  const conv = com.find(
+    (c) => c?.currency_conversion?.converted_to_currency === 'BRL' && +c.currency_conversion.conversion_rate > 0,
+  )
+  const base = conv ? conv.currency_value : com[0]?.currency_value
+  // venda internacional: taxa que a propria Hotmart aplicou. Venda ja em BRL: 1.
+  const rate = conv
+    ? +conv.currency_conversion.conversion_rate
+    : (String(base || '').toUpperCase() === 'BRL' ? 1 : null)
+  if (!rate) return null
+  let total = 0
+  let produtor = 0
+  for (const c of com) {
+    if (c?.currency_value !== base) return null  // moedas misturadas: nao arrisca
+    const v = +c.value || 0
+    total += v
+    if (String(c.source || '').toUpperCase() === 'PRODUCER') produtor += v
+  }
+  // sem a parte do produtor nao da pra separar o que e taxa
+  if (!(total > 0) || !(produtor > 0)) return null
+  const r2 = (n) => Math.round(n * 100) / 100
+  return { grossBRL: r2(total * rate), feeBRL: r2((total - produtor) * rate) }
+}
+
+/** valor na moeda do comprador → BRL. Moeda desconhecida: devolve null (não
+ *  chuta uma taxa; melhor gravar o original e o log avisar do que inventar). */
+function toBRL(value, currency, fx) {
+  const v = typeof value === 'number' ? value : toNumber(value)
+  if (!v) return 0
+  const cur = String(currency || 'BRL').toUpperCase()
+  if (cur === 'BRL') return v
+  const per = fx.perUsd[cur]
+  if (!per || per <= 0) return null
+  return Math.round((v / per) * fx.usdBrl * 100) / 100
+}
+
 async function upsertOrder(o, capiOk) {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return
 
+  // Sem checkout_id, `String(undefined || '')` vira '' — e como a coluna é UNIQUE,
+  // TODOS os pedidos sem id colidem numa linha só, sobrescrevendo uns aos outros
+  // silenciosamente. Melhor gritar no log do que fingir que gravou.
+  // realId() e não `|| ''`: o gateway manda a string "null", que passaria batido
+  // e colidiria com todos os outros pedidos sem id na coluna UNIQUE.
+  const cid = realId(o.checkoutId)
+  if (!cid) {
+    await logHit({
+      gateway: o.gateway, event: o.event, status: o.status, ok: false,
+      http_status: 0, secret_ok: true, capi_ok: capiOk,
+      message: `PEDIDO SEM checkout_id — não gravado (colidiria com os outros sem id)`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {})
+    return
+  }
+
+  // moeda real do pedido (a que o gateway mandou, senão deriva do país)
+  const moeda = o.currency || currencyOf(isoCountry(o.country))
+  // `value` é BRL SEMPRE — é o que o painel inteiro soma. O original fica ao lado.
+  // Prioridade: taxa da PRÓPRIA Hotmart (exata, por transação) → nossa tabela.
+  const hm = o.gateway === 'hotmart' ? hotmartMoney(o.raw) : null
+  const fx = hm ? null : await loadFx()
+  const brl = hm ? hm.grossBRL : toBRL(o.value, moeda, fx)
+  if (brl === null) {
+    await logHit({
+      gateway: o.gateway, event: o.event, status: o.status, ok: false,
+      http_status: 0, secret_ok: true, capi_ok: capiOk,
+      message: `MOEDA SEM TAXA: ${moeda} — valor gravado como veio (${o.value}). ` +
+               `Cadastre a taxa em app_state.fx_rates: {"${moeda}": <unidades por 1 USD>}`,
+      created_at: new Date().toISOString(),
+    }).catch(() => {})
+  }
+
   const row = {
-    checkout_id: String(o.checkoutId || ''),
+    checkout_id: cid,
     sale_id: o.saleId ? String(o.saleId) : null,
     gateway: o.gateway || null, // de onde veio a venda (kirvano/kiwify/hotmart)
     event: o.event,
     status: o.status,
-    value: o.value,
-    // moeda real do pedido (a que o gateway mandou, senão deriva do país) — antes
-    // gravava 'BRL' fixo, o que distorcia pedidos PT/CL/ES no Financeiro.
-    currency: o.currency || currencyOf(isoCountry(o.country)),
+    value: brl === null ? o.value : brl,
+    value_orig: o.value,          // quanto o comprador pagou, na moeda dele
+    currency: moeda,              // ...e qual era a moeda
+    // taxa REAL desta venda, quando o gateway informa. NULL = painel usa o % da
+    // aba Taxas (Kirvano/Kiwify nao mandam a comissao no webhook).
+    fee_gateway: hm ? hm.feeBRL : null,
     product: o.product,
     products: o.products?.length ? o.products : null,
     payment_method: o.paymentMethod,
@@ -877,7 +1112,14 @@ export default async function handler(req, res) {
   // fire_on_pix (opcional): em mercado Pix-pesado, conta Pix gerado já como Purchase.
   let eventsToSend = []
   if (o.approved) {
-    eventsToSend = ['Purchase']
+    // Quem comprou TAMBEM passou pelo checkout e pelo pagamento. Mandando só
+    // Purchase, o funil do Meta ficava com MENOS InitiateCheckout do que compras
+    // (STL, 14d: 503 IC para 590 compras — impossivel na realidade), e o
+    // algoritmo otimizava o meio do funil com dado furado.
+    // Sem risco de duplicar: o event_id de IC/AddPaymentInfo e
+    // `${nome}_${checkout_id}`, entao se o carrinho ja disparou como PENDING o
+    // Meta dedupa por (nome + event_id).
+    eventsToSend = ['InitiateCheckout', 'AddPaymentInfo', 'Purchase']
   } else if (route?.fireOnPix && o.status === 'PENDING') {
     eventsToSend = ['Purchase']
   } else if (o.status === 'PENDING' || o.status === 'REFUSED') {
@@ -885,6 +1127,23 @@ export default async function handler(req, res) {
   } else if (o.status === 'EXPIRED' || o.status === 'ABANDONED') {
     eventsToSend = ['InitiateCheckout']
   }
+
+  // ── eventos que NÃO são do ciclo de compra ────────────────────────────────
+  // A Hotmart manda avisos de área de membros, assinatura e logística pelo MESMO
+  // webhook. Eles não têm funil, mas caíam no `return s || 'PENDING'` do
+  // canonicalStatus e viravam InitiateCheckout+AddPaymentInfo:
+  //   CLUB_FIRST_ACCESS     → dispara quando o cliente ABRE a área de membros
+  //   CLUB_MODULE_COMPLETED → quando ele termina um módulo
+  //   SWITCH_PLAN / UPDATE_SUBSCRIPTION_CHARGE_DATE → mexidas na assinatura
+  //   ORDER_FULFILLMENT     → dados logísticos; vem com purchase.status=APPROVED
+  //                           e chegava a virar um segundo Purchase
+  // No teste de configuração eles passaram batido só porque não tinham oferta
+  // casada; numa venda real vêm com o offer code certo e sujariam o funil a cada
+  // login do cliente. Continuam sendo GRAVADOS (o painel quer o dado) — só não
+  // viram evento de anúncio.
+  const NAO_COMPRA = /^(CLUB_|SWITCH_PLAN|UPDATE_SUBSCRIPTION|ORDER_FULFILLMENT|SUBSCRIPTION_)/
+  const ehNaoCompra = NAO_COMPRA.test(String(o.event || '').toUpperCase())
+  if (ehNaoCompra) eventsToSend = []
 
   // Sem rota de pixel pra esta oferta → NÃO envia (não contamina pixel errado).
   const hasRoute = !!(route && route.pixelId && route.token)
@@ -904,7 +1163,10 @@ export default async function handler(req, res) {
 
   const eventLabel = eventsToSend.length ? eventsToSend.join('+') : o.status
   let message
-  if (!eventsToSend.length) {
+  if (ehNaoCompra) {
+    // deixa explícito no painel que foi ignorado de propósito, e não por falta de rota
+    message = `registrado (${o.event}) — fora do ciclo de compra, nao vira evento de anuncio`
+  } else if (!eventsToSend.length) {
     message = `registrado (${o.status})`
   } else if (!hasRoute) {
     // tem evento pra mandar mas NENHUMA rota casou → pulado de propósito

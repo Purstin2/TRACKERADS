@@ -59,10 +59,15 @@ async function metaToday(req, res) {
     const results = await Promise.all(
       accounts.map(async (acc) => {
         try {
-          const r = await fetch(
-            `https://graph.facebook.com/v22.0/act_${acc.id}/insights` +
-              `?date_preset=today&fields=spend,impressions,clicks&level=account&access_token=${token}`,
-          )
+          // aceita periodo (o app agora tem seletor); sem parametro = hoje,
+          // que era o comportamento fixo de antes
+          const per = new URLSearchParams({
+            ...periodoDaQuery(req.query),
+            fields: 'spend,impressions,clicks',
+            level: 'account',
+            access_token: token,
+          })
+          const r = await fetch(`https://graph.facebook.com/v22.0/act_${acc.id}/insights?${per}`)
           const j = await r.json()
           const row = Array.isArray(j.data) ? j.data[0] : null
           if (!row) return { spend: 0, impressions: 0, clicks: 0 }
@@ -243,13 +248,283 @@ async function recupEmail(req, res) {
   return res.json({ ok: true, dias, campanhas: lista })
 }
 
+/* ── CAMPANHAS no celular (mesma leitura do Monitor do desktop) ───────────────
+ * Token e lista de contas moram no servidor (app_state), então o celular não
+ * precisa colar token — funciona em qualquer aparelho, e o token não trafega
+ * pro browser.
+ *   GET  /api/mobile?fn=camps&preset=last_7d&status=active[&acc=<id>]
+ *   POST /api/mobile?fn=camp-action   body { id, status: 'ACTIVE'|'PAUSED' }
+ */
+const ATYPES = ['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase']
+const findVal = (arr, keys) => {
+  if (!Array.isArray(arr)) return null
+  const i = arr.find((a) => keys.includes(a.action_type))
+  return i ? parseFloat(i.value) : null
+}
+// janelas iguais às do desktop (src/lib/meta.ts): last_Nd exclui hoje.
+// O Graph não tem last_4d nem "anteontem" → viram time_range.
+const DIA_RE = /^\d{4}-\d{2}-\d{2}$/
+function campDateParams(preset, since, until) {
+  const fmt = (d) => d.toISOString().split('T')[0]
+  // periodo personalizado escolhido no celular (datas ja no dia BR)
+  if (preset === 'custom') {
+    if (DIA_RE.test(since || '') && DIA_RE.test(until || '')) {
+      const [a, b] = since <= until ? [since, until] : [until, since]
+      return { time_range: JSON.stringify({ since: a, until: b }) }
+    }
+    // datas invalidas: NAO deixa vazar "date_preset=custom", que o Meta nao
+    // conhece e derruba a chamada inteira com erro 100
+    return { date_preset: 'today' }
+  }
+  if (preset === 'day_before_yesterday') {
+    const d = new Date(); d.setDate(d.getDate() - 2)
+    return { time_range: JSON.stringify({ since: fmt(d), until: fmt(d) }) }
+  }
+  const NATIVE = ['last_3d', 'last_7d', 'last_14d', 'last_28d', 'last_30d', 'last_90d']
+  const m = /^last_(\d+)d$/.exec(preset || '')
+  if (m && !NATIVE.includes(preset)) {
+    const n = parseInt(m[1], 10)
+    const until2 = new Date(); until2.setDate(until2.getDate() - 1)
+    const since2 = new Date(); since2.setDate(since2.getDate() - n)
+    return { time_range: JSON.stringify({ since: fmt(since2), until: fmt(until2) }) }
+  }
+  return { date_preset: preset || 'today' }
+}
+/** le preset/since/until da query — usado pelo camps e pelo meta-today */
+const periodoDaQuery = (q) =>
+  campDateParams(String(q.preset || 'today'), String(q.since || ''), String(q.until || ''))
+const CAMP_STATUS = {
+  active: ['ACTIVE'],
+  active_paused: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES'],
+  all: ['ACTIVE', 'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES', 'ARCHIVED', 'DELETED'],
+}
+const GRAPH = 'https://graph.facebook.com/v22.0'
+
+async function metaCtx(res) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) { res.json({ ok: false, reason: 'supabase não configurado' }); return null }
+  const token = await stateGet(url, key, 'meta_tok')
+  const accounts = (await stateGet(url, key, 'monitor_accounts_v1')) || []
+  const s = (await stateGet(url, key, 'meta_settings')) || {}
+  if (!token || !Array.isArray(accounts) || !accounts.length) {
+    res.json({ ok: false, reason: 'abra o Monitor no desktop uma vez (sincroniza token/contas)' })
+    return null
+  }
+  return { token, accounts, fx: +s.fx || 5.4, roasGood: +s.roasGood || 2, roasBe: +s.roasBe || 1.25, cpaMax: +s.cpaMax || 12 }
+}
+
+async function camps(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const { token, accounts, fx } = ctx
+  const preset = String(req.query.preset || 'last_7d')
+  const statuses = CAMP_STATUS[String(req.query.status || 'active')] || CAMP_STATUS.active
+  const only = String(req.query.acc || '').trim()
+  const alvo = only ? accounts.filter((a) => String(a.id) === only) : accounts
+
+  const porConta = await Promise.all(alvo.map(async (acc) => {
+    try {
+      const p = new URLSearchParams({
+        level: 'campaign',
+        fields: 'campaign_id,campaign_name,spend,purchase_roas,cost_per_action_type,actions,frequency',
+        ...periodoDaQuery(req.query),
+        filtering: JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN', value: statuses }]),
+        access_token: token, limit: '300',
+      })
+      const pm2 = new URLSearchParams({
+        fields: 'id,name,daily_budget,lifetime_budget,effective_status',
+        limit: '300', access_token: token,
+      })
+      const [ins, met] = await Promise.all([
+        fetch(`${GRAPH}/act_${acc.id}/insights?${p}`).then((r) => r.json()),
+        fetch(`${GRAPH}/act_${acc.id}/campaigns?${pm2}`).then((r) => r.json()),
+      ])
+      if (ins.error) return { erro: `${acc.name}: ${ins.error.message}` }
+      const meta = {}
+      for (const c of (met.data || [])) {
+        meta[c.id] = {
+          budget: c.daily_budget ? parseInt(c.daily_budget, 10) / 100 : c.lifetime_budget ? parseInt(c.lifetime_budget, 10) / 100 : null,
+          status: c.effective_status,
+        }
+      }
+      const mult = acc.cur === 'USD' ? fx : 1 // tudo em BRL, como o resto do app
+      return {
+        rows: (ins.data || []).map((r) => {
+          const spend = (parseFloat(r.spend) || 0) * mult
+          const roas = findVal(r.purchase_roas, ATYPES)
+          const cpa = findVal(r.cost_per_action_type, ATYPES)
+          const sales = Math.round(findVal(r.actions, ATYPES) || 0)
+          const md = meta[r.campaign_id] || {}
+          return {
+            id: r.campaign_id, name: r.campaign_name || '',
+            accId: acc.id, accName: acc.name,
+            spend: +spend.toFixed(2), roas, sales,
+            // gasto na MOEDA DA CONTA (sem converter) + qual e ela. O tracker do
+            // aumento compara a foto do momento com o dia inteiro vindo do
+            // camp-daily, que responde na moeda da conta — misturar com o valor
+            // ja convertido pra BRL daria diferenca de ~5x na conta do lucro.
+            spendRaw: +(parseFloat(r.spend) || 0).toFixed(2),
+            cur: acc.cur || 'USD',
+            cpa: cpa == null ? null : +(cpa * mult).toFixed(2),
+            revenue: roas != null ? +(roas * spend).toFixed(2) : 0,
+            freq: parseFloat(r.frequency || '0') || 0,
+            budget: md.budget == null ? null : +(md.budget * mult).toFixed(2),
+            status: md.status || null,
+          }
+        }),
+      }
+    } catch (e) { return { erro: `${acc.name}: ${e.message}` } }
+  }))
+
+  const rows = porConta.flatMap((x) => x.rows || [])
+  const erros = porConta.map((x) => x.erro).filter(Boolean)
+  rows.sort((a, b) => b.spend - a.spend)
+  return res.json({
+    ok: true, preset, rows, erros,
+    contas: accounts.map((a) => ({ id: a.id, name: a.name })),
+    params: { roasGood: ctx.roasGood, roasBe: ctx.roasBe, cpaMax: ctx.cpaMax, fx },
+  })
+}
+
+async function campAction(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+  const id = String(body.id || '').trim()
+  const status = String(body.status || '').toUpperCase()
+  if (!id || !['ACTIVE', 'PAUSED'].includes(status)) {
+    return res.status(400).json({ ok: false, error: 'informe id e status ACTIVE|PAUSED' })
+  }
+  try {
+    const r = await fetch(`${GRAPH}/${id}`, {
+      method: 'POST',
+      body: new URLSearchParams({ status, access_token: ctx.token }),
+    })
+    const j = await r.json()
+    if (j.error) return res.json({ ok: false, error: j.error.message })
+    // relê o status de verdade: a resposta do POST diz "success" mesmo quando a
+    // Meta aplica algo diferente do pedido — quem manda é o effective_status.
+    let real = null
+    try {
+      const v = await (await fetch(`${GRAPH}/${id}?fields=effective_status&access_token=${ctx.token}`)).json()
+      real = v.effective_status || null
+    } catch {}
+    return res.json({ ok: true, pedido: status, effective_status: real })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
+/* Orçamento de UMA campanha — CBO (verba na campanha) ou ABO (verba nos
+ * conjuntos). GET lê o atual; POST aplica. Em ABO o fator é rateado entre os
+ * conjuntos ativos, igual ao desktop.
+ *   GET  /api/mobile?fn=camp-budget&id=<campId>
+ *   POST /api/mobile?fn=camp-budget   { id, novoTotal }   (novoTotal na moeda da conta) */
+async function campBudget(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const t = ctx.token
+  const id = String((req.query.id || (req.body && req.body.id) || '')).trim()
+  if (!id) return res.status(400).json({ ok: false, error: 'informe o id da campanha' })
+
+  async function ler() {
+    const j = await (await fetch(`${GRAPH}/${id}?fields=daily_budget,lifetime_budget,name,status&access_token=${t}`)).json()
+    if (j.error) throw new Error(j.error.message)
+    if (j.daily_budget) {
+      return { nivel: 'CBO', itens: [{ id, daily: parseInt(j.daily_budget, 10), name: j.name }], total: parseInt(j.daily_budget, 10) }
+    }
+    const p = new URLSearchParams({ fields: 'daily_budget,name,status,effective_status', access_token: t, limit: '100' })
+    const a = await (await fetch(`${GRAPH}/${id}/adsets?${p}`)).json()
+    if (a.error) throw new Error(a.error.message)
+    const itens = (a.data || [])
+      .filter((x) => x.effective_status === 'ACTIVE' && x.daily_budget)
+      .map((x) => ({ id: x.id, daily: parseInt(x.daily_budget, 10), name: x.name }))
+    return { nivel: 'ABO', itens, total: itens.reduce((s, i) => s + i.daily, 0) }
+  }
+
+  try {
+    if (req.method !== 'POST') {
+      const info = await ler()
+      return res.json({ ok: true, ...info, totalMoeda: +(info.total / 100).toFixed(2) })
+    }
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+    const novoTotal = parseFloat(body.novoTotal)
+    if (!(novoTotal > 0)) return res.status(400).json({ ok: false, error: 'novoTotal inválido' })
+    const info = await ler()
+    if (!info.itens.length) return res.json({ ok: false, error: 'nenhum conjunto ativo com orçamento diário' })
+    const atual = info.total / 100
+    const fator = atual > 0 ? novoTotal / atual : 1
+    const erros = []
+    for (const it of info.itens) {
+      const alvo = info.itens.length === 1 ? Math.round(novoTotal * 100) : Math.round(it.daily * fator)
+      const r = await fetch(`${GRAPH}/${it.id}`, { method: 'POST', body: new URLSearchParams({ daily_budget: String(alvo), access_token: t }) })
+      const j = await r.json()
+      if (j.error) erros.push(`${it.name}: ${j.error.message}`)
+    }
+    // confirma relendo — e avisa se a Meta pausou junto (já aconteceu em 24/07)
+    const depois = await ler()
+    let status = null
+    try {
+      const v = await (await fetch(`${GRAPH}/${id}?fields=effective_status&access_token=${t}`)).json()
+      status = v.effective_status || null
+    } catch {}
+    return res.json({
+      ok: erros.length === 0, erros,
+      antes: +atual.toFixed(2), depois: +(depois.total / 100).toFixed(2),
+      nivel: depois.nivel, effective_status: status,
+    })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
+/* Dia a dia de UMA campanha (padrão 7 dias) — o "histórico" de performance. */
+async function campDaily(req, res) {
+  const ctx = await metaCtx(res)
+  if (!ctx) return
+  const id = String(req.query.id || '').trim()
+  const dias = Math.min(30, Math.max(2, parseInt(req.query.dias || '7', 10) || 7))
+  if (!id) return res.status(400).json({ ok: false, error: 'informe o id' })
+  const fmt = (d) => d.toISOString().split('T')[0]
+  const until = new Date()
+  const since = new Date(); since.setDate(since.getDate() - (dias - 1))
+  try {
+    const p = new URLSearchParams({
+      level: 'campaign',
+      fields: 'spend,purchase_roas,cost_per_action_type,actions,date_start',
+      time_range: JSON.stringify({ since: fmt(since), until: fmt(until) }),
+      time_increment: '1',
+      filtering: JSON.stringify([{ field: 'campaign.id', operator: 'EQUAL', value: id }]),
+      access_token: ctx.token, limit: '60',
+    })
+    const j = await (await fetch(`${GRAPH}/act_${req.query.acc}/insights?${p}`)).json()
+    if (j.error) return res.json({ ok: false, error: j.error.message })
+    const dd = (j.data || []).map((r) => ({
+      dia: r.date_start,
+      spend: +(parseFloat(r.spend) || 0).toFixed(2),
+      roas: findVal(r.purchase_roas, ATYPES),
+      sales: Math.round(findVal(r.actions, ATYPES) || 0),
+      cpa: findVal(r.cost_per_action_type, ATYPES),
+    }))
+    return res.json({ ok: true, dias: dd })
+  } catch (e) {
+    return res.json({ ok: false, error: e.message })
+  }
+}
+
 export default async function handler(req, res) {
   if (!(await requireSession(req, res))) return
   const fn = String(req.query.fn || '')
+  if (fn === 'camps') return camps(req, res)
+  if (fn === 'camp-budget') return campBudget(req, res)
+  if (fn === 'camp-daily') return campDaily(req, res)
+  if (fn === 'camp-action') return campAction(req, res)
   if (fn === 'meta-today') return metaToday(req, res)
   if (fn === 'push-subscribe') return pushSubscribe(req, res)
   if (fn === 'limites') return limites(req, res)
   if (fn === 'recup-melodify') return recupMelodify(req, res)
   if (fn === 'recup-email') return recupEmail(req, res)
-  return res.status(400).json({ error: 'fn inválido (meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
+  return res.status(400).json({ error: 'fn inválido (camps | camp-action | meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
 }

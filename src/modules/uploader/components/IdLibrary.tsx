@@ -138,26 +138,28 @@ function IdLibraryModal({ onClose }: { onClose: () => void }) {
             <div className="py-6 text-center text-[12px] text-muted2">Nada salvo aqui ainda. Sincronize do Facebook ou adicione manualmente.</div>
           ) : (
             <div className="rounded-xl2 border border-border overflow-hidden">
-              <table className="w-full text-[12px]">
-                <tbody>
-                  {list.map((e) => (
-                    <tr key={e.id} className="border-b border-border/40 last:border-0">
-                      <td className="py-1.5 pl-3">
-                        <input
-                          defaultValue={e.name}
-                          onBlur={(ev) => ev.target.value.trim() !== e.name && upsertEntry(tab, { ...e, name: ev.target.value.trim() || e.id })}
-                          className="w-full bg-transparent font-semibold text-ink outline-none focus:border-b focus:border-brand"
-                        />
-                      </td>
-                      <td className="py-1.5 font-mono text-[11px] text-muted2">{e.id}</td>
-                      <td className="py-1.5 text-[10px] text-muted2">{e.note || ''}</td>
-                      <td className="py-1.5 pr-3 text-right">
-                        <button onClick={() => removeEntry(tab, e.id)} className="text-muted2 hover:text-danger" title="Remover"><Trash2 className="h-3.5 w-3.5" /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px]">
+                  <tbody>
+                    {list.map((e) => (
+                      <tr key={e.id} className="border-b border-border/40 last:border-0">
+                        <td className="py-1.5 pl-3">
+                          <input
+                            defaultValue={e.name}
+                            onBlur={(ev) => ev.target.value.trim() !== e.name && upsertEntry(tab, { ...e, name: ev.target.value.trim() || e.id })}
+                            className="w-full bg-transparent font-semibold text-ink outline-none focus:border-b focus:border-brand"
+                          />
+                        </td>
+                        <td className="py-1.5 font-mono text-[11px] text-muted2">{e.id}</td>
+                        <td className="py-1.5 text-[10px] text-muted2">{e.note || ''}</td>
+                        <td className="py-1.5 pr-3 text-right">
+                          <button onClick={() => removeEntry(tab, e.id)} className="text-muted2 hover:text-danger" title="Remover"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

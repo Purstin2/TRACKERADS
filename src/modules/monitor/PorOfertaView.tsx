@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, ExternalLink, RefreshCw, Plus, Pencil, X, Search } from 'lucide-react'
 import { fetchOffer, getRevenue, getSales, campUrl } from '@/lib/meta'
 import { useMonitor } from './MonitorContext'
 import { STATUS_FILTERS, DATE_OPTIONS, curSym, accName, trunc } from './config'
 import { toast } from '@/components/ui/toast'
+import { usePersistentState } from '@/lib/appState'
 
 interface CampMetric {
   key: string
@@ -22,18 +23,16 @@ interface OfferDef {
 }
 
 const DEFS_KEY = 'meta_oferta_defs'
-const loadDefs = (): OfferDef[] => {
-  try {
-    return JSON.parse(localStorage.getItem(DEFS_KEY) || '[]')
-  } catch {
-    return []
-  }
-}
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
 
 export default function PorOfertaView() {
   const m = useMonitor()
-  const [defs, setDefs] = useState<OfferDef[]>(loadDefs)
+  /* Antes isto vivia só no localStorage: agrupar 232 campanhas numa máquina e
+   * abrir noutra devolvia a tela vazia. Agora vai pro Supabase como o resto do
+   * app. A chave é a MESMA, e o usePersistentState lê o cache local primeiro —
+   * então o agrupamento que já existe na máquina sobe pro banco sozinho na
+   * primeira abertura, sem ninguém precisar refazer. */
+  const [defs, setDefs] = usePersistentState<OfferDef[]>(DEFS_KEY, [])
   const [period, setPeriod] = useState('last_7d')
   const [customSince, setCustomSince] = useState('')
   const [customUntil, setCustomUntil] = useState('')
@@ -45,10 +44,8 @@ export default function PorOfertaView() {
   const [editor, setEditor] = useState<{ id?: string; name: string; members: Set<string> } | null>(null)
   const [sortBy, setSortBy] = useState<'spend' | 'roas'>('spend')
 
-  const save = (d: OfferDef[]) => {
-    setDefs(d)
-    localStorage.setItem(DEFS_KEY, JSON.stringify(d))
-  }
+  // setDefs já grava no cache local E no Supabase (usePersistentState)
+  const save = (d: OfferDef[]) => setDefs(d)
 
   async function load() {
     if (!m.token.trim()) return alert('Cole o token.')
@@ -286,14 +283,36 @@ function OfferEditor({
   onSave: () => void
 }) {
   const [q, setQ] = useState('')
+  // âncora do último clique, por conta — base do Shift+clique (seleção em faixa).
+  // Guardado por conta pra que uma faixa nunca atravesse o cabeçalho de outra.
+  const ancora = useRef<Record<string, number>>({})
   const byAcc: Record<string, CampMetric[]> = {}
   allCamps.forEach((c) => (byAcc[c.accName] = byAcc[c.accName] || []).push(c))
-  const toggleMember = (key: string) => {
+  const ql = q.trim().toLowerCase()
+
+  const aplicar = (chaves: string[], ligar: boolean) => {
     const n = new Set(editor.members)
-    n.has(key) ? n.delete(key) : n.add(key)
+    chaves.forEach((k) => (ligar ? n.add(k) : n.delete(k)))
     onChange({ ...editor, members: n })
   }
-  const ql = q.trim().toLowerCase()
+  const toggleMember = (key: string) => aplicar([key], !editor.members.has(key))
+
+  /* Clique normal: liga/desliga uma.
+   * Shift+clique: aplica da âncora até aqui, repetindo o estado de destino
+   *   desta linha — igual a lista de arquivos do sistema. Sem isto, marcar 60
+   *   campanhas de uma oferta é 60 cliques. */
+  const clicar = (acc: string, vis: CampMetric[], idx: number, e: React.MouseEvent) => {
+    const alvo = vis[idx]
+    const ligar = !editor.members.has(alvo.key)
+    const a = ancora.current[acc]
+    if (e.shiftKey && a != null && a !== idx) {
+      const [ini, fim] = a < idx ? [a, idx] : [idx, a]
+      aplicar(vis.slice(ini, fim + 1).map((c) => c.key), ligar)
+    } else {
+      aplicar([alvo.key], ligar)
+    }
+    ancora.current[acc] = idx
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -316,17 +335,41 @@ function OfferEditor({
             </div>
             <span className="text-[11px] text-muted2">{editor.members.size} selecionadas</span>
           </div>
+          <div className="-mt-1 text-[10.5px] text-muted2">
+            Clique marca uma · <b className="text-muted">Shift+clique</b> marca da última até esta ·{' '}
+            <b className="text-muted">marcar todas</b> no cabeçalho da conta
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto rounded-[9px] border border-border p-1.5">
             {Object.entries(byAcc).map(([acc, camps]) => {
               const vis = camps.filter((c) => !ql || c.name.toLowerCase().includes(ql))
               if (!vis.length) return null
+              // "todas" olha só o que está VISÍVEL: com busca ativa, marcar todas
+              // deve marcar o resultado da busca, não a conta inteira escondida.
+              const marcadas = vis.filter((c) => editor.members.has(c.key)).length
+              const todas = marcadas === vis.length
               return (
                 <div key={acc}>
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted2">{acc}</div>
-                  {vis.map((c) => {
+                  <div className="sticky top-0 z-[1] flex items-center gap-2 bg-surface px-2 py-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-muted2">{acc}</span>
+                    <span className="text-[10px] text-muted2">
+                      {marcadas}/{vis.length}
+                    </span>
+                    <button
+                      onClick={() => aplicar(vis.map((c) => c.key), !todas)}
+                      className="ml-auto rounded-[5px] border border-border px-1.5 py-0.5 text-[10px] font-semibold text-muted2 hover:border-brand hover:text-brand-2"
+                      title={todas ? 'Desmarcar todas desta conta' : 'Marcar todas desta conta'}
+                    >
+                      {todas ? 'limpar' : ql ? 'marcar filtradas' : 'marcar todas'}
+                    </button>
+                  </div>
+                  {vis.map((c, i) => {
                     const on = editor.members.has(c.key)
                     return (
-                      <button key={c.key} onClick={() => toggleMember(c.key)} className={`flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] ${on ? 'bg-brand/10' : 'hover:bg-surface2'}`}>
+                      <button
+                        key={c.key}
+                        onClick={(e) => clicar(acc, vis, i, e)}
+                        className={`flex w-full select-none items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] ${on ? 'bg-brand/10' : 'hover:bg-surface2'}`}
+                      >
                         <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[9px] ${on ? 'border-brand bg-brand text-white' : 'border-border'}`}>{on ? '✓' : ''}</span>
                         <span className="flex-1 truncate" title={c.name}>
                           {c.name}

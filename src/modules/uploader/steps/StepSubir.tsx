@@ -155,64 +155,66 @@ export default function StepSubir({ onBack }: { onBack: () => void }) {
       <div className="mb-6 text-[13px] text-muted2">Confira o resumo antes de enviar</div>
 
       <Card title="Resumo" icon={<ClipboardList className="h-3.5 w-3.5" />}>
-        <table className="w-full border-collapse">
-          <tbody>
-            <Row k="Conta principal" v={form.ad_account} />
-            <Row k="Página" v={form.page_id} />
-            <Row k="Pixel" v={`${form.pixel_id} → ${form.pixel_event}`} />
-            <Row k="Tipo de orçamento" v={ctx.budgetType} />
-            <Row k="Budget" v={`$${(parseInt(form.budget || '0') / 100).toFixed(2)}/dia`} />
-            <Row
-              k="Países"
-              v={
-                <>
-                  {ctx.paises.join(', ')}{' '}
-                  <span className="text-muted">
-                    — no nome: <strong className="text-brand-2">{ctx.getPaisNome()}</strong>
-                  </span>
-                </>
-              }
-            />
-            <Row k="Início" v={form.start_dt || '—'} />
-            <Row k="Status inicial" v={form.status_inicial} />
-            <Row k="CTA" v={form.cta} />
-            <Row k="URL" v={<span className="break-all font-mono text-[11px]">{ctx.buildURL()}</span>} />
-            <Row
-              k="Criativos selecionados"
-              v={<strong className="text-brand-2">{nVideos} vídeo{nVideos !== 1 ? 's' : ''}</strong>}
-            />
-            {ctx.searchPlacementActive && ctx.searchVideoSel && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <tbody>
+              <Row k="Conta principal" v={form.ad_account} />
+              <Row k="Página" v={form.page_id} />
+              <Row k="Pixel" v={`${form.pixel_id} → ${form.pixel_event}`} />
+              <Row k="Tipo de orçamento" v={ctx.budgetType} />
+              <Row k="Budget" v={`$${(parseInt(form.budget || '0') / 100).toFixed(2)}/dia`} />
               <Row
-                k="Posicionamento pesquisa"
-                v={<>vídeo próprio: <strong>{ctx.searchVideoSel.nome}</strong></>}
-              />
-            )}
-            {contas.length > 1 && (
-              <Row
-                k="Contas de destino"
-                v={<strong className="text-ok">{contas.length} contas selecionadas</strong>}
-              />
-            )}
-            {ctx.multiPaisAtivo && paisBatches.length > 1 && (
-              <Row
-                k="Países (estruturas separadas)"
+                k="Países"
                 v={
-                  <strong className="text-ok">
-                    {paisBatches.map((b) => b.join('/') || '—').join(' · ')} ({paisBatches.length} estruturas)
-                  </strong>
+                  <>
+                    {ctx.paises.join(', ')}{' '}
+                    <span className="text-muted">
+                      — no nome: <strong className="text-brand-2">{ctx.getPaisNome()}</strong>
+                    </span>
+                  </>
                 }
               />
-            )}
-            <Row
-              k="Total a criar"
-              v={
-                totalItensTxt +
-                (paisBatches.length > 1 ? ` × ${paisBatches.length} países` : '') +
-                (contas.length > 1 ? ` × ${contas.length} contas` : '')
-              }
-            />
-          </tbody>
-        </table>
+              <Row k="Início" v={form.start_dt || '—'} />
+              <Row k="Status inicial" v={form.status_inicial} />
+              <Row k="CTA" v={form.cta} />
+              <Row k="URL" v={<span className="break-all font-mono text-[11px]">{ctx.buildURL()}</span>} />
+              <Row
+                k="Criativos selecionados"
+                v={<strong className="text-brand-2">{nVideos} vídeo{nVideos !== 1 ? 's' : ''}</strong>}
+              />
+              {ctx.searchPlacementActive && ctx.searchVideoSel && (
+                <Row
+                  k="Posicionamento pesquisa"
+                  v={<>vídeo próprio: <strong>{ctx.searchVideoSel.nome}</strong></>}
+                />
+              )}
+              {contas.length > 1 && (
+                <Row
+                  k="Contas de destino"
+                  v={<strong className="text-ok">{contas.length} contas selecionadas</strong>}
+                />
+              )}
+              {ctx.multiPaisAtivo && paisBatches.length > 1 && (
+                <Row
+                  k="Países (estruturas separadas)"
+                  v={
+                    <strong className="text-ok">
+                      {paisBatches.map((b) => b.join('/') || '—').join(' · ')} ({paisBatches.length} estruturas)
+                    </strong>
+                  }
+                />
+              )}
+              <Row
+                k="Total a criar"
+                v={
+                  totalItensTxt +
+                  (paisBatches.length > 1 ? ` × ${paisBatches.length} países` : '') +
+                  (contas.length > 1 ? ` × ${contas.length} contas` : '')
+                }
+              />
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       {/* multi-conta */}

@@ -14,8 +14,16 @@ export interface RealAgg {
 
 /** Extrai o ID da campanha do utm_campaign "NOME|123..." (macro {{campaign.id}}). */
 export function campIdFromUtm(utm?: string | null): string | null {
-  const s = (utm || '').trim()
+  let s = (utm || '').trim()
   if (!s) return null
+  // Parâmetro repetido na URL (?utm_campaign=X&utm_campaign=X) chega na Kirvano
+  // como ARRAY JSON e o campo é cortado em 255 chars — aí o valor não termina
+  // mais em "|<id>" e a venda ficava órfã (14 vendas / R$1.213 em 30d).
+  // O 1º elemento do array vem inteiro, então é dele que se tira o id.
+  if (s.startsWith('[')) {
+    const first = s.match(/^\[\s*"((?:[^"\\]|\\.)*)"/)
+    if (first) s = first[1].replace(/\\"/g, '"')
+  }
   const m = s.match(/\|(\d{8,})\s*$/)
   return m ? m[1] : null
 }
@@ -110,9 +118,24 @@ export function presetRange(preset: string): { since: string; until?: string } {
   const startBR = (d: string) => new Date(`${d}T00:00:00-03:00`).toISOString()
   const now = Date.now()
   const today = dayBR(now)
+  // Personalizado: "custom:AAAA-MM-DD:AAAA-MM-DD" — inclui o dia final (until+1 exclusivo).
+  if (typeof preset === 'string' && preset.startsWith('custom:')) {
+    const [, since, until] = preset.split(':')
+    if (since && until) {
+      const u = new Date(`${until}T00:00:00-03:00`)
+      u.setDate(u.getDate() + 1)
+      return { since: startBR(since), until: u.toISOString() }
+    }
+  }
   if (preset === 'today') return { since: startBR(today) }
   if (preset === 'yesterday') return { since: startBR(dayBR(now - 86400000)), until: startBR(today) }
-  const days = preset === 'last_7d' ? 7 : preset === 'last_30d' ? 30 : 14
+  if (preset === 'day_before_yesterday') {
+    const d = dayBR(now - 2 * 86400000)
+    return { since: startBR(d), until: startBR(dayBR(now - 86400000)) }
+  }
+  // last_Nd (7/14/30 e o novo 4d) — janela de N dias terminando ontem, igual ao Graph.
+  const md = /^last_(\d+)d$/.exec(preset || '')
+  const days = md ? parseInt(md[1]) : 14
   return { since: startBR(dayBR(now - days * 86400000)), until: startBR(today) }
 }
 

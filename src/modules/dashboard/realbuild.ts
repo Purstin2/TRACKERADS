@@ -136,7 +136,14 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
     rows = orders
       .map((o): KirvanoOrder | null => {
         const v = valueForFilter(o, products)
-        return v > 0 ? { ...o, value: v } : null
+        if (!(v > 0)) return null
+        // fee_gateway é a taxa da venda INTEIRA. Ao revalorizar o pedido pro
+        // produto filtrado, escala a taxa na mesma proporção — senão filtrar
+        // por um bump traria a taxa do pedido cheio e comeria a margem dele.
+        const cheio = o.value || 0
+        const fee =
+          o.fee_gateway != null && cheio > 0 ? (Number(o.fee_gateway) * v) / cheio : o.fee_gateway
+        return { ...o, value: v, fee_gateway: fee }
       })
       .filter((o): o is KirvanoOrder => o !== null)
   }
@@ -162,7 +169,14 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
   approved.forEach((o) => {
     const s = sumFees(feeItemsForOrder(taxasCfg, o))
     const v = o.value || 0
-    taxas += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+    // Taxa do gateway: quando ele informa quanto cobrou naquela venda (a Hotmart
+    // manda a comissao dela em cada webhook), usa o numero REAL. Assim o painel
+    // nao depende do "9,9%" da aba Taxas continuar valendo — comissao muda com
+    // volume, e venda com afiliado divide diferente. Imposto e custo seguem da
+    // config, que sao coisas nossas e o gateway nao tem como saber.
+    taxas += o.fee_gateway != null
+      ? Number(o.fee_gateway)
+      : (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
     imposto += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
     custoTotal += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
   })

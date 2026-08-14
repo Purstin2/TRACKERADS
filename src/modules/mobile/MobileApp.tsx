@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone, LayoutGrid, ChevronRight } from 'lucide-react'
+import { NAV } from '@/lib/nav'
+import MobileCamps from './MobileCamps'
+import PeriodBar from './PeriodBar'
+import { resolvePeriod, type PeriodValue } from './period'
 import { supabase, authHeaders } from '@/lib/supabase'
 import { loadTaxas, syncTaxas, feeItemsForOrder, sumFees, type TaxasConfig } from '@/modules/taxas/taxas'
 import type { KirvanoOrder } from '@/modules/pixel/orders'
 
-// dia comercial BR (UTC-3) — alinhado com a dashboard
-const BR_OFFSET_MS = 3 * 3600000
-function brtTodayStartISO() {
-  const brt = new Date(Date.now() - BR_OFFSET_MS)
-  brt.setUTCHours(0, 0, 0, 0)
-  return new Date(brt.getTime() + BR_OFFSET_MS).toISOString()
-}
+// o dia comercial BR agora vive em ./period (usado pelas 3 abas)
 const brl = (v?: number | null) =>
   'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -87,8 +86,75 @@ function beep() {
 
 interface AdStats { spend: number; impressions: number; clicks: number }
 
+/* ── Aba "Mais": ponte pro app completo ──────────────────────────────────────
+ * As 3 abas nativas cobrem o dia a dia (vender, escalar, conferir). O resto do
+ * sistema — Públicos, Pixel, Recuperação/WhatsApp, Gastos, Taxas, Uploader —
+ * já existe e já é responsivo no shell principal; o que faltava era CHEGAR nele
+ * pelo celular. Cada item abre a tela completa, com menu lateral e tudo.
+ *
+ * Isso só funciona porque o scope do manifest virou "/": com "/app" o celular
+ * jogava esses links pro navegador e você saía do app instalado. */
+function MaisTab() {
+  return (
+    <div className="mt-1">
+      <div className="rounded-xl2 border border-brand/25 bg-brand/[0.06] px-4 py-3 text-[12.5px] leading-snug text-brand-2">
+        Tudo que tem no computador está aqui. Abre a tela cheia, com o menu lateral —
+        as tabelas rolam pro lado quando não cabem.
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2">
+        {NAV.map((item) => {
+          const Icon = item.icon
+          return (
+            <div key={item.id} className="overflow-hidden rounded-xl2 border border-border bg-surface">
+              <Link
+                to={item.to}
+                className="flex items-center gap-3 px-4 py-3.5 active:bg-surface2"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-surface2">
+                  <Icon className="h-[18px] w-[18px] text-brand-2" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] font-bold text-ink">{item.label}</span>
+                  {item.children && (
+                    <span className="block truncate text-[11.5px] text-muted2">
+                      {item.children.map((c) => c.label).join(' · ')}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted2" />
+              </Link>
+
+              {/* subtelas do Monitor viram atalho direto — no celular, chegar em
+                  "Públicos" ou "Criativos" sem passar por 2 menus importa */}
+              {item.children && item.children.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 border-t border-border/60 px-3 py-2.5">
+                  {item.children.map((c) => (
+                    <Link
+                      key={c.to}
+                      to={c.to}
+                      className="rounded-full border border-border bg-surface2 px-3 py-1.5 text-[11.5px] font-semibold text-muted active:scale-[0.97]"
+                    >
+                      {c.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-muted2">
+        Pra voltar pra cá, é só tocar no ⚡ no topo da tela cheia.
+      </p>
+    </div>
+  )
+}
+
 export default function MobileApp() {
-  const [tab, setTab] = useState<'vendas' | 'dash'>('vendas')
+  const [tab, setTab] = useState<'vendas' | 'dash' | 'camps' | 'mais'>('vendas')
+  const [periodo, setPeriodo] = useState<PeriodValue>({ id: 'today' })
   const [orders, setOrders] = useState<Order[]>([])
   const [allOrders, setAllOrders] = useState<Order[]>([])
   const [taxasCfg, setTaxasCfg] = useState<TaxasConfig>(loadTaxas)
@@ -102,7 +168,12 @@ export default function MobileApp() {
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set())
   const seen = useRef<Set<string>>(new Set())
   const firstLoad = useRef(true)
+  // qual janela está carregada agora — trocar de período recarrega vendas
+  // antigas, e sem isso o app tocaria o alerta de "venda nova" pra cada uma
+  const janelaRef = useRef('')
   const connected = !!supabase()
+  /** janela resolvida do período escolhido (rótulos e filtros da tela) */
+  const jan = useMemo(() => resolvePeriod(periodo), [periodo])
 
   function notifySale(o: Order) {
     beep()
@@ -136,19 +207,35 @@ export default function MobileApp() {
   async function fetchSales() {
     const sb = supabase()
     if (!sb) { setLoading(false); return }
+    const j = resolvePeriod(periodo)
+    const trocouJanela = janelaRef.current !== j.sinceISO + '|' + j.untilISO
+    janelaRef.current = j.sinceISO + '|' + j.untilISO
+
+    // Busca por created_at com 1 dia de folga dos dois lados e filtra depois pela
+    // data REAL da venda. Uma venda das 23h50 pode ser gravada às 00h05 do dia
+    // seguinte; filtrando direto por created_at ela sumiria do dia dela.
+    const folga = (iso: string, dias: number) =>
+      new Date(new Date(iso).getTime() + dias * 86400000).toISOString()
     const [{ data }, adsRes] = await Promise.all([
       sb
         .from('kirvano_orders')
-        .select('id,product,products,value,customer_name,payment_method,status,ordered_at,created_at')
-        .gte('created_at', brtTodayStartISO())
+        .select('id,product,products,value,fee_gateway,customer_name,payment_method,status,ordered_at,created_at')
+        .gte('created_at', folga(j.sinceISO, -1))
+        .lt('created_at', folga(j.untilISO, 1))
         .order('created_at', { ascending: false })
-        .limit(200),
-      authHeaders().then((h) => fetch('/api/mobile?fn=meta-today', { headers: h })).then((r) => r.json()).catch(() => null),
+        .limit(2000),
+      authHeaders().then((h) => fetch(`/api/mobile?fn=meta-today&${new URLSearchParams(j.apiParams)}`, { headers: h })).then((r) => r.json()).catch(() => null),
     ])
-    const all = (data || []) as Order[]
+    const dentro = (o: Order) => {
+      const d = o.ordered_at || o.created_at
+      return !!d && d >= j.sinceISO && d < j.untilISO
+    }
+    const all = ((data || []) as Order[]).filter(dentro)
     setAllOrders(all)
     const approved = all.filter((o) => (o.status || '').toUpperCase() === 'APPROVED')
-    if (!firstLoad.current) {
+    // só avisa venda nova quando estou olhando HOJE e não acabei de trocar de
+    // período (senão o app apitaria pra cada venda antiga que entrou na lista)
+    if (!firstLoad.current && !trocouJanela && periodo.id === 'today') {
       approved.filter((o) => !seen.current.has(o.id)).forEach(notifySale)
     }
     approved.forEach((o) => seen.current.add(o.id))
@@ -160,21 +247,28 @@ export default function MobileApp() {
   }
 
   useEffect(() => {
-    fetchSales()
     syncTaxas().then(setTaxasCfg)
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') subscribePush()
+    const onInstall = (e: Event) => { e.preventDefault(); setInstallEvt(e) }
+    window.addEventListener('beforeinstallprompt', onInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onInstall)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Busca + auto-refresh ficam AMARRADOS ao período: se o intervalo fosse criado
+  // só na montagem, o closure guardaria o período daquele instante e o refresh de
+  // 25s continuaria buscando "hoje" mesmo depois de você escolher 30 dias.
+  useEffect(() => {
+    fetchSales()
     const t = setInterval(fetchSales, 25000)
     const onVis = () => { if (document.visibilityState === 'visible') fetchSales() }
     document.addEventListener('visibilitychange', onVis)
-    const onInstall = (e: Event) => { e.preventDefault(); setInstallEvt(e) }
-    window.addEventListener('beforeinstallprompt', onInstall)
     return () => {
       clearInterval(t)
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('beforeinstallprompt', onInstall)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [periodo])
 
   async function askNotif() {
     if (typeof Notification === 'undefined') return
@@ -218,7 +312,11 @@ export default function MobileApp() {
     orders.forEach((o) => {
       const s = sumFees(feeItemsForOrder(taxasCfg, o as unknown as KirvanoOrder))
       const v = o.value || 0
-      taxasVal += (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
+      // taxa REAL quando o gateway informou (ver realbuild.ts) — mesma regra
+      const feeReal = (o as { fee_gateway?: number | null }).fee_gateway
+      taxasVal += feeReal != null
+        ? Number(feeReal)
+        : (v * s.byCat.taxa.pct) / 100 + s.byCat.taxa.fixo
       impostoVal += (v * s.byCat.imposto.pct) / 100 + s.byCat.imposto.fixo
       custoVal += (v * s.byCat.custo.pct) / 100 + s.byCat.custo.fixo
     })
@@ -259,7 +357,9 @@ export default function MobileApp() {
           <Zap className="h-5 w-5 fill-white text-white" />
         </span>
         <div className="flex-1">
-          <div className="text-[15px] font-extrabold leading-none">{tab === 'vendas' ? 'Vendas' : 'Dashboard'}</div>
+          <div className="text-[15px] font-extrabold leading-none">
+            {tab === 'vendas' ? 'Vendas' : tab === 'dash' ? 'Dashboard' : tab === 'mais' ? 'Mais' : 'Campanhas'}
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted2">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
@@ -274,12 +374,17 @@ export default function MobileApp() {
       </header>
 
       <main className="mx-auto max-w-[560px] px-4 pb-28 pt-4">
-        {tab === 'vendas' ? (
+        {/* o período vale pras abas de dados; em "Mais" não faz sentido */}
+        {tab !== 'mais' && <PeriodBar value={periodo} onChange={setPeriodo} />}
+
+        {tab === 'mais' ? (
+          <MaisTab />
+        ) : tab === 'vendas' ? (
         <>
         {/* total do dia */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
           <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted2">
-            <TrendingUp className="h-3.5 w-3.5" /> Faturamento de hoje
+            <TrendingUp className="h-3.5 w-3.5" /> Faturamento · {jan.label}
           </div>
           <div className="mt-1 text-[40px] font-extrabold leading-none text-ok">{brl(total)}</div>
           <div className="mt-2 flex items-center gap-1.5 text-[13px] text-muted">
@@ -346,7 +451,7 @@ export default function MobileApp() {
 
         {/* lista de vendas */}
         <div className="mt-5 mb-2 flex items-center justify-between px-1">
-          <h2 className="text-[13px] font-bold text-muted">Vendas de hoje</h2>
+          <h2 className="text-[13px] font-bold text-muted">Vendas · {jan.label}</h2>
           {!connected && <span className="text-[11px] text-danger">sem conexão Supabase</span>}
         </div>
 
@@ -356,7 +461,7 @@ export default function MobileApp() {
           </div>
         ) : orders.length === 0 ? (
           <div className="rounded-xl2 border border-dashed border-border py-12 text-center text-[13px] text-muted2">
-            Nenhuma venda aprovada hoje ainda.<br />Os alertas chegam assim que a primeira cair. 💪
+            Nenhuma venda aprovada no período.<br />Os alertas chegam assim que a primeira cair. 💪
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -384,11 +489,13 @@ export default function MobileApp() {
         )}
 
         </>
+        ) : tab === 'camps' ? (
+          <MobileCamps periodo={periodo} />
         ) : (
         <>
         {/* ── DASHBOARD do dia ── */}
         <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface2 p-5 shadow-card-sm">
-          <div className="text-[12px] font-semibold uppercase tracking-wide text-muted2">Lucro de hoje</div>
+          <div className="text-[12px] font-semibold uppercase tracking-wide text-muted2">Lucro · {jan.label}</div>
           <div className={`mt-1 text-[40px] font-extrabold leading-none ${dash.lucro >= 0 ? 'text-ok' : 'text-danger'}`}>{brl(dash.lucro)}</div>
           <div className="mt-2 text-[12px] text-muted">
             líquido {brl(dash.fatLiquido)} − ads {brl(spend)} · taxas/custos por produto (aba Taxas)
@@ -413,7 +520,7 @@ export default function MobileApp() {
 
         <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
-            <div className="text-[12px] font-bold text-muted">Aprovação de hoje</div>
+            <div className="text-[12px] font-bold text-muted">Aprovação · {jan.label}</div>
             <div className={`text-[16px] font-extrabold ${dash.aprovPct !== null && dash.aprovPct >= 60 ? 'text-ok' : 'text-warn'}`}>
               {dash.aprovPct !== null ? dash.aprovPct.toFixed(0) + '%' : '—'}
             </div>
@@ -427,7 +534,7 @@ export default function MobileApp() {
         <div className="mt-3 rounded-xl2 border border-border bg-surface p-4">
           <div className="mb-2 text-[12px] font-bold text-muted">Vendas por produto</div>
           {dash.topProd.length === 0 ? (
-            <div className="py-4 text-center text-[12px] text-muted2">sem vendas ainda hoje</div>
+            <div className="py-4 text-center text-[12px] text-muted2">sem vendas no período</div>
           ) : (
             <div className="flex flex-col gap-1.5">
               {dash.topProd.map(([name, d]) => (
@@ -443,7 +550,12 @@ export default function MobileApp() {
         </>
         )}
 
-        <p className="mt-6 text-center text-[11px] text-muted2">Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar</p>
+        {/* o auto-refresh de 25s é das vendas; Campanhas puxa da Meta e atualiza no botão */}
+        <p className="mt-6 text-center text-[11px] text-muted2">
+          {tab === 'camps'
+            ? 'Dados da Meta · toque em Atualizar pra recarregar'
+            : 'Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar'}
+        </p>
       </main>
 
       {/* ── abas fixas embaixo ── */}
@@ -452,7 +564,7 @@ export default function MobileApp() {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto flex max-w-[560px]">
-          {([['vendas', 'Vendas', ListOrdered], ['dash', 'Dashboard', LayoutDashboard]] as const).map(([id, label, Icon]) => (
+          {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard], ['mais', 'Mais', LayoutGrid]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}

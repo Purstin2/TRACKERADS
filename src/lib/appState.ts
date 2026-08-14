@@ -71,12 +71,17 @@ export async function saveState(key: string, value: unknown) {
  */
 export function usePersistentState<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T>(() => cacheGet(key, fallback))
+  // `loaded` = o remoto já respondeu. Quem for MUTAR o estado no primeiro render
+  // (migração/importação automática) precisa esperar isto, senão grava por cima
+  // do que ainda estava vindo do banco. Leitura pura pode ignorar.
+  const [loaded, setLoaded] = useState(false)
   const pending = useRef<T | undefined>(undefined)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     let alive = true
-    loadState(key, fallback).then((v) => { if (alive) setValue(v) })
+    setLoaded(false)
+    loadState(key, fallback).then((v) => { if (alive) { setValue(v); setLoaded(true) } })
     return () => {
       alive = false
       if (timer.current) { clearTimeout(timer.current); timer.current = undefined }
@@ -93,5 +98,5 @@ export function usePersistentState<T>(key: string, fallback: T) {
     timer.current = setTimeout(() => { remoteSet(key, v); pending.current = undefined }, 600)
   }, [key])
 
-  return [value, update] as const
+  return [value, update, loaded] as const
 }

@@ -1,4 +1,5 @@
 import type { BudgetType, Estrutura, FormState } from '../types'
+import { XCOD_SEP } from '../types'
 
 function gv(form: FormState, key: keyof FormState): string {
   return (form[key] || '').trim()
@@ -82,6 +83,19 @@ export function getCampNome(
   return buildNomeEstrutura(form, paises, budgetType, `11${totalCriativos}`)
 }
 
+/** Cola o nome fixo da campanha no slot de CAMPANHA do xcod (índice 1), do mesmo
+ *  jeito que o utm_campaign faz: `<fixo>~~{{campaign.name}}|{{campaign.id}}`.
+ *  Se o xcod não tiver o separador (alguém digitou um valor próprio), prefixa o
+ *  valor inteiro — pior caso continua sendo melhor que perder a origem. */
+export function injectStaticXcod(xcod: string, staticCamp?: string): string {
+  const sc = (staticCamp || '').trim()
+  if (!xcod || !sc) return xcod
+  const parts = xcod.split(XCOD_SEP)
+  if (parts.length < 2) return `${sc}~~${xcod}`
+  parts[1] = `${sc}~~${parts[1]}`
+  return parts.join(XCOD_SEP)
+}
+
 /** Prefixo estático colado no INÍCIO do utm_campaign. Sobrevive ao
  *  compartilhamento orgânico (onde as macros {{}} não resolvem) sem afetar o
  *  casamento por id — o dashboard pesca "|<id>" do FIM (regex ancorada em $),
@@ -102,7 +116,13 @@ export function buildUTMString(form: FormState, staticCamp?: string): string {
     if (f === 'utm_campaign' && sc) v = `${sc}~~${v}`
     params.push(`${f}=${v}`)
   }
-  const xcod = gv(form, 'utm_xcod')
+  // xcod (Hotmart): recebe o MESMO tratamento do utm_campaign — o nome fixo da
+  // campanha entra na frente do slot de campanha, com as macros logo atrás.
+  // Sem isso, uma venda cujas {{macros}} não resolveram (compartilhamento
+  // orgânico, link colado no zap) chegava sem NENHUMA pista de origem. Com o
+  // prefixo, sobra pelo menos o nome da campanha — e o "|<id>" continua no fim,
+  // que é de onde o dashboard pesca o id.
+  const xcod = injectStaticXcod(gv(form, 'utm_xcod'), sc)
   if (xcod) params.push(`xcod=${xcod}`)
   return params.join('&')
 }

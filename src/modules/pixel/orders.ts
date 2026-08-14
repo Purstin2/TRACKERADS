@@ -6,7 +6,12 @@ export interface KirvanoOrder {
   sale_id: string | null
   event: string | null
   status: string | null
+  /** Valor da venda em BRL (o webhook converte na entrada). Some SEMPRE este. */
   value: number | null
+  /** Quanto o comprador pagou, na moeda dele (só pra exibir). */
+  value_orig: number | null
+  /** Taxa real do gateway nesta venda, em BRL. null = usar o % da aba Taxas. */
+  fee_gateway: number | null
   currency: string | null
   product: string | null
   products: any[] | null

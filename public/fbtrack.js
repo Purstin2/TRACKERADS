@@ -140,6 +140,14 @@
   ttclid = ttclid || getCookie('k_ttclid') || ''
   var ttp = getCookie('_ttp') || ''
 
+  // xcod (Hotmart): o uploader monta ele com campanha/adset/anúncio/placement e
+  // ele chega na landing pela URL do anúncio. É o ÚNICO campo em que a campanha
+  // volta no webhook da Hotmart — os utm_* que a gente põe no link do checkout
+  // ela não devolve. Guarda igual aos UTMs (mesma regra de "pago vence").
+  var xcod = getParam('xcod')
+  if (xcod && writeAttr) setCookie('k_xcod', xcod, 90)
+  xcod = xcod || getCookie('k_xcod') || ''
+
   // ── propaga tudo pros links de checkout ──────────────────────────────────────
   function isCheckout(href) {
     try {
@@ -164,21 +172,40 @@
 
       if (isHotmart(url)) {
         // Hotmart NÃO lê params soltos como fbc=/fbp=. Ela só DEVOLVE no webhook
-        // o que estiver em src/sck/xcod. Então empacotamos fbc/fbp/fbclid num blob
+        // o que estiver em src/sck/xcod. Então empacotamos fbc/fbp num blob
         // compacto "fbc:VALOR|fbp:VALOR" que o nosso webhook (parseTrkField) lê.
+        //
+        // ⚠ A Hotmart CORTA src/sck em 255 caracteres (medido num webhook real:
+        // blob de 410 chegou com 255, decepando o que estava no fim). Por isso:
+        //  - fbc e fbp vêm PRIMEIRO — são os dois sinais que importam pro Meta;
+        //  - fbclid só entra se NÃO houver fbc, porque o fbc já é "fb.1.<ts>.<fbclid>"
+        //    e repetir ele custava ~180 chars do orçamento à toa;
+        //  - gclid/ttclid/ttp entram por último e só se ainda couber.
+        var LIMITE = 255
         var parts = []
         if (fbc) parts.push('fbc:' + fbc)
         if (fbp) parts.push('fbp:' + fbp)
-        if (fbclid) parts.push('fbclid:' + fbclid)
-        if (gclid) parts.push('gclid:' + gclid)
-        if (ttclid) parts.push('ttclid:' + ttclid)
-        if (ttp) parts.push('ttp:' + ttp)
-        if (parts.length) {
-          var blob = parts.join('|')
+        if (fbclid && !fbc) parts.push('fbclid:' + fbclid)
+        var blob = parts.join('|')
+        // extras: só cabem se o essencial já estiver dentro do limite
+        var extras = []
+        if (gclid) extras.push('gclid:' + gclid)
+        if (ttclid) extras.push('ttclid:' + ttclid)
+        if (ttp) extras.push('ttp:' + ttp)
+        for (var xi = 0; xi < extras.length; xi++) {
+          var tentativa = blob ? blob + '|' + extras[xi] : extras[xi]
+          if (tentativa.length <= LIMITE) blob = tentativa
+        }
+        if (blob) {
           u.searchParams.set('sck', blob)   // sck é o campo de tracking devolvido no webhook
           u.searchParams.set('src', blob)   // redundância: a Hotmart às vezes usa src
         }
-        // campanha vai pros UTMs normais (não no src, que agora carrega fbc/fbp)
+        // xcod = campanha/adset/anúncio/placement (montado pelo uploader). É o
+        // único campo que sobra, já que src/sck estão ocupados pelo fbc/fbp — e o
+        // único jeito de saber DE QUAL CAMPANHA veio a venda na Hotmart.
+        if (xcod) u.searchParams.set('xcod', xcod)
+        // utm_* também vão (a Hotmart não devolve, mas não custa e servem se ela
+        // passar adiante num redirect pra outro checkout)
         UTM_KEYS.forEach(function (k) { if (utms[k]) u.searchParams.set(k, utms[k]) })
         return u.toString()
       }
@@ -316,5 +343,5 @@
   if (window.FB_VIEW_CONTENT) viewContent(window.FB_VIEW_CONTENT)
 
   // expõe pra debug no console: window.__fbtrack
-  window.__fbtrack = { fbc: fbc, fbp: fbp, fbclid: fbclid, utms: utms, gclid: gclid, decorate: decorate, pixelId: PIXEL_ID }
+  window.__fbtrack = { fbc: fbc, fbp: fbp, fbclid: fbclid, utms: utms, xcod: xcod, gclid: gclid, decorate: decorate, pixelId: PIXEL_ID }
 })()
