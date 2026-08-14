@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Plus, Play, RefreshCw, ExternalLink, CheckCircle, X, Clock, Zap, Tag, TrendingUp, Square, Terminal, SlidersHorizontal, Ban, ShieldOff } from 'lucide-react';
+import { authHeaders } from '@/lib/supabase';
 
 /**
  * Descoberta Automática — v2.
@@ -229,7 +230,7 @@ export default function DiscoveryScreen({ userId, supabaseClient, showToast, onA
             // limpa pedido de Parar antigo + salva filtros (o robô lê do app_state), aí dispara na NUVEM
             await stateSet('discovery_stop', { requested: false }).catch(() => {});
             await stateSet('discovery_settings', settings).catch(() => {});
-            const res = await fetch('/api/scraper-run?job=discovery', { method: 'POST' });
+            const res = await fetch('/api/scraper-run?job=discovery', { method: 'POST', headers: await authHeaders() });
             const data = await res.json();
             if (res.ok && data.ok) {
                 showToast('Busca disparada na nuvem! O robô sobe em ~1 min — acompanhe o status aqui.', 'success');

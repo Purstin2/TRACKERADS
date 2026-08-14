@@ -10,7 +10,29 @@ const WORKFLOW = process.env.GH_WORKFLOW || 'scraper.yml'
 const REF = process.env.GH_REF || 'main'
 const JOBS = ['all', 'scraping', 'names', 'discovery']
 
+// Dispara Actions de verdade (consome minutos, bate no Facebook) — precisa de
+// login, senão qualquer um com a URL conseguiria disparar rodadas à vontade.
+async function requireSession(req, res) {
+  const url = process.env.SUPABASE_URL
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  const auth = req.headers.authorization || ''
+  const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : null
+  if (!url || !anonKey || !jwt) {
+    res.status(401).json({ ok: false, error: 'login necessário' })
+    return false
+  }
+  try {
+    const r = await fetch(`${url}/auth/v1/user`, { headers: { apikey: anonKey, Authorization: `Bearer ${jwt}` } })
+    if (!r.ok) { res.status(401).json({ ok: false, error: 'sessão inválida ou expirada' }); return false }
+    return true
+  } catch {
+    res.status(401).json({ ok: false, error: 'sessão inválida ou expirada' })
+    return false
+  }
+}
+
 export default async function handler(req, res) {
+  if (!(await requireSession(req, res))) return
   const token = process.env.GH_DISPATCH_TOKEN
   if (!token) {
     return res.status(503).json({

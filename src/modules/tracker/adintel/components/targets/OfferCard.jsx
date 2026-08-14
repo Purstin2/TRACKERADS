@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'rec
 import { getSafeTimestamp, getSafeDate, formatDateForAxis } from '../../utils/helpers';
 import { analyzeOfferPerformance } from '../../utils/helpers';
 import { smartClassifyOffer } from '../../utils/smartClassification';
+import { authHeaders } from '@/lib/supabase';
 
 const OfferCard = ({ offer, isDuplicate, onViewDetails, onEditOffer, onToggleArchive, onDeleteOffer, userId, supabaseClient, isPinned, onPin, onUnpin, isActive, onToggleActive, fetchOffers, showToast, selectionMode, isSelected, onToggleSelect }) => {
     const [adCountsHistory, setAdCountsHistory] = useState([]);
@@ -108,7 +109,8 @@ const OfferCard = ({ offer, isDuplicate, onViewDetails, onEditOffer, onToggleArc
             const response = await fetch(scraperUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    ...(await authHeaders())
                 },
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
@@ -194,7 +196,7 @@ const OfferCard = ({ offer, isDuplicate, onViewDetails, onEditOffer, onToggleArc
             const timeoutId = setTimeout(() => controller.abort(), 120000);
             const response = await fetch(scraperUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
             });

@@ -2,6 +2,7 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Eye, Trash2, Archive, ArchiveRestore, CheckSquare, XSquare, TrendingDown, Zap, Activity, ArrowLeft, RefreshCw } from 'lucide-react';
 import { getSafeTimestamp, formatDateForAxis, analyzeOfferPerformance } from '../../utils/helpers';
+import { authHeaders } from '@/lib/supabase';
 
 const OfferDetailScreen = ({ 
     offerId, 
@@ -272,7 +273,8 @@ const OfferDetailScreen = ({
             const response = await fetch(scraperUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    ...(await authHeaders())
                 },
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
@@ -357,7 +359,7 @@ const OfferDetailScreen = ({
             const timeoutId = setTimeout(() => controller.abort(), 120000);
             const response = await fetch(scraperUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
                 body: JSON.stringify({ url: offer.link }),
                 signal: controller.signal
             });

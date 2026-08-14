@@ -6,6 +6,7 @@ import OfferList from '../targets/OfferList';
 import AdvancedFilters from '../ui/AdvancedFilters';
 import ImportBookmarksModal from '../ui/ImportBookmarksModal';
 import { smartClassifyOffer } from '../../utils/smartClassification';
+import { authHeaders } from '@/lib/supabase';
 
 // Ranking de "saúde" da oferta (melhores → piores) p/ ordenação padrão
 const STATUS_RANK = {
@@ -65,7 +66,7 @@ const OfferGridScreen = ({
         setIsRenaming(true);
         try {
             showToast && showToast('🏷️ Disparando busca dos nomes reais na nuvem...', 'info');
-            const r = await fetch('/api/scraper-run?job=names', { method: 'POST' });
+            const r = await fetch('/api/scraper-run?job=names', { method: 'POST', headers: await authHeaders() });
             const data = await r.json();
             if (r.ok && data.ok) {
                 showToast && showToast('Rodada de nomes disparada na nuvem — os cards se atualizam em alguns minutos.', 'success');
@@ -300,7 +301,7 @@ const OfferGridScreen = ({
                                     showToast && showToast(`Iniciando scraping para ${offersToScrape.length} targets...`, 'info');
                                     const response = await fetch(`${baseUrl}/api/scrape/run`, {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' }
+                                        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) }
                                     });
                                     const data = await response.json();
                                     if (response.ok) {
