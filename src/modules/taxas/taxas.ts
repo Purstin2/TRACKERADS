@@ -207,10 +207,16 @@ export function discoverProducts(orders: KirvanoOrder[]): DiscoveredProduct[] {
   orders.forEach((o) => {
     const approved = (o.status || '').toUpperCase() === 'APPROVED'
     const at = o.ordered_at || o.created_at
+    // preço de linha da Kirvano vem na moeda do comprador, nunca convertido — só
+    // `value` (o pedido inteiro) chega em BRL. Pra pedido não-BRL, escala pela
+    // mesma proporção que o total já-convertido representa do total original
+    // (ver o mesmo ajuste em dashboard/realbuild.ts:valueForFilter).
+    const cur = (o.currency || '').toUpperCase()
+    const scale = cur && cur !== 'BRL' && o.value_orig && o.value_orig > 0 && o.value ? o.value / o.value_orig : 1
     if (Array.isArray(o.products) && o.products.length) {
       o.products.forEach((p: any) => {
         if (!p?.name) return
-        const price = numPrice(p.price ?? p.amount ?? p.total_price) || (o.products!.length === 1 ? o.value || 0 : 0)
+        const price = numPrice(p.price ?? p.amount ?? p.total_price) * scale || (o.products!.length === 1 ? o.value || 0 : 0)
         touch(p.id != null ? String(p.id) : null, p.name, price, !!p.is_order_bump, at, approved)
       })
     } else if (o.product) {

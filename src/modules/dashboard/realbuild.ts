@@ -43,17 +43,32 @@ function orderProductNames(o: KirvanoOrder): string[] {
 
 /** Valor do pedido considerando o filtro de produtos:
  *  - sem filtro → valor cheio do pedido
- *  - com filtro → soma só dos itens (principal/bumps) que casam (valor real do produto) */
+ *  - com filtro → soma só dos itens (principal/bumps) que casam (valor real do produto)
+ *
+ * ⚠ `products[].price` vem da Kirvano na MOEDA ORIGINAL do comprador, nunca
+ * convertido — só `value` (o total do pedido) chega em BRL já convertido pelo
+ * webhook. Um pedido de US$5 ou 8.604 ARS tem o preço da linha gravado como
+ * "5" ou "8604", que se somado direto vira "R$8.604" no painel (era o que
+ * inflava o Faturamento Bruto pra R$500 mil+ quando um filtro de produto
+ * estava ativo). Pra pedido não-BRL, escala a soma bruta da linha pela mesma
+ * proporção que o total já-convertido (`value`) representa do total bruto
+ * original (`value_orig`) — sem duplicar tabela de câmbio aqui no front. */
 function valueForFilter(o: KirvanoOrder, products: Set<string> | null): number {
   if (!products) return o.value || 0
-  let sum = 0
+  let sumRaw = 0
   let matched = false
   if (Array.isArray(o.products)) {
     o.products.forEach((p) => {
-      if (p?.name && products.has(p.name)) { matched = true; sum += numPrice(p.price ?? p.amount ?? p.total_price) }
+      if (p?.name && products.has(p.name)) { matched = true; sumRaw += numPrice(p.price ?? p.amount ?? p.total_price) }
     })
   }
-  if (matched && sum > 0) return sum
+  if (matched && sumRaw > 0) {
+    const cur = up(o.currency)
+    if (cur && cur !== 'BRL' && o.value_orig && o.value_orig > 0 && o.value) {
+      return sumRaw * (o.value / o.value_orig)
+    }
+    return sumRaw
+  }
   // fallback: produto principal casa mas sem preço de linha → valor cheio
   if (o.product && products.has(o.product)) return o.value || 0
   return 0
