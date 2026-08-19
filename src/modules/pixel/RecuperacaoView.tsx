@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, RefreshCw, Send, Power, Save, Info, History, CheckCircle2, XCircle, RotateCcw, FileText, TrendingUp, ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react'
+import { MessageCircle, RefreshCw, Send, Power, Save, Info, History, CheckCircle2, XCircle, RotateCcw, FileText, TrendingUp, ShieldCheck, ShieldAlert, AlertTriangle, CreditCard } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/components/ui/toast'
 import WaTemplatesView from './WaTemplatesView'
@@ -37,6 +37,11 @@ const PROVIDERS = [
 ]
 
 const STEP_LABEL: Record<number, string> = { 1: 'Dia 1', 2: 'Dia 2', 3: 'Dia 3' }
+
+// A Cloud API (Meta oficial) cobra pelo Business Manager, não por um provedor terceiro —
+// é o mesmo faturamento das contas de anúncio. URL genérica do Billing Hub da Meta;
+// se pedir pra escolher o negócio, é o "VC.naoacreditaria".
+const META_BILLING_URL = 'https://business.facebook.com/billing_hub/payment_methods'
 
 export default function RecuperacaoView() {
   const [cfg, setCfg] = useState<WaConfig | null>(null)
@@ -222,7 +227,16 @@ export default function RecuperacaoView() {
         <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-2">
           <TrendingUp className="h-3.5 w-3.5" /> {(stats.conversionRate * 100).toFixed(1)}% converteu ({stats.converted}/{stats.totalAttempted}) · {brl(stats.revenue)}
         </span>
-        <button className="btn btn-ghost btn-sm ml-auto" onClick={() => { load(); checkHealth() }} disabled={loading || checkingHealth}>
+        <a
+          href={META_BILLING_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-ghost btn-sm ml-auto"
+          title="Abrir o Billing Hub do Meta Business Manager pra trocar o cartão"
+        >
+          <CreditCard className="h-3.5 w-3.5" /> Cartão / Faturamento
+        </a>
+        <button className="btn btn-ghost btn-sm" onClick={() => { load(); checkHealth() }} disabled={loading || checkingHealth}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading || checkingHealth ? 'animate-spin' : ''}`} /> Atualizar
         </button>
         <button className="btn btn-primary btn-sm" onClick={() => fire(withPhone.map((o) => o.id))} disabled={firing || !withPhone.length}>
@@ -237,7 +251,11 @@ export default function RecuperacaoView() {
             <b>{sysStatus.label}.</b> {sysStatus.detail}
             {health?.billingSuspect && (
               <div className="mt-1">
-                Verifique o método de pagamento no <b>Meta Business Manager → Faturamento</b>. Enquanto isso, nenhuma mensagem de recuperação sai.
+                Verifique o método de pagamento no{' '}
+                <a href={META_BILLING_URL} target="_blank" rel="noopener noreferrer" className="font-bold underline">
+                  Meta Business Manager → Faturamento
+                </a>
+                . Enquanto isso, nenhuma mensagem de recuperação sai.
               </div>
             )}
           </div>
