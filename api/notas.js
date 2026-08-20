@@ -188,6 +188,29 @@ export default async function handler(req, res) {
 
   for (const o of pedidos) {
     const cliente = clienteDoPedido(o)
+
+    // Venda para o exterior ainda não tem tratamento fiscal definido (o contador
+    // disse que muda a tributação e não tem ISS). Na prática elas se identificam
+    // sozinhas: em 20/08/2026, os 14 pedidos sem CPF dos últimos 7 dias eram
+    // TODOS Hotmart em moeda estrangeira — não existe venda brasileira sem CPF.
+    // Marca como dispensada pra não ficar tentando emitir e acumulando erro.
+    const moedaPedido = String(o.currency || 'BRL').toUpperCase()
+    if (moedaPedido !== 'BRL' || !cliente.documento) {
+      resumo.puladas++
+      resumo.detalhes.push({
+        pedido: o.checkout_id,
+        status: moedaPedido !== 'BRL' ? `exterior (${moedaPedido}) — fora do escopo` : 'sem CPF',
+      })
+      if (!seco) {
+        await marcarPedido(o.id, {
+          nf_status: 'dispensada',
+          nf_at: new Date().toISOString(),
+          nf_erro: moedaPedido !== 'BRL' ? `venda em ${moedaPedido} — exportação sem regra definida` : 'sem CPF do comprador',
+        })
+      }
+      continue
+    }
+
     const { itens, divergencia } = itensDoPedido(o)
 
     // valor dos itens não fecha com o pedido → não emite, manda pra conferência
