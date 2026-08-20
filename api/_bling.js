@@ -187,22 +187,31 @@ export function payloadNfse({ cliente, servico }) {
 /* ── emissão em dois passos ─────────────────────────────────────────────────── */
 
 /**
- * Cria e transmite. Devolve o que der pra saber em cada etapa — se criar
- * funcionar e enviar falhar, a nota EXISTE em rascunho e não pode ser recriada
- * (viraria duplicata), então o id volta mesmo no caminho de erro.
+ * Cria e transmite.
+ *
+ * `blingIdExistente` é o que impede DUPLICATA DE NOTA FISCAL: se numa rodada
+ * anterior o create funcionou mas o envio falhou, a nota já existe em rascunho
+ * no Bling. Recriar geraria uma segunda nota com outro número — e se o envio
+ * anterior tiver dado certo sem a gente conseguir confirmar, seriam duas notas
+ * AUTORIZADAS pro mesmo pedido. Desfazer isso é bem mais caro do que evitar.
+ * Então quando já existe id, pula a criação e só retenta o envio.
  */
-export async function emitir(tipo, payload) {
+export async function emitir(tipo, payload, blingIdExistente = null) {
   const rota = tipo === 'nfse' ? '/nfse' : '/nfe'
+  let id = blingIdExistente
+  let base = { blingId: id, numero: null, serie: null }
 
-  const criada = await bling(rota, { method: 'POST', body: payload })
-  if (!criada.ok) return { ok: false, etapa: 'criar', erro: erroDoBling(criada) }
+  if (!id) {
+    const criada = await bling(rota, { method: 'POST', body: payload })
+    if (!criada.ok) return { ok: false, etapa: 'criar', erro: erroDoBling(criada) }
 
-  const d = criada.data?.data || {}
-  const id = d.id
-  const base = { blingId: id, numero: d.numero || d.numeroRPS || null, serie: d.serie || null }
-  if (!id) return { ok: false, etapa: 'criar', erro: 'Bling não devolveu id da nota', ...base }
+    const d = criada.data?.data || {}
+    id = d.id
+    base = { blingId: id, numero: d.numero || d.numeroRPS || null, serie: d.serie || null }
+    if (!id) return { ok: false, etapa: 'criar', erro: 'Bling não devolveu id da nota', ...base }
 
-  await pausa()
+    await pausa()
+  }
 
   const enviada = await bling(`${rota}/${id}/enviar`, { method: 'POST', body: {} })
   if (!enviada.ok) return { ok: false, etapa: 'enviar', erro: erroDoBling(enviada), ...base }

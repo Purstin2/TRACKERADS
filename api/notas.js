@@ -21,7 +21,16 @@ import { emitir, payloadNfe, payloadNfse, pausa } from './_bling.js'
 
 const NOTAS_KEY = 'notas_fiscais_v1' // config da aba Notas Fiscais do painel
 const MAX_TENTATIVAS = 3
-const LOTE_MAX = 200 // teto por execução, pra não estourar o tempo da função
+const LOTE_MAX = 120 // teto de pedidos lidos; quem manda mesmo é o orçamento de tempo
+
+/**
+ * Vercel mata a função no timeout, e cada nota leva ~3s (create → enviar →
+ * confirmar, com as pausas do limite de 3 req/s do Bling). Em vez de chutar
+ * quantas cabem, o lote para sozinho quando o tempo acaba — o que sobrar sai na
+ * próxima rodada, porque a fila é justamente "quem ainda não tem nota".
+ */
+export const config = { maxDuration: 60 }
+const ORCAMENTO_MS = 50_000
 
 function sb() {
   const url = process.env.SUPABASE_URL
@@ -60,6 +69,24 @@ async function marcarPedido(id, patch) {
     headers: { ...headers, Prefer: 'return=minimal' },
     body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
   })
+}
+
+/**
+ * Notas já registradas destes pedidos. Serve pra não recriar no Bling o que já
+ * foi criado numa rodada anterior — ver o comentário de `emitir` em _bling.js.
+ */
+async function notasExistentes(orderIds) {
+  if (!orderIds.length) return new Map()
+  const { url, headers } = sb()
+  const lista = orderIds.map((i) => `"${i}"`).join(',')
+  const r = await fetch(
+    `${url}/rest/v1/notas_fiscais?order_id=in.(${lista})&select=order_id,produto_key,bling_id,status`,
+    { headers },
+  )
+  const rows = await r.json().catch(() => [])
+  const m = new Map()
+  if (Array.isArray(rows)) rows.forEach((n) => m.set(`${n.order_id}|${n.produto_key}`, n))
+  return m
 }
 
 async function gravarNota(row) {
@@ -183,10 +210,18 @@ export default async function handler(req, res) {
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
   const seco = req.query?.seco === '1' // simula sem emitir
 
+  const inicio = Date.now()
   const pedidos = await pedidosPendentes(desde)
-  const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, detalhes: [] }
+  const jaEmitidas = seco ? new Map() : await notasExistentes(pedidos.map((p) => p.id))
+  const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, restaram: 0, detalhes: [] }
 
   for (const o of pedidos) {
+    // para antes do timeout — o resto sai na próxima rodada
+    if (!seco && Date.now() - inicio > ORCAMENTO_MS) {
+      resumo.restaram = pedidos.length - (resumo.emitidas + resumo.erros + resumo.puladas)
+      break
+    }
+
     const cliente = clienteDoPedido(o)
 
     // Venda para o exterior ainda não tem tratamento fiscal definido (o contador
@@ -239,21 +274,30 @@ export default async function handler(req, res) {
         continue
       }
 
-      // NFS-e precisa de município/UF; a Kirvano não manda. Registra como
-      // pendente em vez de tentar e queimar tentativa num erro previsível.
+      // NFS-e precisa de município/UF (bairro também); a Kirvano não coleta.
+      // Registra o motivo em vez de tentar e queimar tentativa num erro certo.
       if (pf.tipo === 'nfse' && !(cliente.endereco.municipio && cliente.endereco.uf)) {
         resumo.puladas++
-        await gravarNota({
-          order_id: o.id, produto_key: item.key, produto_nome: item.nome,
-          tipo: 'nfse', valor: item.valor, status: 'erro',
-          erro: 'NFS-e exige município e UF do cliente, que o checkout não coleta',
-        })
+        if (!seco) {
+          await gravarNota({
+            order_id: o.id, produto_key: item.key, produto_nome: item.nome,
+            tipo: 'nfse', valor: item.valor, status: 'erro',
+            erro: 'NFS-e exige município, UF e bairro do cliente, que o checkout não coleta',
+          })
+        }
         resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'NFS-e sem endereço' })
         continue
       }
 
       if (seco) {
         resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, tipo: pf.tipo, valor: item.valor, status: 'simulado' })
+        continue
+      }
+
+      // já emitida numa rodada anterior? não mexe.
+      const previa = jaEmitidas.get(`${o.id}|${item.key}`)
+      if (previa?.status === 'emitida') {
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'já emitida' })
         continue
       }
 
@@ -267,7 +311,8 @@ export default async function handler(req, res) {
               textoImunidade: cfg.textoImunidade,
             })
 
-      const r = await emitir(pf.tipo, payload)
+      // passa o id da tentativa anterior, se houver: evita criar segunda nota
+      const r = await emitir(pf.tipo, payload, previa?.bling_id || null)
 
       await gravarNota({
         order_id: o.id,
