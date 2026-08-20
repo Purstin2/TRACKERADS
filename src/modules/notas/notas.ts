@@ -38,6 +38,22 @@ export interface ItemChecklist {
   valor?: string
 }
 
+/**
+ * Endereço usado quando o comprador não informa — que é sempre, em produto
+ * digital. O contador autorizou usar o endereço do próprio CNPJ ("prática
+ * padrão", palavras dele), e confirmou que o ISS é devido em Balneário
+ * Camboriú independente de onde o cliente mora. Então não é dado inventado:
+ * é o endereço do prestador, que é quem recolhe.
+ */
+export interface EnderecoPadrao {
+  rua: string
+  numero: string
+  bairro: string
+  municipio: string
+  uf: string
+  cep: string
+}
+
 export interface NotasConfig {
   emissaoAtiva: boolean
   ambiente: 'homologacao' | 'producao'
@@ -45,6 +61,7 @@ export interface NotasConfig {
   naturezaOperacaoId: number | null
   ncmPadrao: string
   textoImunidade: string
+  enderecoPadrao: EnderecoPadrao
   checklist: Record<string, ItemChecklist>
   produtos: Record<string, ProdutoFiscal>
 }
@@ -60,6 +77,7 @@ export const CONFIG_INICIAL: NotasConfig = {
   naturezaOperacaoId: 15111289642,
   ncmPadrao: '4901.99.00',
   textoImunidade: TEXTO_IMUNIDADE,
+  enderecoPadrao: { rua: '', numero: 'S/N', bairro: 'Centro', municipio: 'Balneário Camboriú', uf: 'SC', cep: '' },
   checklist: {},
   produtos: {},
 }
@@ -115,6 +133,14 @@ export const CHECKLIST_ITENS: {
     id: 'iss',
     label: 'Tributação de ISS da NFS-e',
     detalhe: 'Código 010901, ISS 5%, NBS 1.1703.10.00, indicador INTERNET. Já gravado no Bling.',
+    responsavel: 'contador',
+    resolvido: true,
+  },
+  {
+    id: 'endereco_padrao',
+    label: 'Endereço padrão da NFS-e',
+    detalhe:
+      'Contador autorizou usar o endereço do próprio CNPJ quando o comprador não informa, e confirmou que o ISS é devido em Balneário Camboriú de qualquer forma.',
     responsavel: 'contador',
     resolvido: true,
   },

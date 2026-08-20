@@ -270,6 +270,43 @@ export default function NotasPage() {
         </div>
       </div>
 
+      {/* endereço padrão da NFS-e */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="text-[13px] font-bold">Endereço padrão da NFS-e</h3>
+        </div>
+        <div className="card-body flex flex-col gap-3">
+          <p className="text-[12px] leading-relaxed text-muted2">
+            Checkout de infoproduto não pede endereço, mas a NFS-e exige município, UF e bairro. O
+            contador autorizou usar o endereço do próprio CNPJ nesses casos, e confirmou que{' '}
+            <b className="text-ink">o ISS é devido em Balneário Camboriú</b> independentemente de onde o
+            cliente mora — então o padrão não distorce imposto, é o endereço de quem recolhe. Só vale
+            para NFS-e; a NF-e é autorizada sem endereço nenhum.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {([
+              ['municipio', 'Município'],
+              ['uf', 'UF'],
+              ['bairro', 'Bairro'],
+              ['rua', 'Rua'],
+              ['numero', 'Número'],
+              ['cep', 'CEP'],
+            ] as const).map(([campo, label]) => (
+              <label key={campo} className="flex flex-col gap-1">
+                <span className="text-[10.5px] uppercase tracking-wide text-muted2">{label}</span>
+                <input
+                  className={INP}
+                  value={cfg.enderecoPadrao?.[campo] || ''}
+                  onChange={(e) =>
+                    setCfg({ ...cfg, enderecoPadrao: { ...cfg.enderecoPadrao, [campo]: e.target.value } })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* cobertura + ligar */}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="card card-body">

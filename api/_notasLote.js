@@ -175,24 +175,35 @@ function itensDoPedido(o) {
 }
 
 /**
- * Dados do comprador. O nome/CPF vêm das colunas (o webhook já extrai);
- * o endereço só existe no raw — e na prática vem vazio na Kirvano, o que é
- * aceitável pra NF-e mas impede NFS-e.
+ * Dados do comprador. O nome/CPF vêm das colunas (o webhook já extrai); o
+ * endereço só existe no raw — e vem SEMPRE vazio na Kirvano (0 de 1.487 pedidos
+ * de agosto/2026 tinham rua, cidade ou CEP), porque checkout de infoproduto não
+ * pede endereço.
+ *
+ * A NF-e não se importa: a SEFAZ autoriza produto digital só com nome e CPF.
+ * A NFS-e exige município, UF e bairro — e é aí que entra o `enderecoPadrao`.
+ * O contador autorizou usar o endereço do próprio CNPJ nesses casos, e
+ * confirmou que o ISS é devido em Balneário Camboriú independente de onde o
+ * cliente mora. Ou seja, o padrão não distorce o imposto: é o endereço de quem
+ * recolhe.
  */
-function clienteDoPedido(o) {
+function clienteDoPedido(o, enderecoPadrao) {
   const c = (o.raw || {}).customer || {}
   const a = c.address || {}
+  const p = enderecoPadrao || {}
   return {
     nome: o.customer_name || c.name || 'Consumidor',
     documento: o.customer_doc || c.document || '',
     endereco: {
-      rua: a.street || '',
-      numero: a.number || '',
-      bairro: a.neighborhood || '',
-      municipio: a.city || '',
-      uf: a.state || '',
-      cep: a.zipcode || '',
+      rua: a.street || p.rua || '',
+      numero: a.number || p.numero || 'S/N',
+      bairro: a.neighborhood || p.bairro || '',
+      municipio: a.city || p.municipio || '',
+      uf: a.state || p.uf || '',
+      cep: a.zipcode || p.cep || '',
     },
+    /** true = o endereço veio do padrão, não do comprador (fica registrado) */
+    enderecoPadrao: !(a.city && a.state),
   }
 }
 
@@ -226,7 +237,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false } = {}) {
       break
     }
 
-    const cliente = clienteDoPedido(o)
+    const cliente = clienteDoPedido(o, cfg.enderecoPadrao)
 
     // Venda para o exterior ainda não tem tratamento fiscal definido (o contador
     // disse que muda a tributação e não tem ISS). Na prática elas se identificam
@@ -278,18 +289,20 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false } = {}) {
         continue
       }
 
-      // NFS-e precisa de município/UF (bairro também); a Kirvano não coleta.
-      // Registra o motivo em vez de tentar e queimar tentativa num erro certo.
-      if (pf.tipo === 'nfse' && !(cliente.endereco.municipio && cliente.endereco.uf)) {
+      // NFS-e exige município, UF e bairro. Como o comprador nunca informa, o
+      // `enderecoPadrao` cobre — mas se ele não estiver configurado, a nota vai
+      // falhar na API. Melhor avisar do que queimar tentativa.
+      const e = cliente.endereco
+      if (pf.tipo === 'nfse' && !(e.municipio && e.uf && e.bairro)) {
         resumo.puladas++
         if (!seco) {
           await gravarNota({
             order_id: o.id, produto_key: item.key, produto_nome: item.nome,
             tipo: 'nfse', valor: item.valor, status: 'erro',
-            erro: 'NFS-e exige município, UF e bairro do cliente, que o checkout não coleta',
+            erro: 'endereço padrão da NFS-e incompleto — preencha município, UF e bairro na aba Notas Fiscais',
           })
         }
-        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'NFS-e sem endereço' })
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'endereço padrão faltando' })
         continue
       }
 
