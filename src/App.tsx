@@ -14,6 +14,7 @@ const RecuperacaoPage = lazy(() => import('./modules/recuperacao/RecuperacaoPage
 const OfertasPage = lazy(() => import('./modules/ofertas/OfertasPage'))
 const MobileApp = lazy(() => import('./modules/mobile/MobileApp'))
 const ConfiguracaoPage = lazy(() => import('./modules/config/ConfiguracaoPage'))
+const NotasPage = lazy(() => import('./modules/notas/NotasPage'))
 
 function Loading() {
   return (
@@ -114,6 +115,14 @@ export default function App() {
           element={
             <Suspense fallback={<Loading />}>
               <GastosPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="notas"
+          element={
+            <Suspense fallback={<Loading />}>
+              <NotasPage />
             </Suspense>
           }
         />

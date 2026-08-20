@@ -10,6 +10,7 @@ import {
   KeyRound,
   FlaskConical,
   Wallet,
+  Receipt,
 } from 'lucide-react'
 
 export interface NavChild {
@@ -74,6 +75,12 @@ export const NAV: NavItem[] = [
     label: 'Gastos',
     icon: Wallet,
     to: '/gastos',
+  },
+  {
+    id: 'notas',
+    label: 'Notas fiscais',
+    icon: Receipt,
+    to: '/notas',
   },
   {
     id: 'tracker',
