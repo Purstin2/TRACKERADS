@@ -211,7 +211,7 @@ function clienteDoPedido(o, enderecoPadrao) {
  * Roda o lote. Autenticação fica com quem chama (recover.js já exige o
  * WEBHOOK_SECRET ou header de cron antes de chegar aqui).
  */
-export async function rodarLoteNotas({ dias: diasParam, seco = false } = {}) {
+export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } = {}) {
   const cfg = await lerConfig()
   if (!cfg.emissaoAtiva) {
     return { ok: true, pulado: 'emissão desligada na aba Notas Fiscais' }
@@ -327,6 +327,13 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false } = {}) {
               naturezaOperacaoId: cfg.naturezaOperacaoId,
               textoImunidade: cfg.textoImunidade,
             })
+
+      // `max` existe pro rollout controlado: emitir 1 nota, conferir no painel
+      // do Bling, e só então soltar o lote inteiro.
+      if (max && resumo.emitidas >= max) {
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: `parou no limite de ${max}` })
+        break
+      }
 
       // passa o id da tentativa anterior, se houver: evita criar segunda nota
       const r = await emitir(pf.tipo, payload, previa?.bling_id || null)

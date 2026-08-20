@@ -208,7 +208,11 @@ export default async function handler(req, res) {
   if ((req.query.job || '') === 'notas') {
     try {
       const { rodarLoteNotas } = await import('./_notasLote.js')
-      const out = await rodarLoteNotas({ dias: req.query.dias, seco: req.query.seco === '1' })
+      const out = await rodarLoteNotas({
+        dias: req.query.dias,
+        seco: req.query.seco === '1',
+        max: Number(req.query.max) || 0,
+      })
       return res.status(200).json(out)
     } catch (e) {
       return res.status(500).json({ ok: false, erro: String(e?.message || e).slice(0, 300) })
