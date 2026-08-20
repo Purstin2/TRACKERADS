@@ -3,6 +3,7 @@
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "crons": [
     { "path": "/api/briefing", "schedule": "0 11 * * *" },
-    { "path": "/api/notify", "schedule": "0 3 * * *" }
+    { "path": "/api/notify", "schedule": "0 3 * * *" },
+    { "path": "/api/notas", "schedule": "0 6 * * *" }
   ]
 }

@@ -8,7 +8,7 @@ import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
 import { discoverProducts } from '@/modules/taxas/taxas'
 import {
   NOTAS_KEY, CONFIG_INICIAL, CHECKLIST_ITENS, RESP_LABEL, TIPO_LABEL,
-  progressoChecklist, produtoFiscal, brl,
+  progressoChecklist, produtoFiscal, itemFeito, brl,
   type NotasConfig, type TipoNota, type ProdutoFiscal,
 } from './notas'
 
@@ -67,11 +67,17 @@ export default function NotasPage() {
     setCfg({ ...cfg, produtos: { ...cfg.produtos, [key]: { ...atual, ...p, key, nome } } })
   }
 
-  const status = !prog.completo
-    ? { level: 'err' as const, label: 'Bloqueado', detalhe: `${prog.total - prog.feitos} pendência(s) impedem a emissão.` }
+  const status = !prog.liberaNfe
+    ? { level: 'err' as const, label: 'Bloqueado', detalhe: 'Falta configuração essencial para emitir NF-e.' }
     : !cfg.emissaoAtiva
-    ? { level: 'off' as const, label: 'Pronto, desligado', detalhe: 'Configuração completa. Ligue quando quiser começar a emitir.' }
-    : { level: 'ok' as const, label: 'Emitindo', detalhe: `Ambiente: ${cfg.ambiente}.` }
+    ? {
+        level: 'off' as const,
+        label: 'Pronto, desligado',
+        detalhe: prog.completo
+          ? 'Configuração completa. Ligue quando quiser começar a emitir.'
+          : 'NF-e liberada (~94% da receita). NFS-e do Melodify segue travada até 01/09.',
+      }
+    : { level: 'ok' as const, label: 'Emitindo', detalhe: `Lote diário às 6h · ambiente: ${cfg.ambiente}.` }
 
   const statusCls = {
     ok: 'border-ok/30 bg-ok/10 text-ok',
@@ -96,15 +102,25 @@ export default function NotasPage() {
         </button>
       </div>
 
-      {/* aviso enquanto bloqueado */}
-      {!prog.completo && (
+      {/* NF-e liberada mas NFS-e ainda travada */}
+      {prog.liberaNfe && !prog.completo && (
+        <div className="flex gap-2 rounded-[8px] border border-warn/30 border-l-[3px] border-l-warn bg-warn/[0.07] px-3 py-2.5 text-[11.5px] text-muted">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+          <div>
+            <b>NF-e pronta, NFS-e esperando 01/09.</b> A NF-e já foi testada ponta a ponta — nota
+            autorizada pela SEFAZ com chave de acesso, sem precisar de endereço do comprador. Isso
+            cobre os arquivos digitais, que são ~94% do faturamento. Só o Melodify (NFS-e) segue
+            travado, porque o provedor municipal exige uma senha de credenciamento da prefeitura que
+            deixa de ser necessária quando o município migrar para o portal nacional.
+          </div>
+        </div>
+      )}
+      {!prog.liberaNfe && (
         <div className="flex gap-2 rounded-[8px] border border-danger/30 border-l-[3px] border-l-danger bg-danger/[0.08] px-3 py-2.5 text-[11.5px] text-muted">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
           <div>
-            <b>A emissão não pode ser ligada ainda.</b> A API do Bling recusa a nota enquanto a conta
-            não estiver configurada — o erro que ela devolve é{' '}
-            <i>"o código da lista de serviço não está vinculado a um conjunto de tributações"</i>.
-            Resolva o checklist abaixo primeiro.
+            <b>A emissão não pode ser ligada.</b> Falta item essencial do checklist — sem ele a API
+            do Bling recusa a nota.
           </div>
         </div>
       )}
@@ -118,7 +134,7 @@ export default function NotasPage() {
         <div className="card-body flex flex-col gap-2">
           {CHECKLIST_ITENS.map((it) => {
             const st = cfg.checklist[it.id]
-            const feito = !!st?.feito
+            const feito = itemFeito(cfg, it.id)
             return (
               <div
                 key={it.id}
@@ -183,7 +199,7 @@ export default function NotasPage() {
                     <th className="p-2 text-right font-semibold">Vendas 30d</th>
                     <th className="p-2 text-right font-semibold">Faturamento</th>
                     <th className="p-2 text-left font-semibold">Tipo de nota</th>
-                    <th className="p-2 text-left font-semibold">Cód. serviço</th>
+                    <th className="p-2 text-left font-semibold">NCM / cód. serviço</th>
                     <th className="p-2 text-left font-semibold">Descrição na nota</th>
                   </tr>
                 </thead>
@@ -216,13 +232,24 @@ export default function NotasPage() {
                           </select>
                         </td>
                         <td className="p-2">
-                          <input
-                            className={INP + ' max-w-[100px]'}
-                            placeholder="1.05"
-                            disabled={pf.tipo !== 'nfse'}
-                            value={pf.codigoServico}
-                            onChange={(e) => patchProduto(p.key, p.name, { codigoServico: e.target.value })}
-                          />
+                          {pf.tipo === 'nfe' ? (
+                            <input
+                              className={INP + ' max-w-[110px]'}
+                              placeholder="4901.99.00"
+                              title="NCM — classificação fiscal do produto"
+                              value={pf.ncm}
+                              onChange={(e) => patchProduto(p.key, p.name, { ncm: e.target.value })}
+                            />
+                          ) : (
+                            <input
+                              className={INP + ' max-w-[110px]'}
+                              placeholder="010901"
+                              title="Código na lista de serviços do município"
+                              disabled={pf.tipo !== 'nfse'}
+                              value={pf.codigoServico}
+                              onChange={(e) => patchProduto(p.key, p.name, { codigoServico: e.target.value })}
+                            />
+                          )}
                         </td>
                         <td className="p-2">
                           <input
@@ -261,14 +288,18 @@ export default function NotasPage() {
           <div className="text-[10.5px] uppercase tracking-wide text-muted2">Emissão automática</div>
           <button
             className={`btn btn-sm mt-2 ${cfg.emissaoAtiva ? 'btn-ghost' : 'btn-primary'}`}
-            disabled={!prog.completo}
+            disabled={!prog.liberaNfe}
             onClick={() => setCfg({ ...cfg, emissaoAtiva: !cfg.emissaoAtiva })}
           >
             <Power className="h-3.5 w-3.5" /> {cfg.emissaoAtiva ? 'Desligar' : 'Ligar emissão'}
           </button>
-          {!prog.completo && (
-            <div className="mt-1.5 text-[11px] text-muted2">Resolva o checklist para liberar.</div>
-          )}
+          <div className="mt-1.5 text-[11px] text-muted2">
+            {!prog.liberaNfe
+              ? 'Resolva o checklist para liberar.'
+              : cfg.emissaoAtiva
+              ? 'Lote roda todo dia às 6h.'
+              : 'Emite NF-e em lote diário. NFS-e entra depois de 01/09.'}
+          </div>
         </div>
       </div>
 

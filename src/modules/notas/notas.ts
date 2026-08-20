@@ -26,7 +26,8 @@ export interface ProdutoFiscal {
   key: string // mesmo key do discoverProducts (id Kirvano ou "n:<nome>")
   nome: string
   tipo: TipoNota
-  codigoServico: string // código da lista de serviço do município
+  codigoServico: string // NFS-e: código da lista de serviço do município
+  ncm: string // NF-e: classificação fiscal (4901.99.00 p/ arquivo digital)
   descricao: string // o que sai escrito na nota
   aliquotaIss: number | null // %
 }
@@ -40,58 +41,89 @@ export interface ItemChecklist {
 export interface NotasConfig {
   emissaoAtiva: boolean
   ambiente: 'homologacao' | 'producao'
+  /** id da natureza de operação usada na NF-e (Bling cria 18 no onboarding) */
+  naturezaOperacaoId: number | null
+  ncmPadrao: string
+  textoImunidade: string
   checklist: Record<string, ItemChecklist>
   produtos: Record<string, ProdutoFiscal>
 }
 
+/** Texto obrigatório na NF-e de arquivo digital — não é campo, é observação. */
+export const TEXTO_IMUNIDADE =
+  'EBOOK IMUNIDADE DE ICMS CONFORME ART. 150, III, D, CONSTITUICAO DA REPUBLICA FEDERATIVA DO BRASIL DE 1988'
+
 export const CONFIG_INICIAL: NotasConfig = {
   emissaoAtiva: false,
   ambiente: 'homologacao',
+  // "Venda de mercadoria a não contribuinte" — a certa pra venda a pessoa física
+  naturezaOperacaoId: 15111289642,
+  ncmPadrao: '4901.99.00',
+  textoImunidade: TEXTO_IMUNIDADE,
   checklist: {},
   produtos: {},
 }
 
-/** Os cinco bloqueios reais, na ordem em que costumam ser resolvidos. */
+/**
+ * Estado real da configuração, apurado testando a API do Bling em 20/08/2026.
+ * O que está `resolvido: true` já foi verificado de verdade — não é otimismo.
+ */
 export const CHECKLIST_ITENS: {
   id: string
   label: string
   detalhe: string
   responsavel: 'contador' | 'prefeitura' | 'bling'
-  campo?: string // se preenche um valor junto
+  campo?: string
+  resolvido?: boolean // já confirmado por teste; fica marcado por padrão
+  bloqueiaNfe?: boolean
 }[] = [
   {
     id: 'classificacao',
-    label: 'Produto digital entra como serviço (NFSe)?',
+    label: 'Classificação fiscal de cada produto',
     detalhe:
-      'Precisa da confirmação de que arquivo 3D, estampa e música personalizada se enquadram como serviço no seu regime — é isso que define NFSe em vez de NFe.',
+      'Contador definiu: arquivos prontos (STL, estampas, artes de caneca) = NF-e; música personalizada (Melodify) = NFS-e.',
     responsavel: 'contador',
+    resolvido: true,
+    bloqueiaNfe: true,
   },
   {
-    id: 'codigo_servico',
-    label: 'Código do serviço na lista do município',
-    detalhe: 'Define a alíquota do ISS. Sem ele a API do Bling recusa a nota.',
+    id: 'ncm',
+    label: 'NCM do arquivo digital + texto de imunidade',
+    detalhe:
+      'NCM 4901.99.00, com a imunidade de ICMS de ebook escrita nas informações complementares. Testado: SEFAZ autorizou.',
     responsavel: 'contador',
-    campo: 'Ex: 1.05',
-  },
-  {
-    id: 'aliquota_iss',
-    label: 'Alíquota de ISS aplicável',
-    detalhe: 'Percentual que o município cobra sobre o serviço.',
-    responsavel: 'contador',
-    campo: 'Ex: 2',
-  },
-  {
-    id: 'numeracao_rps',
-    label: 'Numeração de RPS (série e número inicial)',
-    detalhe: 'Vem do credenciamento na prefeitura. No Bling está vazio hoje.',
-    responsavel: 'prefeitura',
-    campo: 'Ex: série 1, nº 1',
+    resolvido: true,
+    bloqueiaNfe: true,
   },
   {
     id: 'certificado',
-    label: 'Certificado digital e-CNPJ A1 instalado no Bling',
-    detalhe: 'Tem que ser do mesmo CNPJ do emitente. Certificado de CPF não serve.',
+    label: 'Certificado digital e-CNPJ A1',
+    detalhe: 'Instalado no Bling e validado — a NF-e de teste saiu autorizada com ele.',
     responsavel: 'bling',
+    resolvido: true,
+    bloqueiaNfe: true,
+  },
+  {
+    id: 'natureza',
+    label: 'Natureza de operação da NF-e',
+    detalhe: '"Venda de mercadoria a não contribuinte" — a correta para venda a pessoa física.',
+    responsavel: 'bling',
+    resolvido: true,
+    bloqueiaNfe: true,
+  },
+  {
+    id: 'iss',
+    label: 'Tributação de ISS da NFS-e',
+    detalhe: 'Código 010901, ISS 5%, NBS 1.1703.10.00, indicador INTERNET. Já gravado no Bling.',
+    responsavel: 'contador',
+    resolvido: true,
+  },
+  {
+    id: 'senha_prefeitura',
+    label: 'Senha do portal da prefeitura (só NFS-e)',
+    detalhe:
+      'Bloqueia SÓ a NFS-e do Melodify (~6% da receita). O município migra para o portal nacional em 01/09/2026, que autentica por certificado — então a tendência é resolver sozinho nessa data. Lembrete salvo no Diário.',
+    responsavel: 'prefeitura',
   },
 ]
 
@@ -107,10 +139,22 @@ export const TIPO_LABEL: Record<TipoNota, string> = {
   nenhum: 'Não emitir',
 }
 
-/** Quantos itens do checklist já foram resolvidos. */
+/** Um item conta como feito se foi confirmado por teste OU marcado à mão. */
+export const itemFeito = (cfg: NotasConfig, id: string) => {
+  const def = CHECKLIST_ITENS.find((i) => i.id === id)
+  const marcado = cfg.checklist[id]
+  return marcado ? marcado.feito : !!def?.resolvido
+}
+
+/**
+ * Progresso. `liberaNfe` é o que realmente importa no dia a dia: a NF-e cobre
+ * ~94% do faturamento e não depende da senha da prefeitura, então dá pra ligar
+ * a emissão mesmo com a NFS-e ainda travada.
+ */
 export function progressoChecklist(cfg: NotasConfig) {
-  const feitos = CHECKLIST_ITENS.filter((i) => cfg.checklist[i.id]?.feito).length
-  return { feitos, total: CHECKLIST_ITENS.length, completo: feitos === CHECKLIST_ITENS.length }
+  const feitos = CHECKLIST_ITENS.filter((i) => itemFeito(cfg, i.id)).length
+  const liberaNfe = CHECKLIST_ITENS.filter((i) => i.bloqueiaNfe).every((i) => itemFeito(cfg, i.id))
+  return { feitos, total: CHECKLIST_ITENS.length, completo: feitos === CHECKLIST_ITENS.length, liberaNfe }
 }
 
 /** Produtos que ainda não têm tipo de nota definido. */
@@ -125,6 +169,7 @@ export function produtoFiscal(cfg: NotasConfig, key: string, nome: string): Prod
       nome,
       tipo: 'nenhum',
       codigoServico: '',
+      ncm: cfg.ncmPadrao || '4901.99.00',
       descricao: '',
       aliquotaIss: null,
     }
