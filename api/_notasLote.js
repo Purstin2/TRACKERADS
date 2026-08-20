@@ -1,11 +1,16 @@
 /**
- * Emissão de notas fiscais em lote — roda 1x/dia por cron.
+ * Emissão de notas fiscais em lote.
+ *
+ * NÃO é uma função serverless: o plano Hobby da Vercel limita a 12, e o projeto
+ * está no teto (o 13º arquivo derrubou o deploy inteiro em 20/08/2026). Por isso
+ * o prefixo `_` — é módulo, chamado de `recover.js?job=notas`, mesma carona que
+ * o `_adsSnapshot.js` já usa.
  *
  * Por que lote e não no webhook: o contador liberou emissão em lote, e emitir
  * dentro do webhook da venda significaria que um erro do Bling (ou a SEFAZ fora
  * do ar) poderia derrubar o processamento da venda em si — pixel, CAPI e
  * recuperação por WhatsApp dependem daquele fluxo. Aqui, se falhar, falha
- * sozinho e tenta de novo amanhã.
+ * sozinho e tenta de novo na próxima rodada.
  *
  * Regras que vieram do contador (20/08/2026):
  *  · Arquivos prontos (STL, estampas, artes de caneca) → NF-e, NCM 4901.99.00,
@@ -28,9 +33,12 @@ const LOTE_MAX = 120 // teto de pedidos lidos; quem manda mesmo é o orçamento 
  * confirmar, com as pausas do limite de 3 req/s do Bling). Em vez de chutar
  * quantas cabem, o lote para sozinho quando o tempo acaba — o que sobrar sai na
  * próxima rodada, porque a fila é justamente "quem ainda não tem nota".
+ *
+ * 40s (e não 50) porque agora divide a função com a recuperação de WhatsApp:
+ * deixa margem pra ela, já que o `?job=notas` é chamado separado mas o teto de
+ * tempo da Vercel é da função inteira.
  */
-export const config = { maxDuration: 60 }
-const ORCAMENTO_MS = 50_000
+const ORCAMENTO_MS = 40_000
 
 function sb() {
   const url = process.env.SUPABASE_URL
@@ -188,27 +196,23 @@ function clienteDoPedido(o) {
   }
 }
 
-export default async function handler(req, res) {
-  const secret =
-    req.query?.secret || req.headers['x-webhook-secret'] || (req.headers.authorization || '').replace('Bearer ', '')
-  const ehCron = !!req.headers['x-vercel-cron']
-  if (!ehCron && (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET)) {
-    return res.status(401).json({ error: 'não autorizado' })
-  }
-
+/**
+ * Roda o lote. Autenticação fica com quem chama (recover.js já exige o
+ * WEBHOOK_SECRET ou header de cron antes de chegar aqui).
+ */
+export async function rodarLoteNotas({ dias: diasParam, seco = false } = {}) {
   const cfg = await lerConfig()
   if (!cfg.emissaoAtiva) {
-    return res.status(200).json({ ok: true, pulado: 'emissão desligada na aba Notas Fiscais' })
+    return { ok: true, pulado: 'emissão desligada na aba Notas Fiscais' }
   }
   if (!cfg.naturezaOperacaoId) {
-    return res.status(200).json({ ok: false, erro: 'naturezaOperacaoId não configurado' })
+    return { ok: false, erro: 'naturezaOperacaoId não configurado' }
   }
 
-  // janela: ontem pra trás, respeitando o prazo de 7 dias que o contador deu pra
-  // devolução — emitir antes disso evita nota emitida e cancelada no mesmo dia.
-  const dias = Number(req.query?.dias) || 7
+  // janela: respeitando o prazo de 7 dias que o contador deu pra devolução —
+  // emitir antes disso evita nota emitida e cancelada no mesmo dia.
+  const dias = Number(diasParam) || 7
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
-  const seco = req.query?.seco === '1' // simula sem emitir
 
   const inicio = Date.now()
   const pedidos = await pedidosPendentes(desde)
@@ -351,5 +355,5 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(200).json({ ok: true, ...resumo, detalhes: resumo.detalhes.slice(0, 50) })
+  return { ok: true, ...resumo, detalhes: resumo.detalhes.slice(0, 50) }
 }

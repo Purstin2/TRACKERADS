@@ -201,6 +201,20 @@ export default async function handler(req, res) {
     return res.status(out.erro ? (out.http || 500) : 200).json(out)
   }
 
+  // ── Notas fiscais: emissão em lote (?job=notas) ──
+  // Mesma carona, mesmo motivo. Chamar por job próprio (e não junto do
+  // WhatsApp) mantém os dois isolados: uma falha na emissão de nota não pode
+  // derrubar a recuperação de carrinho, que é o que essa função existe pra fazer.
+  if ((req.query.job || '') === 'notas') {
+    try {
+      const { rodarLoteNotas } = await import('./_notasLote.js')
+      const out = await rodarLoteNotas({ dias: req.query.dias, seco: req.query.seco === '1' })
+      return res.status(200).json(out)
+    } catch (e) {
+      return res.status(500).json({ ok: false, erro: String(e?.message || e).slice(0, 300) })
+    }
+  }
+
   // config (template/delay/janela editáveis na tela; credenciais só na env)
   let cfg = {}
   try {
