@@ -216,15 +216,16 @@ export async function emitir(tipo, payload, blingIdExistente = null) {
   const enviada = await bling(`${rota}/${id}/enviar`, { method: 'POST', body: {} })
   if (!enviada.ok) return { ok: false, etapa: 'enviar', erro: erroDoBling(enviada), ...base }
 
-  await pausa(1500) // a autorização não é instantânea; dá um tempo antes de conferir
+  // ⚠ HTTP 200 aqui NÃO quer dizer autorizada — quer dizer que a SEFAZ recebeu
+  // e respondeu. A resposta dela (que pode ser uma recusa) vem no corpo.
+  const veredito = lerRespostaSefaz(tipo, enviada.data?.data?.xml || '')
 
+  await pausa(800)
   const conf = await bling(`${rota}/${id}`)
   const n = conf.data?.data || {}
-  // NFe: situacao 4 = autorizada. NFSe: quem confirma é o código de verificação.
-  const autorizada = tipo === 'nfse' ? !!(n.codigoVerificacao || n.numero) : n.situacao === 4
 
   return {
-    ok: autorizada,
+    ok: veredito.ok,
     etapa: 'confirmar',
     blingId: id,
     numero: n.numero || n.numeroRPS || base.numero,
@@ -232,6 +233,40 @@ export async function emitir(tipo, payload, blingIdExistente = null) {
     chaveAcesso: n.chaveAcesso || null,
     situacao: n.situacao ?? null,
     linkDanfe: n.linkDanfe || null,
-    erro: autorizada ? null : `nota criada mas não autorizada (situacao ${n.situacao ?? '?'})`,
+    erro: veredito.ok ? null : veredito.motivo,
   }
+}
+
+/**
+ * A nota foi mesmo autorizada? Lê a resposta que a SEFAZ devolveu no envio.
+ *
+ * NÃO usar o campo `situacao` do Bling pra isso. Em 20/08/2026 eu li
+ * `situacao: 4` como "autorizada" e reportei 3 notas como emitidas — o painel
+ * do Bling mostrava "Rejeitada" nas três. O mapa real é 1=Pendente,
+ * 4=Rejeitada. Ter `chaveAcesso` também não prova nada: ela é montada antes de
+ * ir pra SEFAZ. E HTTP 200 no envio só diz que a SEFAZ respondeu, não que
+ * aprovou.
+ *
+ * A fonte de verdade é o `cStat` do protocolo na resposta do envio: 100 =
+ * "Autorizado o uso da NF-e". Qualquer outro valor vira erro com o `xMotivo`
+ * real ("Rejeicao: IE do emitente invalida"), que é o que a pessoa precisa ler
+ * pra consertar. O XML guardado na nota NÃO tem esse protocolo — só a resposta
+ * do envio tem.
+ */
+function lerRespostaSefaz(tipo, xmlResposta) {
+  // NFS-e é municipal e não usa cStat; a resposta vem em outro formato.
+  if (tipo === 'nfse') {
+    const erro = /erro|rejei|inval/i.test(xmlResposta)
+    return { ok: !erro, motivo: erro ? xmlResposta.replace(/<[^>]+>/g, ' ').trim().slice(0, 300) : null }
+  }
+
+  const cStat = [...String(xmlResposta).matchAll(/<cStat>(\d+)<\/cStat>/g)].map((m) => m[1])
+  const motivos = [...String(xmlResposta).matchAll(/<xMotivo>([^<]*)<\/xMotivo>/g)].map((m) => m[1])
+
+  if (cStat.includes('100')) return { ok: true, motivo: null }
+  if (!cStat.length) return { ok: false, motivo: 'SEFAZ não devolveu status (cStat ausente)' }
+
+  // 104 = "Lote processado" é só o envelope; o veredito real é o código do item
+  const recusa = motivos.find((m) => /rejei|denega|inval/i.test(m)) || motivos[motivos.length - 1]
+  return { ok: false, motivo: `[cStat ${cStat.join('/')}] ${recusa || 'sem motivo'}`.slice(0, 300) }
 }
