@@ -50,6 +50,7 @@ import { offerMemberSet } from './offers'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
 import type { RealAgg } from './realRoas'
+import { fetchCampaignSales } from './realRoas'
 import { openLog, lastScale, useLog, addAction, todayBR, touchedIds, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
 import { TrackerBtn, TrackerCell, BudgetTrackerModal } from './BudgetTracker'
 import { DuplicateModal, DupProofModal } from './Duplicate'
@@ -1288,22 +1289,35 @@ export function ContasView({ items }: { items: CacheItem[] }) {
   )
 }
 
-/* ── Painel de escala (dentro da campanha): HOJE lucro/ROAS/gasto/vendas + últimos dias ── */
+/* ── Painel de escala (dentro da campanha): HOJE lucro/ROAS/gasto/vendas + últimos dias ──
+ *
+ * Tem dois ROAS aqui de propósito, e o toggle existe porque a diferença entre
+ * eles confunde: a COLUNA da tabela mostra ROAS real (vendas do gateway), mas o
+ * painel mostrava só o ROAS do Meta. Abrir a campanha e ver 1.18 onde a linha
+ * dizia 0.18 parece bug — são fontes diferentes respondendo perguntas diferentes.
+ *
+ *  · Meta  = o que o pixel atribuiu, na moeda da conta
+ *  · Real  = vendas aprovadas no gateway casadas pelo utm_campaign, sempre BRL
+ *    (por isso o gasto é convertido pra BRL antes de dividir, igual à tabela)
+ */
 interface DayProfit { date: string; spend: number; roas: number | null; sales: number; profit: number }
 
 function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: string; name: string; sym: string; cur: string }) {
   const m = useMonitor()
   const [days, setDays] = useState<DayProfit[] | null>(null)
+  const [real, setReal] = useState<DayProfit[] | null>(null)
+  const [verReal, setVerReal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const fin = loadFinParamsForAccount(accId)
   const netFactor = 1 - (fin.gateway + fin.imposto) / 100
+  const fx = cur === 'USD' ? m.settings.fx || 1 : 1
 
   useEffect(() => {
     let alive = true
     setLoading(true); setErr('')
     fetchCampDaily(accId, campId, m.token.trim(), 6)
-      .then((rows) => {
+      .then(async (rows) => {
         if (!alive) return
         const arr: DayProfit[] = rows
           .map((r) => {
@@ -1316,6 +1330,36 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
           .sort((a, b) => (a.date < b.date ? 1 : -1)) // mais recente primeiro
           .slice(0, 5)
         setDays(arr); setLoading(false)
+
+        // ROAS real dos mesmos dias: vendas do gateway agrupadas por dia BRT.
+        // O gasto vira BRL antes de dividir — o gateway sempre devolve real.
+        if (!arr.length) return
+        try {
+          const desde = new Date(`${arr[arr.length - 1].date}T00:00:00-03:00`).toISOString()
+          const vendas = await fetchCampaignSales(campId, desde)
+          if (!alive) return
+          const porDia = new Map<string, { rev: number; n: number }>()
+          for (const v of vendas) {
+            const dia = new Date(new Date(v.at).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+            const cur2 = porDia.get(dia) || { rev: 0, n: 0 }
+            cur2.rev += v.value; cur2.n += 1
+            porDia.set(dia, cur2)
+          }
+          setReal(
+            arr.map((d) => {
+              const g = porDia.get(d.date) || { rev: 0, n: 0 }
+              const gastoBRL = d.spend * fx
+              return {
+                date: d.date,
+                spend: d.spend,
+                roas: gastoBRL > 0 ? g.rev / gastoBRL : null,
+                sales: g.n,
+                // mesma conta da coluna "Lucro real" da tabela, inclusive custo por venda
+                profit: (g.rev * netFactor - gastoBRL - g.n * (fin.custoUn || 0)) / (fx || 1),
+              }
+            }),
+          )
+        } catch { /* real é complemento: se falhar, o painel do Meta continua */ }
       })
       .catch((e) => { if (alive) { setErr(e.message); setLoading(false) } })
     return () => { alive = false }
@@ -1326,7 +1370,10 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
   if (err) return <div className="px-4 py-3 text-[12px] text-danger">{err}</div>
   if (!days || !days.length) return <div className="px-4 py-3 text-[12px] text-muted2">Sem gasto nos últimos dias.</div>
 
-  const today = days[0]
+  // com o toggle ligado (e dado disponível) o painel inteiro passa a ser o real
+  const usandoReal = verReal && !!real
+  const vista = usandoReal ? real! : days
+  const today = vista[0]
   const ok = today.profit >= 0
   const money = (v: number) => sym + v.toFixed(2)
   const sq = (d: DayProfit) => (d.spend <= 0 ? 'bg-surface2 text-muted2 border-border' : d.profit >= 0 ? 'border-ok/40 bg-ok/15 text-ok' : 'border-danger/40 bg-danger/15 text-danger')
@@ -1336,7 +1383,23 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
       {/* HOJE */}
       <div className="flex shrink-0 items-center gap-4 rounded-xl2 border border-border bg-surface2/50 px-4 py-2.5">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-muted2">Hoje · Lucro</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-muted2">Hoje · Lucro</span>
+            {/* alterna Meta ↔ real; some quando o gateway não devolveu nada */}
+            {real && (
+              <button
+                onClick={() => setVerReal((v) => !v)}
+                title={usandoReal
+                  ? 'Mostrando vendas do gateway (mesma fonte da coluna ROAS real). Clique para ver o que o Meta atribuiu.'
+                  : 'Mostrando o que o Meta atribuiu. Clique para ver o real do gateway — é o número da coluna ROAS real.'}
+                className={`rounded-full border px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide transition-colors ${
+                  usandoReal ? 'border-brand-2/50 bg-brand-2/15 text-brand-2' : 'border-border2 text-muted2 hover:text-ink'
+                }`}
+              >
+                {usandoReal ? 'real' : 'meta'}
+              </button>
+            )}
+          </div>
           <div className={`text-[22px] font-extrabold leading-tight ${ok ? 'text-ok' : 'text-danger'}`}>{ok ? '+' : ''}{money(today.profit)}</div>
         </div>
         <div className="flex flex-col gap-0.5 text-[11px] text-muted">
@@ -1347,11 +1410,11 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
       </div>
       {/* últimos dias (mais antigo → hoje) */}
       <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
-        {[...days].reverse().map((d) => (
+        {[...vista].reverse().map((d) => (
           <div
             key={d.date}
             className={`flex min-w-[56px] flex-col items-center rounded-[9px] border px-2 py-1.5 ${sq(d)}`}
-            title={`${fmtDate(d.date)} · ROAS ${d.roas?.toFixed(2) ?? '—'} · ${d.sales} vendas · gasto ${money(d.spend)} · lucro ${money(d.profit)}`}
+            title={`${fmtDate(d.date)} · ROAS ${usandoReal ? 'real ' : 'Meta '}${d.roas?.toFixed(2) ?? '—'} · ${d.sales} vendas · gasto ${money(d.spend)} · lucro ${money(d.profit)}`}
           >
             <span className="text-[9px] opacity-70">{fmtDate(d.date)}</span>
             <span className="text-[15px] font-extrabold leading-none">{d.roas != null ? d.roas.toFixed(2) : '—'}</span>
