@@ -147,14 +147,20 @@ export async function fetchRealByCampaign(preset: string): Promise<Record<string
   // Paginado: o `.limit(5000)` de antes recebia 1000 do servidor e calava a boca —
   // em 14 dias isso é metade das vendas, então ROAS real / V. reais / Lucro real
   // apareciam MENORES do que a realidade. Nunca confie em limit > 1000 aqui.
+  // `ordered_at` e não `created_at`: um é QUANDO A VENDA ACONTECEU, o outro é
+  // quando o webhook chegou aqui. Eles divergem em ~0,5% dos pedidos, e o dia da
+  // venda é o que tem que casar com o gasto daquele dia — senão a venda aparece
+  // no ROAS do dia seguinte. Nenhum pedido tem ordered_at nulo, então é seguro.
+  // (O painel de escala usa o mesmo campo; misturar os dois fazia a linha e o
+  // painel mostrarem números diferentes pra mesma campanha.)
   const data = await fetchAll<{ utm_campaign: string | null; value: number | null }>((from, to) => {
     let q = sb
       .from('kirvano_orders')
       .select('utm_campaign,value')
       .eq('status', 'APPROVED')
-      .gte('created_at', since)
+      .gte('ordered_at', since)
       .range(from, to)
-    if (until) q = q.lt('created_at', until)
+    if (until) q = q.lt('ordered_at', until)
     return q
   })
   const map: Record<string, RealAgg> = {}
@@ -166,4 +172,41 @@ export async function fetchRealByCampaign(preset: string): Promise<Record<string
     agg.revenue += o.value || 0
   }
   return map
+}
+
+/** Vendas reais por campanha E por dia (BRT) — alimenta os quadradinhos do
+ *  Histórico com a mesma fonte da coluna "ROAS real" da tabela.
+ *  Sem isto o Histórico mostrava o ROAS do Meta, que conta conversão que o
+ *  gateway depois reembolsou/cancelou: numa campanha real de 26/08 o Meta dizia
+ *  2 vendas onde só 1 tinha sido aprovada (as outras viraram REFUNDED/CANCELED). */
+export async function fetchRealByCampaignDay(
+  sinceISO: string,
+  untilISO?: string,
+): Promise<Record<string, Record<string, RealAgg>>> {
+  const sb = supabase()
+  if (!sb) return {}
+  const rows = await fetchAll<{ utm_campaign: string | null; value: number | null; ordered_at: string | null }>(
+    (from, to) => {
+      let q = sb
+        .from('kirvano_orders')
+        .select('utm_campaign,value,ordered_at')
+        .eq('status', 'APPROVED')
+        .gte('ordered_at', sinceISO)
+        .range(from, to)
+      if (untilISO) q = q.lt('ordered_at', untilISO)
+      return q
+    },
+  )
+  const out: Record<string, Record<string, RealAgg>> = {}
+  for (const o of rows) {
+    const id = campIdFromUtm(o.utm_campaign)
+    if (!id || !o.ordered_at) continue
+    // dia BRT: o Histórico usa date_start do Meta, que também é o dia local
+    const dia = new Date(new Date(o.ordered_at).getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10)
+    const porDia = (out[id] ??= {})
+    const agg = (porDia[dia] ??= { sales: 0, revenue: 0 })
+    agg.sales++
+    agg.revenue += o.value || 0
+  }
+  return out
 }

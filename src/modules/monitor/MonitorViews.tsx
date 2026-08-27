@@ -50,7 +50,7 @@ import { offerMemberSet } from './offers'
 import { BarChart3 } from 'lucide-react'
 import type { CacheItem, CampMap, CampMeta } from './MonitorContext'
 import type { RealAgg } from './realRoas'
-import { fetchCampaignSales } from './realRoas'
+import { fetchCampaignSales, fetchRealByCampaignDay } from './realRoas'
 import { openLog, lastScale, useLog, addAction, todayBR, touchedIds, duplicationsFor, budgetIncreases, impactDays, KIND_LABEL, KIND_CLS, type ActionEntry } from './actionLog'
 import { TrackerBtn, TrackerCell, BudgetTrackerModal } from './BudgetTracker'
 import { DuplicateModal, DupProofModal } from './Duplicate'
@@ -776,9 +776,28 @@ const MET_BY_KEY: Record<string, MetCol> = Object.fromEntries(MET_COLS.map((c) =
 /* config de colunas (ordem + largura) salva no navegador */
 /* v2: a ordem padrão passou a ser a do gerenciador (Últ. Atualização → Vendas →
    Orçamento → CPA → Gastos → Lucro → ROAS…). Chave nova pra não herdar a ordem
-   antiga salva, que jogaria as colunas novas pro fim da tabela. */
-const COLCFG_KEY = 'monitor_colcfg_v2'
-const DEF_ORDER = MET_COLS.map((c) => c.key)
+   antiga salva, que jogaria as colunas novas pro fim da tabela.
+
+   v3: o padrão virou REAL. Ter "Lucro/ROAS" (Meta) e "Lucro real/ROAS real"
+   (gateway) lado a lado fazia a mesma campanha ter dois números diferentes na
+   mesma linha, e a análise saía errada dependendo de qual a pessoa olhava — o
+   Meta conta conversão que o gateway não confirmou. Agora as colunas reais
+   ocupam a posição das antigas e as do Meta vêm DESLIGADAS (continuam no
+   gerenciador de colunas pra quem quiser comparar). */
+const COLCFG_KEY = 'monitor_colcfg_v3'
+/** Colunas do Meta que saem da tabela por padrão — o real é a fonte de verdade. */
+const DEF_HIDDEN = ['roas', 'lucro']
+/* Ordem padrão: as reais assumem o lugar que Lucro/ROAS ocupavam; as do Meta
+ * ficam logo depois, pra reaparecerem ao lado quando forem religadas. */
+const DEF_ORDER = (() => {
+  const todas = MET_COLS.map((c) => c.key)
+  const reais = ['lucroReal', 'realRoas', 'realSales']
+  const meta = ['lucro', 'roas']
+  const resto = todas.filter((k) => !reais.includes(k) && !meta.includes(k))
+  const i = resto.indexOf('spend') // as de dinheiro ficam logo depois do gasto
+  const corte = i >= 0 ? i + 1 : resto.length
+  return [...resto.slice(0, corte), ...reais, ...meta, ...resto.slice(corte)]
+})()
 const DEF_W = 96
 /* Larguras padrão por coluna: 96px cortava data/hora e faturamento no meio. */
 const COL_DEF_W: Record<string, number> = {
@@ -807,13 +826,14 @@ function readColCfg(): ColCfg {
     let order: string[] = Array.isArray(c.order) ? c.order.filter((k: string) => MET_BY_KEY[k]) : []
     DEF_ORDER.forEach((k) => { if (!order.includes(k)) order.push(k) }) // coluna nova do app entra no fim
     if (!order.length) order = [...DEF_ORDER]
-    const hidden: string[] = Array.isArray(c.hidden) ? c.hidden.filter((k: string) => MET_BY_KEY[k]) : []
+    // sem config salva ainda → começa no padrão novo (real ligado, Meta oculto)
+    const hidden: string[] = Array.isArray(c.hidden) ? c.hidden.filter((k: string) => MET_BY_KEY[k]) : [...DEF_HIDDEN]
     return { order, w: c.w && typeof c.w === 'object' ? c.w : {}, hidden }
-  } catch { return { order: [...DEF_ORDER], w: {}, hidden: [] } }
+  } catch { return { order: [...DEF_ORDER], w: {}, hidden: [...DEF_HIDDEN] } }
 }
 function getColCfg(): ColCfg { if (!colCfgCache) colCfgCache = readColCfg(); return colCfgCache }
 export function setColCfg(next: ColCfg) { colCfgCache = next; localStorage.setItem(COLCFG_KEY, JSON.stringify(next)); colSubs.forEach((f) => f()) }
-export function resetColCfg() { setColCfg({ order: [...DEF_ORDER], w: {}, hidden: [] }) }
+export function resetColCfg() { setColCfg({ order: [...DEF_ORDER], w: {}, hidden: [...DEF_HIDDEN] }) }
 export function useColCfg(): ColCfg {
   return useSyncExternalStore((f) => { colSubs.add(f); return () => { colSubs.delete(f) } }, getColCfg, getColCfg)
 }
@@ -1306,7 +1326,9 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
   const m = useMonitor()
   const [days, setDays] = useState<DayProfit[] | null>(null)
   const [real, setReal] = useState<DayProfit[] | null>(null)
-  const [verReal, setVerReal] = useState(false)
+  // começa no real: é a mesma fonte da coluna da tabela, então abrir a campanha
+  // não muda mais o número no meio da análise
+  const [verReal, setVerReal] = useState(true)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const fin = loadFinParamsForAccount(accId)
@@ -1721,6 +1743,27 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
   const touched = m.touchedOnly ? touchedIds() : null
   const [cols, setCols] = useState<HistCols>(readHistCols)
   useEffect(() => { localStorage.setItem(HISTCOLS_KEY, JSON.stringify(cols)) }, [cols])
+
+  /* Vendas REAIS por campanha/dia — mesma fonte da coluna "ROAS real".
+   * Antes o quadradinho mostrava o ROAS do Meta, que conta conversão depois
+   * reembolsada: numa campanha de 26/08 ele dizia 2 vendas onde só 1 foi
+   * aprovada (as outras viraram REFUNDED e CANCELED). Com dois números
+   * diferentes pra mesma campanha, a análise saía errada dependendo da tela. */
+  const [realDay, setRealDay] = useState<Record<string, Record<string, RealAgg>> | null>(null)
+  const [verMeta, setVerMeta] = useState(false)
+  const datas = useMemo(() => items.flatMap((i) => i.dates || []).sort(), [items])
+  useEffect(() => {
+    if (!datas.length) return
+    let alive = true
+    const since = new Date(`${datas[0]}T00:00:00-03:00`).toISOString()
+    const u = new Date(`${datas[datas.length - 1]}T00:00:00-03:00`)
+    u.setDate(u.getDate() + 1)
+    fetchRealByCampaignDay(since, u.toISOString())
+      .then((r) => { if (alive) setRealDay(r) })
+      .catch(() => { /* real é complemento: falhou, segue com o do Meta */ })
+    return () => { alive = false }
+  }, [datas.join(',')])
+  const usarReal = !verMeta && !!realDay
   const toggleCol = (k: 'status' | 'hist') => setCols((c) => ({ ...c, [k]: !c[k] }))
   // data-âncora do ordenamento por sequência de vendas (clique no cabeçalho da data)
   const [streakAnchor, setStreakAnchor] = useState<string | null>(null)
@@ -1772,6 +1815,21 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
             </>
           )}
         </div>
+
+        {/* fonte dos quadradinhos: gateway (padrão) ou o que o Meta atribuiu */}
+        {realDay && (
+          <button
+            onClick={() => setVerMeta((v) => !v)}
+            title={usarReal
+              ? 'Mostrando vendas do gateway — mesma fonte da coluna ROAS real. Clique para ver o que o Meta atribuiu.'
+              : 'Mostrando o que o Meta atribuiu (inclui venda depois reembolsada). Clique para voltar ao real.'}
+            className={`rounded-[6px] border px-2 py-1 text-[11px] font-semibold transition-colors ${
+              usarReal ? 'border-brand-2/50 bg-brand-2/10 text-brand-2' : 'border-warn/40 bg-warn/10 text-warn'
+            }`}
+          >
+            {usarReal ? '✓ ROAS real' : '⚠ ROAS do Meta'}
+          </button>
+        )}
 
         {streakAnchor ? (
           <button onClick={() => setStreakAnchor(null)} className="rounded-[6px] border border-brand/40 bg-brand/10 px-2 py-1 text-[11px] font-semibold text-brand-2 hover:bg-brand/20">
@@ -1877,7 +1935,15 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                           return (
                             <td key={d} className="px-1.5 py-3.5 text-center text-muted2">·</td>
                           )
-                        const cls = classify(day.roas, day.cpa, day.sales, s)
+                        // no modo real o ROAS vem do gateway; o gasto do Meta é
+                        // convertido pra BRL porque o gateway sempre devolve real
+                        const rd = usarReal ? realDay?.[cid]?.[d] : undefined
+                        const fxDia = item.acc.cur === 'USD' ? s.fx || 1 : 1
+                        const roasDia = usarReal
+                          ? (day.spend > 0 ? (rd?.revenue || 0) / (day.spend * fxDia) : null)
+                          : day.roas
+                        const vendasDia = usarReal ? (rd?.sales || 0) : day.sales
+                        const cls = classify(roasDia, day.cpa, vendasDia, s)
                         const bg = { good: 'bg-ok/[0.07]', bad: 'bg-danger/[0.07]', warn: 'bg-warn/[0.06]', none: '' }[cls]
                         const inStreak = st?.days.has(d)
                         return (
@@ -1885,18 +1951,18 @@ export function HistoricoView({ items }: { items: CacheItem[] }) {
                             key={d}
                             style={inStreak ? { boxShadow: 'inset 0 -2px 0 rgba(139,124,255,.7)' } : undefined}
                             className={`px-1.5 py-3.5 text-center ${bg} ${inStreak ? 'bg-brand/[0.08]' : ''}`}
-                            title={`ROAS ${day.roas !== null ? day.roas.toFixed(2) : '—'} · ${day.sales} venda(s) · gasto $${day.spend.toFixed(2)}`}
+                            title={`ROAS ${usarReal ? 'real' : 'Meta'} ${roasDia !== null ? roasDia.toFixed(2) : '—'} · ${vendasDia} venda(s) · gasto $${day.spend.toFixed(2)}${usarReal && day.sales !== vendasDia ? ` · o Meta contou ${day.sales}` : ''}`}
                           >
                             <span className="inline-flex items-center gap-1">
                               {cls !== 'none' && <span className={`h-[6px] w-[6px] shrink-0 rounded-full ${CLS_DOT[cls]}`} />}
                               <span className={`font-mono text-[11px] tabular-nums ${CLS_TXT[cls]}`}>
-                                {day.roas !== null ? day.roas.toFixed(2) : '—'}
+                                {roasDia !== null ? roasDia.toFixed(2) : '—'}
                               </span>
                               {/* nº de vendas do dia em sobrescrito, colado no ROAS: cabe na
                                   mesma célula (não vira coluna nem empurra layout) e responde
                                   "esse ROAS veio de quantas vendas?" — 6.68 de 1 venda ≠ de 10. */}
-                              {day.sales > 0 && (
-                                <span className="-ml-0.5 self-start font-mono text-[8.5px] font-semibold leading-[1.15] text-muted2">{day.sales}</span>
+                              {vendasDia > 0 && (
+                                <span className="-ml-0.5 self-start font-mono text-[8.5px] font-semibold leading-[1.15] text-muted2">{vendasDia}</span>
                               )}
                             </span>
                           </td>
