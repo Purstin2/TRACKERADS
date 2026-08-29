@@ -95,14 +95,37 @@ export function isTestOrder(o: KirvanoOrder): boolean {
   )
 }
 
+/**
+ * Colunas do pedido, sem o `raw`.
+ *
+ * `raw` é o payload inteiro do webhook em JSONB e sozinho responde por 67% do
+ * tamanho da resposta: 1.000 pedidos saem de 4,13 MB / 2,2s (com `select('*')`)
+ * para 1,38 MB / 0,35s sem ele — 6x mais rápido. Como a dashboard puxa 30 dias
+ * (~3 páginas), era o maior gargalo do carregamento.
+ *
+ * Nenhuma tela usa `raw` a partir daqui; quem precisa dele (a emissão de nota
+ * fiscal, que lê o endereço do comprador) roda no servidor e consulta direto.
+ * Se algum dia precisar, use `fetchOrdersRaw` em vez de reabrir o `select('*')`.
+ */
+const ORDER_COLS =
+  'id,checkout_id,sale_id,event,status,value,value_orig,fee_gateway,currency,product,products,' +
+  'payment_method,customer_name,customer_email,customer_phone,customer_doc,' +
+  'utm_source,utm_medium,utm_campaign,utm_content,utm_term,checkout_url,' +
+  'capi_ok,manual,recovered,wa_sent_at,wa_status,wa_attempts,ordered_at,created_at,updated_at'
+
 /** Pedidos do gateway no período — PAGINADO (ver `fetchAll`: o servidor corta em
  *  1000 e ignora .limit maior, então o que passava disso sumia em silêncio).
- *  Já remove pedidos de teste/sandbox pra não sujar faturamento/ROAS. */
-export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise<KirvanoOrder[]> {
+ *  Já remove pedidos de teste/sandbox pra não sujar faturamento/ROAS.
+ *  `comRaw` só quando o payload cru for mesmo necessário — ver ORDER_COLS. */
+export async function fetchOrders(sinceISO?: string, untilISO?: string, comRaw = false): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
+  const cols = comRaw ? '*' : ORDER_COLS
   const rows = await fetchAll<KirvanoOrder>((from, to) => {
-    let q = sb.from('kirvano_orders').select('*').order('created_at', { ascending: false }).range(from, to)
+    // `as any`: o tipo do supabase-js não infere a lista de colunas vinda de
+    // variável e cai no fallback GenericStringError. A forma do retorno é a
+    // mesma; só o inferidor não acompanha.
+    let q: any = sb.from('kirvano_orders').select(cols).order('created_at', { ascending: false }).range(from, to)
     if (sinceISO) q = q.gte('created_at', sinceISO)
     if (untilISO) q = q.lt('created_at', untilISO)
     return q
@@ -116,15 +139,16 @@ export async function fetchOrders(sinceISO?: string, untilISO?: string): Promise
 export async function fetchRefundsByRefundDate(sinceISO: string, untilISO: string): Promise<KirvanoOrder[]> {
   const sb = supabase()
   if (!sb) return []
-  return fetchAll<KirvanoOrder>((from, to) =>
-    sb
-      .from('kirvano_orders')
-      .select('*')
-      .in('status', ['REFUNDED', 'CHARGEBACK'])
-      .gte('updated_at', sinceISO)
-      .lte('updated_at', untilISO)
-      .order('updated_at', { ascending: false })
-      .range(from, to),
+  return fetchAll<KirvanoOrder>(
+    (from, to) =>
+      sb
+        .from('kirvano_orders')
+        .select(ORDER_COLS) // mesmo motivo do fetchOrders: sem o `raw` é 6x mais rápido
+        .in('status', ['REFUNDED', 'CHARGEBACK'])
+        .gte('updated_at', sinceISO)
+        .lte('updated_at', untilISO)
+        .order('updated_at', { ascending: false })
+        .range(from, to) as any,
   )
 }
 

@@ -321,6 +321,15 @@ export default function DashboardPage() {
     const snapAll: DailySpendRow[] = [] // foto do gasto real, SEM filtro de status
     const ALL_ST = STATUS_FILTERS.all?.values || ['ACTIVE', 'PAUSED']
     const tok = token.trim()
+
+    // Vendas do gateway DISPARAM JÁ, junto com o Meta. Elas não dependem de nada
+    // do Meta, mas estavam sendo buscadas só no fim — o carregamento somava os
+    // dois tempos em vez de sobrepor. A espera fica lá embaixo, onde o dado é usado.
+    const janela = periodWindow(eff)
+    const pedidosPromise = Promise.all([
+      fetchOrders(janela.sinceISO).catch(() => [] as KirvanoOrder[]),
+      fetchRefundsByRefundDate(janela.sinceISO, janela.untilISO).catch(() => [] as KirvanoOrder[]),
+    ])
     // PARALELO: todas as contas de uma vez, e as 4 chamadas de cada conta juntas
     // (antes era tudo em fila → ~18 chamadas sequenciais com 6 contas)
     await Promise.all(
@@ -399,8 +408,8 @@ export default function DashboardPage() {
 
     let within: KirvanoOrder[] = []
     try {
-      const { sinceISO, untilISO } = periodWindow(eff)
-      const all = await fetchOrders(sinceISO)
+      const { sinceISO, untilISO } = janela
+      const [all, refunds] = await pedidosPromise // já estava rodando desde o começo
       const since = Date.parse(sinceISO), until = Date.parse(untilISO)
       const periodSales = all.filter((o) => {
         const t = Date.parse(o.ordered_at || o.created_at || '')
@@ -414,7 +423,6 @@ export default function DashboardPage() {
       setSources(distinctSources(periodSales))
       // + estornos que ACONTECERAM no período (por data do estorno = updated_at), mesmo de
       // vendas antigas — senão os estornos manuais somem do "Vendas Reembolsadas" (igual UTMify)
-      const refunds = await fetchRefundsByRefundDate(sinceISO, untilISO)
       const seen = new Set(periodSales.map((o) => o.id))
       within = [...periodSales, ...refunds.filter((o) => !seen.has(o.id))]
       setOrders(within)
