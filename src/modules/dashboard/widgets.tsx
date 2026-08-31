@@ -379,8 +379,13 @@ export const WIDGETS: WidgetDef[] = [
     minH: 3,
     render: (d) => {
       const top = d.vendasPorProduto[0]?.pct || 1
+      // `safe center` e não `justify-center`: com overflow, o center joga o excesso
+      // pra FORA nas duas pontas e o scroll não alcança o topo — o produto nº 1 da
+      // lista (a maior barra) sumia da tela. O `safe` centra só quando cabe; quando
+      // passa, alinha no topo. A classe justify-start fica de reserva pra navegador
+      // que não entenda o `safe`.
       return (
-        <div className="flex h-full flex-col justify-center gap-2.5 overflow-y-auto">
+        <div className="flex h-full flex-col justify-start gap-2.5 overflow-y-auto" style={{ justifyContent: 'safe center' }}>
           {d.vendasPorProduto.length === 0 && <div className="text-center text-[12px] text-muted2">Sem vendas no período.</div>}
           {d.vendasPorProduto.map((p) => (
             <div key={p.label} className="flex items-center gap-2">
