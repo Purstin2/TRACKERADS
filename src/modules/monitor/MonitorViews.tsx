@@ -1338,7 +1338,10 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
   useEffect(() => {
     let alive = true
     setLoading(true); setErr('')
-    fetchCampDaily(accId, campId, m.token.trim(), 6)
+    // 15 dias buscados / 14 mostrados: a faixa é larga e sobrava espaço vazio à
+    // direita. Com 14 dá pra ver duas semanas inteiras sem trocar de aba, que é
+    // o intervalo em que dá pra julgar se a campanha virou tendência ou foi pico.
+    fetchCampDaily(accId, campId, m.token.trim(), 15)
       .then(async (rows) => {
         if (!alive) return
         const arr: DayProfit[] = rows
@@ -1350,7 +1353,7 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
             return { date: r.date_start as string, spend, roas, sales, profit: gross * netFactor - spend }
           })
           .sort((a, b) => (a.date < b.date ? 1 : -1)) // mais recente primeiro
-          .slice(0, 5)
+          .slice(0, 14)
         setDays(arr); setLoading(false)
 
         // ROAS real dos mesmos dias: vendas do gateway agrupadas por dia BRT.
@@ -1435,7 +1438,7 @@ function ScalePanel({ accId, campId, name, sym, cur }: { accId: string; campId: 
         {[...vista].reverse().map((d) => (
           <div
             key={d.date}
-            className={`flex min-w-[56px] flex-col items-center rounded-[9px] border px-2 py-1.5 ${sq(d)}`}
+            className={`flex min-w-[50px] shrink-0 flex-col items-center rounded-[9px] border px-1.5 py-1.5 ${sq(d)}`}
             title={`${fmtDate(d.date)} · ROAS ${usandoReal ? 'real ' : 'Meta '}${d.roas?.toFixed(2) ?? '—'} · ${d.sales} vendas · gasto ${money(d.spend)} · lucro ${money(d.profit)}`}
           >
             <span className="text-[9px] opacity-70">{fmtDate(d.date)}</span>
