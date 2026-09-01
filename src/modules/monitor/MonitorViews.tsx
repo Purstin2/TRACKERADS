@@ -578,6 +578,7 @@ interface ListaRow {
   revenue: number
   lucro: number
   margem: number
+  margemReal: number | null
   roi: number | null
   roas: number | null
   cpa: number | null
@@ -627,9 +628,13 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
       const real = level === 'campaign' ? realMap?.[id] : undefined
       const spendBRL = spend * (cur === 'USD' ? s.fx || 1 : 1)
       const realRoas = real && spendBRL > 0 ? real.revenue / spendBRL : null
-      const lucroReal = real
-        ? real.revenue * (1 - (FIN.gateway + FIN.imposto) / 100) - spendBRL - real.sales * FIN.custoUn
-        : null
+      const fatLiqReal = real ? real.revenue * (1 - (FIN.gateway + FIN.imposto) / 100) : 0
+      const lucroReal = real ? fatLiqReal - spendBRL - real.sales * FIN.custoUn : null
+      /* Margem sobre o faturamento REAL. Antes ela era a única sobra usando o
+       * número do Meta, então a mesma linha dizia "ROAS real 2.36 / Lucro real
+       * +$2,98" e "Margem −112%" — o gateway confirmava a venda que o Meta não
+       * tinha atribuído, e a margem seguia a fonte errada. */
+      const margemReal = real && fatLiqReal > 0 && lucroReal != null ? lucroReal / fatLiqReal : null
       return {
         id,
         name,
@@ -657,6 +662,7 @@ export function analyzeListaRows(rows: InsightRow[], s: Settings, meta?: Record<
         realRevenue: real ? real.revenue : null,
         realRoas,
         lucroReal,
+        margemReal,
       }
     })
     .sort((a, b) => ORDER[a.cls] - ORDER[b.cls])
@@ -764,7 +770,21 @@ const MET_COLS: MetCol[] = [
   { key: 'cpc', label: 'CPC', render: (r, sym) => (r.cpc ? m2(r.cpc, sym) : '—'), cls: () => 'text-muted2' },
   { key: 'ctr', label: 'CTR', render: (r) => (r.ctr ? r.ctr.toFixed(2) + '%' : '—'), cls: () => 'text-muted2' },
   { key: 'freq', label: 'Frequência', render: (r, _sym, s) => (r.freq ? r.freq.toFixed(2) : '—') + (r.freq >= s.freqWarn ? ' 🔥' : ''), cls: (r, s) => (r.freq >= s.freqWarn ? 'text-warn' : 'text-muted2') },
-  { key: 'margem', label: 'Margem', render: (r) => (r.revenue > 0 ? (r.margem * 100).toFixed(0) + '%' : '—'), cls: (r) => (r.spend <= 0 || r.revenue <= 0 ? 'text-muted2' : r.margem >= 0 ? 'text-muted' : 'text-danger') },
+  // Margem do faturamento REAL (gateway), pra casar com Lucro real / ROAS real.
+  // Cai no número do Meta só quando não há venda no gateway pra aquela campanha,
+  // senão a linha ficaria vazia justamente onde o Meta tem dado.
+  {
+    key: 'margem',
+    label: 'Margem',
+    render: (r) => {
+      const m = r.margemReal ?? (r.revenue > 0 ? r.margem : null)
+      return m == null ? '—' : (m * 100).toFixed(0) + '%'
+    },
+    cls: (r) => {
+      const m = r.margemReal ?? (r.revenue > 0 ? r.margem : null)
+      return m == null ? 'text-muted2' : m >= 0 ? 'text-muted' : 'text-danger'
+    },
+  },
   { key: 'revenue', label: 'Faturamento', render: (r, sym) => (r.revenue > 0 ? sym + r.revenue.toFixed(2) : '—'), total: (T, sym) => sym + T.revenue.toFixed(2) },
   { key: 'roi', label: 'ROI', render: (r) => (r.spend > 0 ? pct(r.roi) : '—'), cls: (r) => (r.spend <= 0 || r.roi == null ? 'text-muted2' : r.roi >= 0 ? 'text-ok' : 'text-danger'), total: (T) => (T.spend > 0 ? pct(T.lucro / T.spend) : '—'), totalCls: (T) => (T.spend > 0 && T.lucro >= 0 ? 'text-ok' : 'text-danger') },
   { key: 'cpm', label: 'CPM', render: (r, sym) => (r.cpm ? sym + r.cpm.toFixed(2) : '—'), cls: () => 'text-muted2', total: (T, sym) => (T.impr > 0 ? sym + ((T.spend / T.impr) * 1000).toFixed(2) : '—') },
