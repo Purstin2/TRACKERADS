@@ -47,6 +47,20 @@ function isStlOrder(o) {
   return /\bstl\b|ultra\s?pack/i.test(o.product || '')
 }
 
+/* RECUPERAÇÃO PRA TODAS AS OFERTAS (decisão de 06/09/2026) ───────────────────
+ * Até aqui só produto STL entrava na fila. A regra nasceu em 28/07 com a medição
+ * 20/06–28/07: STL 9% de conversão, não-STL 1% (119 disparos, 1 venda). Dois
+ * fatos derrubaram essa premissa:
+ *   1. o "1%" veio de UMA venda em 119 disparos — amostra pequena demais;
+ *   2. o STL de hoje não é o de julho: caiu pra 5,7% (53 disparos, 3 vendas,
+ *      R$299,40 em 30 dias), então o corte não estava protegendo grande coisa.
+ * Enquanto isso 195 pedidos/mês (R$8.625,99 em jogo) eram descartados sem que
+ * ninguém falasse com eles: ESTAMPADO, ARSENAL DA SUBLIMAÇÃO, Melodify, canecas.
+ * O template do dia 1 já é genérico ({{2}} = nome do produto vindo do webhook),
+ * então serve qualquer oferta sem mudar nada no Meta.
+ * WA_SO_STL=1 volta ao comportamento antigo, sem redeploy. */
+const SO_STL = process.env.WA_SO_STL === '1'
+
 // Sanitiza um parâmetro de template (Meta rejeita vazio/quebra de linha/tab).
 function cleanParam(v, fallback) {
   const s = String(v ?? '').replace(/[\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim()
@@ -252,23 +266,25 @@ export default async function handler(req, res) {
     // Para sozinho ao virar APPROVED (sai do filtro) ou recovered.
     const MIN_VALUE = parseFloat(process.env.WA_MIN_VALUE || '17')
 
-    /* RAMPA DE VOLUME — ABANDONED fica FORA por padrão.
+    /* ABANDONED entra por padrão desde 06/09/2026.
      *
-     * O webhook só passou a gravar carrinho abandonado em 29/07 (antes todos
-     * colidiam numa linha só). São ~25/dia, contra ~9/dia de disparo hoje: ligar
-     * junto seria 3,7x da noite pro dia, e salto súbito é o que faz a API do
-     * WhatsApp bloquear número — derrubando junto a recuperação de PIX que já
-     * funciona (22,6% de conversão).
+     * Ficou represado desde julho por rampa de volume: na época eram ~9 disparos/
+     * dia e ligar o abandono seria 3,7x de uma vez — salto súbito é o que faz a
+     * Meta bloquear número. Só que o volume caiu sozinho pra 1,4/dia, e o número
+     * está com 60 dias de histórico sem UM erro (todas as respostas 200/ok).
+     * Com todas as ofertas + abandonado a projeção é 9,0/dia, ou seja, na mesma
+     * casa dos ~9/dia que o número já sustentou em julho sem problema.
      *
-     * Os dados são gravados desde já; só o DISPARO está represado. Pra liberar,
-     * defina WA_ABANDONED=1 nas variáveis de ambiente da Vercel (sem redeploy do
-     * código). Recomendado só depois de 3-4 dias com o CANCELED rodando estável.
+     * Custo: 271 msgs/mês x R$0,34 = R$92,14. A ticket médio de R$51,35 bastam
+     * 2 vendas/mês (0,74% de conversão) pra empatar, contra os 5,7% que o STL
+     * converte hoje. O risco aqui é reputação do número, não dinheiro.
      *
-     * CANCELED entrou agora porque PIX_EXPIRED cai nele: quem gerava PIX e
-     * expirava ANTES do cron passar saía da fila pra sempre (17 pedidos /
-     * R$1.260 parados só no ULTRA PACK). Volume ~igual ao de hoje. */
+     * WA_ABANDONED=0 desliga sem redeploy, se a qualidade do número cair.
+     *
+     * CANCELED continua incluído porque PIX_EXPIRED cai nele: quem gerava PIX e
+     * expirava ANTES do cron passar saía da fila pra sempre. */
     const statuses = ['PENDING', 'REFUSED', 'CANCELED']
-    if (process.env.WA_ABANDONED === '1') statuses.unshift('ABANDONED')
+    if (process.env.WA_ABANDONED !== '0') statuses.unshift('ABANDONED')
 
     query =
       `${url}/rest/v1/kirvano_orders?status=in.(${statuses.join(',')})` +
@@ -346,12 +362,10 @@ export default async function handler(req, res) {
       continue
     }
 
-    // REGRA POR PRODUTO: só o STL entra na recuperação. Medição 20/06–28/07:
-    //   STL     → 178 disparos, 16 vendas, R$1.284,40 (9%)
-    //   não-STL → 119 disparos,  1 venda,  R$29,90    (1%)
-    // Os disparos de canecas/Melodify/Pedreiro/moldes não se pagavam e gastavam a
-    // reputação do número à toa. Envio manual (?ids=) ignora esta regra.
-    if (!manualIds && !isStlOrder(o)) {
+    // REGRA POR PRODUTO (ver SO_STL no topo): desligada por padrão desde 06/09 —
+    // a recuperação vale pra TODAS as ofertas. Só filtra se WA_SO_STL=1.
+    // Envio manual (?ids=) ignora esta regra de qualquer jeito.
+    if (!manualIds && SO_STL && !isStlOrder(o)) {
       await patchOrder(url, key, o.id, {
         wa_status: 'skipped',
         wa_error: 'produto fora da recuperação (só STL)',
