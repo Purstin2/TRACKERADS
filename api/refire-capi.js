@@ -2,8 +2,9 @@
 // capi_ok (ex: rota de pixel não existia na hora da venda).
 // POST /api/refire-capi?secret=LABTRACK123
 // body: { id: "<kirvano_orders.id>", utmSource?, utmCampaign?, utmMedium?, utmContent? }
-// Resultado: { ok, pixel, fbtrace_id?, error?, details? }
-// IMPORTANTE: só atualiza capi_ok=true — não toca em product/payment_method/etc.
+// Resultado: { ok, pixel, fbtrace_id?, error?, details?, utmSalvo? }
+// Grava as UTMs que vierem no body (é como se reatribui a campanha no SEU painel)
+// e capi_ok=true quando o Meta aceita. Não toca em product/payment_method/etc.
 
 import crypto from 'node:crypto'
 
@@ -110,6 +111,45 @@ export default async function handler(req, res) {
   const orderRows = await orderRes.json()
   if (!Array.isArray(orderRows) || !orderRows.length) return res.status(404).json({ error: 'pedido não encontrado' })
   const o = orderRows[0]
+
+  /* 1b. GRAVA A CAMPANHA QUE VOCÊ DIGITOU ───────────────────────────────────
+   * Antes estes campos eram lidos do body e descartados: você digitava a
+   * campanha, via o check verde e nada era salvo em lugar nenhum. Sem isto o
+   * fluxo manual (ler o nome fixo da UTM -> achar a campanha no Gerenciador ->
+   * colar o id) não chegava a lugar nenhum, porque TODA agregação do painel
+   * casa por utm_campaign terminando em "|<id>".
+   * Grava ANTES do CAPI e independente dele: consertar a atribuição do SEU
+   * painel não pode depender de o Meta aceitar o evento. */
+  const limpo = (v) => { const s = String(v ?? '').trim(); return s || null }
+  // Só o ID copiado do Gerenciador ("120210...") não casa com a regex, que exige
+  // "|<id>" no FIM. Recompõe usando o nome que já estava na utm (ou MANUAL).
+  const normalizaCamp = (v) => {
+    const s = limpo(v)
+    if (!s) return null
+    if (/\|\d{8,}\s*$/.test(s)) return s
+    if (/^\d{8,}$/.test(s)) {
+      const nome = String(o.utm_campaign || '').split('|')[0].trim() || 'MANUAL'
+      return nome + '|' + s
+    }
+    return s
+  }
+  const utmPatch = {}
+  const campNorm = normalizaCamp(utmCampaign)
+  if (campNorm) utmPatch.utm_campaign = campNorm
+  if (limpo(utmSource)) utmPatch.utm_source = limpo(utmSource)
+  if (limpo(utmMedium)) utmPatch.utm_medium = limpo(utmMedium)
+  if (limpo(utmContent)) utmPatch.utm_content = limpo(utmContent)
+  let utmSalvo = false
+  if (Object.keys(utmPatch).length) {
+    utmPatch.updated_at = new Date().toISOString()
+    const up = await fetch(supabaseUrl + '/rest/v1/kirvano_orders?id=eq.' + id, {
+      method: 'PATCH',
+      headers: sbH(supabaseKey),
+      body: JSON.stringify(utmPatch),
+    })
+    utmSalvo = up.ok
+    if (utmSalvo) Object.assign(o, utmPatch) // o CAPI abaixo usa o pedido já corrigido
+  }
 
   // 2. Resolve o pixel pela rota
   const route = await resolvePixel(supabaseUrl, supabaseKey, o)
@@ -246,8 +286,9 @@ export default async function handler(req, res) {
   }
 
   if (!capiOk) {
-    return res.status(200).json({ ok: false, error: metaJson.error?.message || 'CAPI falhou', details: JSON.stringify(metaJson) })
+    // utmSalvo continua true: a campanha foi gravada no painel mesmo com o CAPI falhando.
+    return res.status(200).json({ ok: false, utmSalvo, error: metaJson.error?.message || 'CAPI falhou', details: JSON.stringify(metaJson) })
   }
 
-  return res.json({ ok: true, pixel: route.pixelId, events_received: metaJson.events_received, fbtrace_id: metaJson.fbtrace_id })
+  return res.json({ ok: true, utmSalvo, pixel: route.pixelId, events_received: metaJson.events_received, fbtrace_id: metaJson.fbtrace_id })
 }

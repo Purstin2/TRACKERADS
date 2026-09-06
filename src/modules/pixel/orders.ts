@@ -1,4 +1,5 @@
 import { supabase, fetchAll } from '@/lib/supabase'
+import { campIdFromUtm } from '@/modules/monitor/realRoas'
 
 export interface KirvanoOrder {
   id: string
@@ -356,9 +357,15 @@ export async function createWaTemplate(secret: string, template: WaTemplateInput
  *  - 'organico'      → veio do IG/bio (utm_source=ig / medium=social / content=link_in_bio).
  *                      Foi pro Meta, mas SEM clique de anúncio → Meta não atribui à campanha (venda "perdida pra otimização").
  *  - 'sem_campanha'  → sem utm_campaign nenhuma (acesso direto). Mesmo caso: Meta não otimiza.
+ *  - 'campanha_sem_id' → veio utm_campaign, mas SEM o "|<id>" no fim: a macro
+ *                      {{campaign.id}} não resolveu (link do anúncio compartilhado/colado).
+ *                      Toda agregação do painel casa por esse id e descarta o pedido —
+ *                      e antes ele caía no null aqui, se passando por "trackeada certa"
+ *                      e sumindo desta tela. Sobra o nome fixo do prefixo: dá pra achar
+ *                      a campanha no Gerenciador e colar o id.
  *  - null            → FB com campanha + capi_ok: trackeada certa, não aparece.
  */
-export type TrackIssue = 'erro_envio' | 'organico' | 'sem_campanha'
+export type TrackIssue = 'erro_envio' | 'organico' | 'sem_campanha' | 'campanha_sem_id'
 
 export function classifyTracking(o: KirvanoOrder): TrackIssue | null {
   if (o.capi_ok !== true) return 'erro_envio'
@@ -367,6 +374,7 @@ export function classifyTracking(o: KirvanoOrder): TrackIssue | null {
   const cont = (o.utm_content || '').toLowerCase()
   if (src.includes('ig') || src.includes('insta') || med.includes('social') || cont.includes('bio')) return 'organico'
   if (!(o.utm_campaign || '').trim()) return 'sem_campanha'
+  if (!campIdFromUtm(o.utm_campaign)) return 'campanha_sem_id'
   return null
 }
 

@@ -31,6 +31,13 @@ const ISSUE_META: Record<TrackIssue, { label: string; cls: string; dot: string; 
     desc: 'Acesso direto, sem UTM de campanha. Mesmo caso: o Meta não tem em qual campanha otimizar.',
     canRefire: true,
   },
+  campanha_sem_id: {
+    label: 'Campanha sem ID',
+    cls: 'text-[#a78bfa] border-[#a78bfa]/30 bg-[#a78bfa]/10',
+    dot: 'bg-[#a78bfa]',
+    desc: 'A UTM chegou, mas sem o |<id> no fim — a macro do Facebook não resolveu (link do anúncio compartilhado/colado). O painel não consegue casar com a campanha. Sobrou o NOME FIXO: ache a campanha no Gerenciador, copie o ID e cole no campo utm_campaign abaixo.',
+    canRefire: true,
+  },
 }
 
 interface RowState {
@@ -108,7 +115,8 @@ export default function NaoTrackeadoView() {
       })
       if (res.ok) {
         setRow(o.id, { loading: false, done: true })
-        toast(`Enviado ao pixel ${res.pixel}`, 'ok')
+        toast(res.utmSalvo ? 'Campanha salva e evento enviado ao pixel ' + res.pixel : `Enviado ao pixel ${res.pixel}`, 'ok')
+        if (res.utmSalvo) load() // some da lista: agora tem id de campanha
       } else {
         setRow(o.id, { loading: false, err: `${res.error || 'falhou'}${res.details ? ' — ' + res.details : ''}` })
         toast('Falhou: ' + (res.error || 'ver detalhe'), 'err')
