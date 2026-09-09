@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { isConfigured, saveCreds, clearCreds } from '@/lib/supabase'
 import { supabaseClient } from './adintel/utils/supabaseClient'
+import { chaveOferta } from './adintel/utils/offerKey'
 import { Toast as ToastRaw } from './adintel/components/ui/Toast'
 import { ConfirmationModal as ConfirmationModalRaw } from './adintel/components/ui/Modal'
 import OfferGridScreenRaw from './adintel/components/screens/OfferGridScreen'
@@ -138,6 +139,23 @@ export default function TrackerPage() {
 
   const handleAddOffer = async (offerData: any) => {
     if (!userId || !sb?.from) return showToast('Não autenticado.', 'error')
+
+    /* Barra duplicata antes de gravar. Compara pelo LINK normalizado, nunca
+     * pelo nome: favorito da Biblioteca de Anúncios chega todo chamado
+     * "Biblioteca de Anúncios" (ver adintel/utils/offerKey.js). `offers` já vem
+     * com as arquivadas — reimportar uma arquivada criaria uma segunda linha
+     * da mesma oferta, que é justamente o que a gente quer evitar. */
+    const chaveNova = chaveOferta(offerData.link)
+    if (chaveNova) {
+      const jaExiste = offers.find((o: any) => chaveOferta(o.link) === chaveNova)
+      if (jaExiste) {
+        return showToast(
+          `JÁ EXISTE: "${jaExiste.name}"${jaExiste.is_archived ? ' (arquivada)' : ''}`,
+          'error',
+        )
+      }
+    }
+
     try {
       const initialAdCount = offerData.initial_ad_count ?? 0
       const payload = {
