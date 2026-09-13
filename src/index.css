@@ -1,3 +1,10 @@
+/* Sora variável: pesos 100–800 num arquivo só, servido do próprio domínio.
+   Substitui a Inter — que, além de genérica, virou a fonte-assinatura de
+   projeto gerado por IA. Geométrica o bastante pra parecer instrumento,
+   legível o bastante pra rótulo de tabela em 9,5px maiúsculo. */
+@import '@fontsource-variable/sora';
+@import '@fontsource-variable/jetbrains-mono';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -19,10 +26,19 @@
 
   body {
     margin: 0;
-    font-family: 'Inter', system-ui, sans-serif;
-    background: #0a0b12;
-    color: #e7eafc;
+    font-family: 'Sora Variable', 'Sora', system-ui, sans-serif;
+    background: #080a09;
+    color: #ecf2ee;
     -webkit-font-smoothing: antialiased;
+    /* a Sora é geométrica e larga; sem isto os títulos ficam frouxos */
+    letter-spacing: -0.011em;
+  }
+
+  /* dígito de coluna sempre alinhado — tabela de campanha é leitura vertical */
+  th,
+  td,
+  input[type='number'] {
+    font-variant-numeric: tabular-nums;
   }
 
   /* ── celular ───────────────────────────────────────────────────────────────
@@ -95,19 +111,25 @@
     }
   }
 
-  /* leve realce no topo (profundidade discreta) — sem brilho colorido de template */
+  /* ── profundidade por LUZ, não por sombra colorida ────────────────────────
+     Sombra com a cor da marca em volta de card é o truque que entrega template.
+     Aqui a sensação de volume vem de um brilho ambiente muito fraco no alto da
+     tela, no mesmo matiz do acento — igual a um painel iluminado por cima.
+     Fica atrás de tudo e não intercepta clique. */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 260px);
+    background:
+      radial-gradient(1100px 620px at 84% -8%, rgba(61, 240, 126, 0.13), transparent 62%),
+      radial-gradient(820px 480px at 6% 4%, rgba(61, 240, 126, 0.05), transparent 60%);
   }
 
   ::selection {
-    background: #6366f1;
-    color: #fff;
+    background: #3df07e;
+    color: #08110c; /* texto escuro: branco sobre o verde dá 1,5:1 */
   }
 
   ::-webkit-scrollbar {
@@ -115,11 +137,11 @@
     height: 12px; /* horizontal mais grossa: é a que some em tabela larga */
   }
   ::-webkit-scrollbar-thumb {
-    background: #3d4470; /* era #2b3052 — quase invisível no fundo escuro */
+    background: #39433d; /* neutro do mesmo matiz; visível sem virar enfeite */
     border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #4e5690;
+    background: #4a5850;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -140,11 +162,14 @@
   .btn {
     @apply inline-flex items-center gap-[7px] px-[18px] py-[9px] rounded-[9px] cursor-pointer text-[13px] font-semibold transition-all duration-150 border-none;
   }
+  /* texto ESCURO sobre o acento. Branco sobre o verde dá 1,5:1 — ilegível.
+     Com #08110c dá 12,7:1, e é o mesmo padrão das referências. */
   .btn-primary {
-    @apply bg-brand text-white shadow-glow;
+    @apply bg-brand text-brand-ink shadow-glow;
   }
   .btn-primary:hover {
-    filter: brightness(1.09);
+    /* clarear um verde já muito claro estoura; escurece um passo em vez disso */
+    @apply bg-brand-2;
     transform: translateY(-1px);
   }
   .btn-ghost {
@@ -170,13 +195,13 @@
   .field input,
   .field select,
   .field textarea {
-    @apply px-[13px] py-[10px] border border-border rounded-[9px] text-[13px] font-medium bg-[#0a0c19] text-ink transition-colors;
+    @apply px-[13px] py-[10px] border border-border rounded-[9px] text-[13px] font-medium bg-[#0b0e0c] text-ink transition-colors;
   }
   .field input:focus,
   .field select:focus,
   .field textarea:focus {
     @apply outline-none border-brand;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 0 3px rgba(61, 240, 126, 0.22);
   }
   .field input::placeholder,
   .field textarea::placeholder {
@@ -191,9 +216,9 @@
 /* placeholder de drop ao arrastar — pontilhado sóbrio (a lib vem com vermelho;
    !important pra vencer o default red do react-grid-layout/css/styles.css) */
 .react-grid-item.react-grid-placeholder {
-  background: rgba(99, 102, 241, 0.06) !important;
-  border: 2px dotted rgba(134, 143, 180, 0.5) !important;
-  border-radius: 14px !important;
+  background: rgba(61, 240, 126, 0.07) !important;
+  border: 2px dotted rgba(141, 154, 148, 0.45) !important;
+  border-radius: 20px !important;
   opacity: 1 !important;
   box-shadow: none !important;
 }
@@ -222,8 +247,8 @@
   bottom: 3px;
   width: 9px;
   height: 9px;
-  border-right: 2px solid #8b5cf6;
-  border-bottom: 2px solid #8b5cf6;
+  border-right: 2px solid #3df07e;
+  border-bottom: 2px solid #3df07e;
   border-bottom-right-radius: 2px;
 }
 .dash-editing {
@@ -238,7 +263,7 @@
   touch-action: none;
 }
 .dash-editing .react-grid-item {
-  outline: 1px dashed rgba(99, 102, 241, 0.35);
+  outline: 1px dashed rgba(61, 240, 126, 0.35);
   outline-offset: -1px;
   border-radius: 14px;
 }

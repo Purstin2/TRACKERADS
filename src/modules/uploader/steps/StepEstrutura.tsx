@@ -62,7 +62,7 @@ export default function StepEstrutura({
               onClick={() => ctx.setField('tipo_anuncio', o.id)}
               className={`flex-1 rounded-xl border p-3.5 text-center transition-all ${
                 (form.tipo_anuncio || 'video') === o.id
-                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(99,102,241,.2)]'
+                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(61,240,126,.22)]'
                   : 'border-border bg-surface2 hover:border-brand'
               }`}
             >
@@ -91,7 +91,7 @@ export default function StepEstrutura({
               onClick={() => ctx.setBudgetType(t)}
               className={`flex-1 rounded-xl border p-3.5 text-center transition-all ${
                 budgetType === t
-                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(99,102,241,.2)]'
+                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(61,240,126,.22)]'
                   : 'border-border bg-surface2 hover:border-brand'
               }`}
             >
@@ -253,7 +253,7 @@ export default function StepEstrutura({
               onClick={() => ctx.setEstrutura(c.id)}
               className={`rounded-xl border p-4 text-center transition-all ${
                 estrutura === c.id
-                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(99,102,241,.2)]'
+                  ? 'border-brand bg-brand/[0.08] shadow-[0_0_0_3px_rgba(61,240,126,.22)]'
                   : 'border-border bg-surface2 hover:border-brand'
               }`}
             >
