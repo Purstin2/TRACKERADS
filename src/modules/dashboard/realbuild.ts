@@ -87,9 +87,9 @@ const PM_LABEL: Record<string, string> = {
 }
 const pmLabel = (m?: string | null) => PM_LABEL[up(m)] || (m ? 'Outros' : 'Outros')
 const PM_COLOR: Record<string, string> = {
-  Pix: '#23B85A',
-  Cartão: '#3DF07E',
-  Boleto: '#67736D',
+  Pix: '#00A673',
+  Cartão: '#00F0A4',
+  Boleto: '#6B706D',
   'Apple Pay': '#22d3ee',
   'Google Pay': '#34d399',
   PayPal: '#f59e0b',
@@ -391,7 +391,7 @@ export function buildRealDashboard({ orders, products, source, spend, hourlySpen
   const vendasIniciadas = rows.filter((o) => up(o.status) !== 'ABANDONED').length
   const fm = funnelMeta
   const funnel: FunnelStageData[] = [
-    { label: 'Cliques', n: fm?.clicks ?? 0, color: '#23B85A' },
+    { label: 'Cliques', n: fm?.clicks ?? 0, color: '#00A673' },
     { label: 'Visita', n: fm?.lpv ?? 0, color: '#7c6cf0' },
     { label: 'Checkout (IC)', n: fm?.ic ?? 0, color: '#9166ef' },
     { label: 'Vendas iniciadas', n: vendasIniciadas, color: '#b76ce8' },

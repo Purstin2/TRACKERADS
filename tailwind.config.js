@@ -8,9 +8,11 @@
  *    positivo. Nada além disso. `ok` é o MESMO hex do acento de propósito —
  *    verde quer dizer "isso está indo bem" tanto na marca quanto no número.
  *
- * 2. NEUTRO COM O MATIZ DO ACENTO. Os cinzas eram azul-marinho saturado
- *    (#0a0b12, #111320). Agora carregam um traço do verde, muito dessaturado:
- *    é o que faz o acento parecer nativo da tela em vez de colado por cima.
+ * 2. PRETO FOSCO, NEUTRO DE VERDADE. Primeira tentativa tingiu os cinzas de
+ *    verde — e com o acento amarelado (142°) mais o brilho verde por cima,
+ *    a tela inteira lavou de lodo. Os neutros agora são cinza puro
+ *    (#060606 / #101010 / #181818): num fundo sem matiz o verde salta MAIS,
+ *    e é o que dá a leitura de terminal futurista em vez de pântano.
  *
  * 3. COR DE OBJETO É SEMPRE SÓLIDA. `violet`, `blue` e `amber` existem pra
  *    tingir ícone de cartão — e entram como preenchimento cheio com glifo
@@ -20,9 +22,12 @@
  * 4. LUZ NO LUGAR DE SOMBRA COLORIDA. `shadow-glow` não brilha mais com a cor
  *    da marca; a profundidade vem do brilho ambiente em index.css.
  *
- * Contraste conferido contra a superfície #121614: ink 16,1:1 · muted 6,2:1 ·
- * muted2 3,7:1 · acento 12,1:1 · danger 6,6:1 · warn 10,9:1. Glifo escuro
- * sobre preenchimento sólido: verde 12,7 · violeta 6,8 · âmbar 9,9 · azul 7,2.
+ * O acento saiu de 142° (verde-grama, puxado pro amarelo) para 161° — menta
+ * elétrica, puxada pro ciano. Mesmo matiz de terminal, sem o tom de esgoto.
+ *
+ * Contraste contra a superfície #101010: ink 17,1:1 · muted 6,5:1 ·
+ * muted2 3,8:1 · acento 12,7:1 · danger 6,3:1 · warn 11,8:1. Glifo escuro
+ * sobre sólido: verde 12,4 · violeta 6,8 · âmbar 9,9 · azul 7,2.
  * ─────────────────────────────────────────────────────────────────────────── */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -31,23 +36,23 @@ export default {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#3DF07E',
-          2: '#2BD46A',
-          dark: '#23B85A',
-          ink: '#08110C', // texto/glifo SOBRE o acento — nunca branco (1,5:1)
-          glow: 'rgba(61,240,126,.16)',
+          DEFAULT: '#00F0A4',
+          2: '#00C88A',
+          dark: '#00A673',
+          ink: '#00170F', // texto/glifo SOBRE o acento — nunca branco (1,5:1)
+          glow: 'rgba(0,240,164,.14)',
         },
-        bg: '#080A09',
-        surface: '#121614',
-        surface2: '#1A201D',
-        border: '#1F2321',
-        border2: '#2A312D',
-        ink: '#ECF2EE',
-        muted: '#8D9A94',
-        muted2: '#67736D',
-        ok: '#3DF07E',
-        danger: '#FF6B6B',
-        warn: '#FBBF24',
+        bg: '#060606',
+        surface: '#101010',
+        surface2: '#181818',
+        border: '#222222',
+        border2: '#2E2E2E',
+        ink: '#F2F3F2',
+        muted: '#949895',
+        muted2: '#6B706D',
+        ok: '#00F0A4',
+        danger: '#FF5C5C',
+        warn: '#FFC145',
         // cores de objeto (ícone de cartão). Use SÓLIDAS, com o `-ink` por cima.
         violet: { DEFAULT: '#A78BFA', ink: '#140F2B' },
         blue: { DEFAULT: '#60A5FA', ink: '#05152C' },
@@ -61,7 +66,7 @@ export default {
       backgroundImage: {
         // era gradiente índigo→violeta. Mantido o nome pra não quebrar uso,
         // mas agora é o acento chapado: gradiente de marca é cara de template.
-        brand: 'linear-gradient(135deg,#3DF07E 0%,#2BD46A 100%)',
+        brand: 'linear-gradient(135deg,#00F0A4 0%,#00C88A 100%)',
       },
       boxShadow: {
         card: '0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.28)',

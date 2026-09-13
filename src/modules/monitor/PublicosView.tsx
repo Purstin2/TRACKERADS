@@ -344,7 +344,7 @@ function Result({ st, s, cur, sortForChart }: { st: PubState; s: any; cur: strin
               <BarChart data={fc} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="k" tick={{ fontSize: 9, fill: '#5f6678' }} interval={0} angle={-30} textAnchor="end" height={50} />
                 <YAxis tick={{ fontSize: 10, fill: '#5f6678' }} />
-                <Tooltip contentStyle={{ background: '#101412', border: '1px solid #1F2321', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => v.toFixed(2)} />
+                <Tooltip contentStyle={{ background: '#131313', border: '1px solid #222222', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => v.toFixed(2)} />
                 <Bar dataKey="roas" radius={[3, 3, 0, 0]}>
                   {fc.map((f, i) => (
                     <Cell key={i} fill={f.roas >= s.roasGood ? '#46d989' : f.roas < s.roasBe ? '#fb6f86' : '#f7b955'} />
@@ -364,7 +364,7 @@ function Result({ st, s, cur, sortForChart }: { st: PubState; s: any; cur: strin
                     <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#101412', border: '1px solid #1F2321', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => `${cur}${v.toFixed(2)}`} />
+                <Tooltip contentStyle={{ background: '#131313', border: '1px solid #222222', borderRadius: 8, fontSize: 11 }} formatter={(v: number) => `${cur}${v.toFixed(2)}`} />
               </PieChart>
             </ResponsiveContainer>
           </div>

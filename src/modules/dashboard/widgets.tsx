@@ -73,18 +73,18 @@ function ProfitBars({ rows, unidade }: { rows: ProfitRow[]; unidade: 'dia' | 'ho
       <div className="min-h-0 flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={rows} margin={{ top: 4, right: 4, left: -14, bottom: 0 }}>
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#67736D' }} axisLine={false} tickLine={false} minTickGap={4} />
-            <YAxis tick={{ fontSize: 10, fill: '#67736D' }} axisLine={false} tickLine={false} width={46} />
-            <ReferenceLine y={0} stroke="#67736D" strokeWidth={1} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#6B706D' }} axisLine={false} tickLine={false} minTickGap={4} />
+            <YAxis tick={{ fontSize: 10, fill: '#6B706D' }} axisLine={false} tickLine={false} width={46} />
+            <ReferenceLine y={0} stroke="#6B706D" strokeWidth={1} />
             <Tooltip
-              cursor={{ fill: 'rgba(61,240,126,.10)' }}
+              cursor={{ fill: 'rgba(0,240,164,.10)' }}
               contentStyle={TOOLTIP_STYLE}
               content={({ active, payload }: any) => {
                 if (!active || !payload?.length) return null
                 const p = payload[0].payload as ProfitRow
                 const ok = p.lucro >= 0
                 return (
-                  <div className="rounded-lg border border-border bg-[#101412] px-3 py-2 text-[11.5px]">
+                  <div className="rounded-lg border border-border bg-[#131313] px-3 py-2 text-[11.5px]">
                     <div className="mb-1 font-bold text-ink">{p.label}</div>
                     <div className={`text-[15px] font-extrabold ${ok ? 'text-ok' : 'text-danger'}`}>
                       {ok ? 'Lucro ' : 'Prejuízo '}{BRL(Math.abs(p.lucro))}
@@ -121,8 +121,8 @@ function approvalColor(pct: number) {
 }
 
 const TOOLTIP_STYLE = {
-  background: '#101412',
-  border: '1px solid #1F2321',
+  background: '#131313',
+  border: '1px solid #222222',
   borderRadius: 8,
   fontSize: 12,
 }
@@ -350,16 +350,16 @@ export const WIDGETS: WidgetDef[] = [
         <div className="h-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={d.profitByHour} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
-              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#67736D' }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#6B706D' }} axisLine={false} tickLine={false} />
               <Tooltip
-                cursor={{ fill: 'rgba(61,240,126,.10)' }}
+                cursor={{ fill: 'rgba(0,240,164,.10)' }}
                 contentStyle={TOOLTIP_STYLE}
                 formatter={(v: number) => BRL(v)}
                 labelFormatter={(h) => `${h}h`}
               />
               <Bar dataKey="value" radius={[5, 5, 0, 0]}>
                 {d.profitByHour.map((p, i) => (
-                  <Cell key={i} fill={p.value === max ? '#3DF07E' : '#23B85A'} />
+                  <Cell key={i} fill={p.value === max ? '#00F0A4' : '#00A673'} />
                 ))}
               </Bar>
             </BarChart>
@@ -463,15 +463,15 @@ export const WIDGETS: WidgetDef[] = [
             <defs>
               <linearGradient id="gFat" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={0.35} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
               <linearGradient id="gInv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} /><stop offset="100%" stopColor="#f59e0b" stopOpacity={0} /></linearGradient>
-              <linearGradient id="gLuc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3DF07E" stopOpacity={0.3} /><stop offset="100%" stopColor="#3DF07E" stopOpacity={0} /></linearGradient>
+              <linearGradient id="gLuc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#00F0A4" stopOpacity={0.3} /><stop offset="100%" stopColor="#00F0A4" stopOpacity={0} /></linearGradient>
             </defs>
-            <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#67736D' }} axisLine={false} tickLine={false} minTickGap={20} />
-            <YAxis tick={{ fontSize: 10, fill: '#67736D' }} axisLine={false} tickLine={false} width={44} />
+            <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#6B706D' }} axisLine={false} tickLine={false} minTickGap={20} />
+            <YAxis tick={{ fontSize: 10, fill: '#6B706D' }} axisLine={false} tickLine={false} width={44} />
             <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => BRL(v)} labelFormatter={(h) => `${h}h`} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Area type="monotone" dataKey="faturamento" name="Faturamento" stroke="#10b981" strokeWidth={2} fill="url(#gFat)" />
             <Area type="monotone" dataKey="investimento" name="Investimento" stroke="#f59e0b" strokeWidth={2} fill="url(#gInv)" />
-            <Area type="monotone" dataKey="lucro" name="Lucro" stroke="#3DF07E" strokeWidth={2} fill="url(#gLuc)" />
+            <Area type="monotone" dataKey="lucro" name="Lucro" stroke="#00F0A4" strokeWidth={2} fill="url(#gLuc)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>

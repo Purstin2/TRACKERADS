@@ -111,16 +111,16 @@ export function SalesTimelineModal({ name, campId, onClose }: { name: string; ca
                 <div className="mb-1 px-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted2">Vendas por hora do dia (BR)</div>
                 <ResponsiveContainer width="100%" height={130}>
                   <BarChart data={porHora} margin={{ top: 4, right: 6, left: -28, bottom: 0 }}>
-                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#67736D' }} axisLine={false} tickLine={false} interval={1} />
+                    <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#6B706D' }} axisLine={false} tickLine={false} interval={1} />
                     <Tooltip
-                      cursor={{ fill: 'rgba(61,240,126,.10)' }}
-                      contentStyle={{ background: '#101412', border: '1px solid #1F2321', borderRadius: 8, fontSize: 11 }}
+                      cursor={{ fill: 'rgba(0,240,164,.10)' }}
+                      contentStyle={{ background: '#131313', border: '1px solid #222222', borderRadius: 8, fontSize: 11 }}
                       formatter={(v: any, n: any) => (n === 'vendas' ? [`${v} venda(s)`, ''] : [v, n])}
                       labelFormatter={(l) => `${l}`}
                     />
                     <Bar dataKey="vendas" radius={[3, 3, 0, 0]}>
                       {porHora.map((h, i) => (
-                        <Cell key={i} fill={h.vendas === 0 ? '#1F2321' : h.vendas === maxHora ? '#3DF07E' : '#23B85A'} />
+                        <Cell key={i} fill={h.vendas === 0 ? '#222222' : h.vendas === maxHora ? '#00F0A4' : '#00A673'} />
                       ))}
                     </Bar>
                   </BarChart>

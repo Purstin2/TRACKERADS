@@ -43,7 +43,7 @@ function VCard({
       onClick={onClick}
       className={`relative overflow-hidden rounded-[11px] border text-left transition-all ${
         selected
-          ? 'border-brand bg-surface shadow-[0_0_0_3px_rgba(61,240,126,.22)]'
+          ? 'border-brand bg-surface shadow-[0_0_0_3px_rgba(0,240,164,.22)]'
           : 'border-border bg-surface2 hover:-translate-y-0.5 hover:border-brand'
       }`}
     >

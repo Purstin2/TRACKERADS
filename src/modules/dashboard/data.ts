@@ -108,9 +108,9 @@ export const SAMPLE: DashboardData = {
   isSample: true,
   totalSales: 1265,
   payment: [
-    { name: 'Pix', value: 59, color: '#23B85A' },
-    { name: 'Cartão', value: 21, color: '#3DF07E' },
-    { name: 'Boleto', value: 18, color: '#67736D' },
+    { name: 'Pix', value: 59, color: '#00A673' },
+    { name: 'Cartão', value: 21, color: '#00F0A4' },
+    { name: 'Boleto', value: 18, color: '#6B706D' },
     { name: 'Outros', value: 2, color: '#ef4444' },
   ],
   vendasPorProduto: [
@@ -121,7 +121,7 @@ export const SAMPLE: DashboardData = {
     { label: 'Guia Impressão 3D Sem Erros', count: 3, pct: 6.4 },
   ],
   funnel: [
-    { label: 'Cliques', n: 1820, color: '#23B85A' },
+    { label: 'Cliques', n: 1820, color: '#00A673' },
     { label: 'Vis. Página', n: 1240, color: '#7c6cf0' },
     { label: 'ICs', n: 320, color: '#9d7bf0' },
     { label: 'Vendas Inic.', n: 64, color: '#b87bf0' },

@@ -2050,7 +2050,7 @@ function GraficoCard({ campMap, dates, accName }: { campMap: CampMap; dates: str
             <CartesianGrid stroke="rgba(38,43,55,.6)" />
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#8b93a6' }} />
             <YAxis tick={{ fontSize: 10, fill: '#8b93a6' }} />
-            <Tooltip contentStyle={{ background: '#101412', border: '1px solid #1F2321', borderRadius: 8, fontSize: 11 }} />
+            <Tooltip contentStyle={{ background: '#131313', border: '1px solid #222222', borderRadius: 8, fontSize: 11 }} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
             <ReferenceLine y={m.settings.roasBe} stroke="rgba(251,111,134,.5)" strokeDasharray="6 4" />
             <ReferenceLine y={m.settings.roasGood} stroke="rgba(70,217,137,.5)" strokeDasharray="6 4" />

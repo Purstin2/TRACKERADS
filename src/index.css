@@ -27,8 +27,8 @@
   body {
     margin: 0;
     font-family: 'Sora Variable', 'Sora', system-ui, sans-serif;
-    background: #080a09;
-    color: #ecf2ee;
+    background: #060606;
+    color: #f2f3f2;
     -webkit-font-smoothing: antialiased;
     /* a Sora é geométrica e larga; sem isto os títulos ficam frouxos */
     letter-spacing: -0.011em;
@@ -122,14 +122,15 @@
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background:
-      radial-gradient(1100px 620px at 84% -8%, rgba(61, 240, 126, 0.13), transparent 62%),
-      radial-gradient(820px 480px at 6% 4%, rgba(61, 240, 126, 0.05), transparent 60%);
+    /* FOSCO: o brilho ficou quase imperceptível de propósito. A versão
+       anterior usava 13% e, somada aos neutros tingidos de verde, lavava a
+       tela inteira. Aqui é só um respiro no alto — some se você olhar direto. */
+    background: radial-gradient(1200px 600px at 82% -12%, rgba(0, 240, 164, 0.055), transparent 60%);
   }
 
   ::selection {
-    background: #3df07e;
-    color: #08110c; /* texto escuro: branco sobre o verde dá 1,5:1 */
+    background: #00f0a4;
+    color: #00170f; /* texto escuro: branco sobre o verde dá 1,5:1 */
   }
 
   ::-webkit-scrollbar {
@@ -137,11 +138,11 @@
     height: 12px; /* horizontal mais grossa: é a que some em tabela larga */
   }
   ::-webkit-scrollbar-thumb {
-    background: #39433d; /* neutro do mesmo matiz; visível sem virar enfeite */
+    background: #2e2e2e; /* neutro do mesmo matiz; visível sem virar enfeite */
     border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #4a5850;
+    background: #3d3d3d;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -195,13 +196,13 @@
   .field input,
   .field select,
   .field textarea {
-    @apply px-[13px] py-[10px] border border-border rounded-[9px] text-[13px] font-medium bg-[#0b0e0c] text-ink transition-colors;
+    @apply px-[13px] py-[10px] border border-border rounded-[9px] text-[13px] font-medium bg-[#0b0b0b] text-ink transition-colors;
   }
   .field input:focus,
   .field select:focus,
   .field textarea:focus {
     @apply outline-none border-brand;
-    box-shadow: 0 0 0 3px rgba(61, 240, 126, 0.22);
+    box-shadow: 0 0 0 3px rgba(0, 240, 164, 0.22);
   }
   .field input::placeholder,
   .field textarea::placeholder {
@@ -216,8 +217,8 @@
 /* placeholder de drop ao arrastar — pontilhado sóbrio (a lib vem com vermelho;
    !important pra vencer o default red do react-grid-layout/css/styles.css) */
 .react-grid-item.react-grid-placeholder {
-  background: rgba(61, 240, 126, 0.07) !important;
-  border: 2px dotted rgba(141, 154, 148, 0.45) !important;
+  background: rgba(0, 240, 164, 0.07) !important;
+  border: 2px dotted rgba(148, 152, 149, 0.4) !important;
   border-radius: 20px !important;
   opacity: 1 !important;
   box-shadow: none !important;
@@ -247,8 +248,8 @@
   bottom: 3px;
   width: 9px;
   height: 9px;
-  border-right: 2px solid #3df07e;
-  border-bottom: 2px solid #3df07e;
+  border-right: 2px solid #00f0a4;
+  border-bottom: 2px solid #00f0a4;
   border-bottom-right-radius: 2px;
 }
 .dash-editing {
@@ -263,7 +264,7 @@
   touch-action: none;
 }
 .dash-editing .react-grid-item {
-  outline: 1px dashed rgba(61, 240, 126, 0.35);
+  outline: 1px dashed rgba(0, 240, 164, 0.35);
   outline-offset: -1px;
   border-radius: 14px;
 }
