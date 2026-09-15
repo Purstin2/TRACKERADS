@@ -60,7 +60,7 @@ export const NAV: NavItem[] = [
   },
   {
     id: 'ofertas',
-    label: 'Ofertas testadas',
+    label: 'Gestão de Ofertas',
     icon: FlaskConical,
     to: '/ofertas',
   },

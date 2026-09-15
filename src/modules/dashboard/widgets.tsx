@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { authHeaders } from '@/lib/supabase'
+import Conquistas from './Conquistas'
 import {
   ResponsiveContainer,
   PieChart,
@@ -144,6 +145,9 @@ export const WIDGETS: WidgetDef[] = [
   { id: 'reembolso', category: 'Geral', title: 'Taxa de Reembolso', w: 3, h: 2, render: (d) => kpiBody(PCT(d.reembolsoPct)) },
   { id: 'limites_envio', category: 'Geral', title: 'Limites de Envio', w: 3, h: 3, render: () => <LimitesEnvio /> },
   { id: 'recup_melodify', category: 'Geral', title: 'Recuperação Melodify (7d)', w: 3, h: 4, render: () => <RecupMelodify /> },
+  /* Marcos de faturamento acumulado. IGNORA o filtro de período do Dashboard
+     de propósito — marco é história, não recorte de data. */
+  { id: 'conquistas', category: 'Geral', title: 'Conquistas', w: 5, h: 5, accent: true, render: () => <Conquistas /> },
   { id: 'chargeback', category: 'Geral', title: 'Chargeback', w: 3, h: 2, render: (d) => kpiBody(PCT(d.chargebackPct)) },
   { id: 'vendas_pendentes', category: 'Geral', title: 'Vendas Pendentes', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasPendentes)) },
   { id: 'vendas_reembolsadas', category: 'Geral', title: 'Vendas Reembolsadas', w: 3, h: 2, render: (d) => kpiBody(BRL(d.vendasReembolsadas)) },
