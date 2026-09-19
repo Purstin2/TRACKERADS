@@ -5,7 +5,8 @@ import { useMonitor } from './MonitorContext'
 import type { CacheItem } from './MonitorContext'
 import { fetchRecentSales, type LiveSale } from './realRoas'
 import { ActionsBar, Checkbox } from './MonitorViews'
-import { curSym } from './config'
+import { curSym, roasCls, VAL_CLS } from './config'
+import { loadFinParamsForAccount } from './finance'
 
 /**
  * "Ao vivo" — quem ACABOU de vender, sem separar por conta.
@@ -144,6 +145,29 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
     [vendas, idx],
   )
 
+  /* ── ROAS REAL ──────────────────────────────────────────────────────────
+   * O "ROAS hoje" vinha do Meta e vivia vazio: a Meta só enxerga a venda que
+   * ela mesma atribuiu, e boa parte não é atribuida (pos-compra, janela
+   * estourada, clique fora). O real usa o que o GATEWAY confirmou:
+   *
+   *     ROAS real = faturamento do dia (gateway, BRL) / gasto do dia (BRL)
+   *
+   * O gasto vem na moeda da conta, entao conta em USD passa pelo cambio dos
+   * parametros — mesma conversao da aba Tabela (MonitorViews, coluna
+   * "ROAS real"), pra os dois numeros baterem. */
+  const comReal = useMemo(
+    () =>
+      linhas.map((l) => {
+        const gastoBRL = l.gastoHoje * (l.cur === 'USD' ? m.settings.fx || 1 : 1)
+        const roasReal = gastoBRL > 0 && l.revenueToday > 0 ? l.revenueToday / gastoBRL : null
+        const FIN = loadFinParamsForAccount(l.accId)
+        const fatLiq = l.revenueToday * (1 - (FIN.gateway + FIN.imposto) / 100)
+        const lucroReal = gastoBRL > 0 ? fatLiq - gastoBRL - l.salesToday * (FIN.custoUn || 0) : null
+        return { ...l, gastoBRL, roasReal, lucroReal }
+      }),
+    [linhas, m.settings.fx],
+  )
+
   const totalVendas = linhas.reduce((s, l) => s + l.sales, 0)
   const totalRev = linhas.reduce((s, l) => s + l.revenue, 0)
   // seleção: só campanhas que o Meta trouxe (precisam de accId pra formar a chave)
@@ -239,12 +263,14 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                 <th className="py-2.5 text-left">Conta</th>
                 <th className="py-2.5 text-right">Vendas</th>
                 <th className="py-2.5 text-right">Faturou</th>
-                <th className="py-2.5 text-right">ROAS hoje</th>
-                <th className="py-2.5 pr-3 text-right">Gasto hoje</th>
+                <th className="py-2.5 text-right">Gasto hoje</th>
+                <th className="py-2.5 text-right">ROAS</th>
+                <th className="py-2.5 text-right">ROAS real</th>
+                <th className="py-2.5 pr-3 text-right">Lucro real</th>
               </tr>
             </thead>
             <tbody>
-              {linhas.map((l) => {
+              {comReal.map((l) => {
                 const min = (Date.now() - new Date(l.lastAt).getTime()) / MIN
                 const quente = min <= 15 // vendeu nos últimos 15 min → é o embalo
                 const sym = curSym(l.cur)
@@ -295,10 +321,18 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
                       {l.salesToday > l.sales && <span className="ml-1 text-[10px] text-muted2">de {l.salesToday} hoje</span>}
                     </td>
                     <td className="py-2.5 text-right font-mono tabular-nums text-ok">R${l.revenue.toFixed(2)}</td>
-                    <td className={`py-2.5 text-right font-mono font-bold tabular-nums ${l.roasHoje == null ? 'text-muted2' : l.roasHoje >= m.settings.roasGood ? 'text-ok' : l.roasHoje >= m.settings.roasBe ? 'text-warn' : 'text-danger'}`}>
+                    <td className="py-2.5 text-right font-mono tabular-nums text-muted2">{l.conhecida ? `${sym}${l.gastoHoje.toFixed(2)}` : '—'}</td>
+                    {/* ROAS do Meta — fica ao lado do real de propósito: a diferença
+                        entre os dois é exatamente o que a Meta não está vendo. */}
+                    <td className={`py-2.5 text-right font-mono font-bold tabular-nums ${l.roasHoje == null ? 'text-muted2' : VAL_CLS[roasCls(l.roasHoje, m.settings)]}`}>
                       {l.roasHoje != null ? l.roasHoje.toFixed(2) : '—'}
                     </td>
-                    <td className="py-2.5 pr-3 text-right font-mono tabular-nums text-muted2">{l.conhecida ? `${sym}${l.gastoHoje.toFixed(2)}` : '—'}</td>
+                    <td className={`py-2.5 text-right font-mono font-bold tabular-nums ${l.roasReal == null ? 'text-muted2' : VAL_CLS[roasCls(l.roasReal, m.settings)]}`}>
+                      {l.roasReal != null ? l.roasReal.toFixed(2) : '—'}
+                    </td>
+                    <td className={`py-2.5 pr-3 text-right font-mono tabular-nums ${l.lucroReal == null ? 'text-muted2' : l.lucroReal >= 0 ? 'text-ok font-semibold' : 'text-danger font-semibold'}`}>
+                      {l.lucroReal == null ? '—' : `${l.lucroReal >= 0 ? '' : '-'}R$${Math.abs(l.lucroReal).toFixed(2)}`}
+                    </td>
                   </tr>
                 )
               })}
@@ -309,7 +343,8 @@ export default function AoVivoView({ items }: { items: CacheItem[] }) {
 
       <p className="text-[10.5px] text-muted2">
         ⚡ = vendeu nos últimos 15 min. Lista achatada de propósito: campanha de qualquer conta disputa o mesmo topo — o que manda é a hora da venda.
-        Vendas vêm do gateway (hora exata); ROAS/gasto do dia vêm do Meta do último "Atualizar".
+        Vendas e faturamento vêm do gateway (hora exata); o gasto vem do Meta do último "Atualizar".
+        <b className="text-muted"> ROAS real = faturamento do dia no gateway ÷ gasto do dia</b>, com o gasto de conta em US$ convertido pelo câmbio dos parâmetros — mesma conta da aba Tabela.
       </p>
     </div>
   )
