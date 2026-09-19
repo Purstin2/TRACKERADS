@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Zap, Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone, LayoutGrid, ChevronRight } from 'lucide-react'
+import { Bell, BellRing, RefreshCw, Download, TrendingUp, ShoppingBag, Target, LayoutDashboard, ListOrdered, Megaphone, LayoutGrid, ChevronRight } from 'lucide-react'
 import { NAV } from '@/lib/nav'
 import MobileCamps from './MobileCamps'
 import PeriodBar from './PeriodBar'
@@ -204,6 +204,17 @@ export default function MobileApp() {
     setTimeout(() => setFlashIds((s) => { const n = new Set(s); n.delete(o.id); return n }), 6000)
   }
 
+  /* O botao de recarregar parecia morto por dois motivos: fetchSales nunca
+   * ligava o `loading` (so desligava no fim), entao o icone nunca girava; e na
+   * aba Campanhas ele buscava VENDAS, que nao alimenta nada daquela tela.
+   * Agora ele liga o spinner e, em Campanhas, remonta o componente via nonce. */
+  const [recarga, setRecarga] = useState(0)
+  function recarregar() {
+    setLoading(true)
+    if (tab === 'camps') setRecarga((n) => n + 1)
+    fetchSales()
+  }
+
   async function fetchSales() {
     const sb = supabase()
     if (!sb) { setLoading(false); return }
@@ -346,34 +357,35 @@ export default function MobileApp() {
   }, [orders, allOrders, taxasCfg, total, spend])
 
   return (
-    <div
-      className="min-h-screen bg-bg text-ink"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
+    /* min-h-dvh, nao min-h-screen: 100vh no celular e a altura com a barra de
+       URL ESCONDIDA, entao a pagina fica mais alta que a tela e sobra um vazio
+       rolavel embaixo — e e nessa folga que a nav fixa parece "flutuar" quando
+       a barra do navegador entra e sai. dvh acompanha a altura real.
+       O padding de safe-area saiu daqui: o header ja trata o topo e a nav fixa
+       trata o rodape. Aplicar nos tres empilhava o mesmo respiro 2x. */
+    <div className="min-h-dvh bg-bg text-ink">
       {/* header */}
-      <header className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-border bg-bg/90 px-4 py-3 backdrop-blur-xl"
-        style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)' }}>
-        <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand">
-          <Zap className="h-5 w-5 fill-white text-white" />
+      {/* Barra minima. Antes ela tinha logo de 36px + o nome da aba em 15px
+          extrabold — e o nome da aba ja aparece destacado na nav de baixo, entao
+          eram ~60px de altura repetindo informacao. Sobrou o que so existe aqui:
+          se o dado esta vivo, de quando ele e, e como forcar. */}
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg/90 px-4 py-1.5 backdrop-blur-xl"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 6px)' }}>
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-ok" />
         </span>
-        <div className="flex-1">
-          <div className="text-[15px] font-extrabold leading-none">
-            {tab === 'vendas' ? 'Vendas' : tab === 'dash' ? 'Dashboard' : tab === 'mais' ? 'Mais' : 'Campanhas'}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted2">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-ok" />
-            </span>
-            ao vivo {updatedAt && `· ${updatedAt}`}
-          </div>
-        </div>
-        <button onClick={fetchSales} className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-border text-muted2 active:scale-95">
+        <span className="text-[11px] text-muted2">ao vivo {updatedAt && `· ${updatedAt}`}</span>
+        <button onClick={recarregar} aria-label="recarregar"
+          className="-mr-1 ml-auto flex h-8 w-8 items-center justify-center rounded-[9px] text-muted2 active:scale-90">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </header>
 
-      <main className="mx-auto max-w-[560px] px-4 pb-28 pt-4">
+      {/* o respiro embaixo tem que ser a ALTURA DA NAV + safe-area, nao um
+          pb-28 chutado (112px) que sobrava vazio no fim da rolagem */}
+      <main className="mx-auto max-w-[560px] px-4 pt-3"
+        style={{ paddingBottom: 'calc(62px + env(safe-area-inset-bottom))' }}>
         {/* o período vale pras abas de dados; em "Mais" não faz sentido */}
         {tab !== 'mais' && <PeriodBar value={periodo} onChange={setPeriodo} />}
 
@@ -490,7 +502,7 @@ export default function MobileApp() {
 
         </>
         ) : tab === 'camps' ? (
-          <MobileCamps periodo={periodo} />
+          <MobileCamps periodo={periodo} recarga={recarga} />
         ) : (
         <>
         {/* ── DASHBOARD do dia ── */}

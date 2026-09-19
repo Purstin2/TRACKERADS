@@ -281,7 +281,7 @@ function Detalhe({ r, onClose, onBudget }: { r: Row; onClose: () => void; onBudg
   )
 }
 
-export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
+export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodValue; recarga?: number }) {
   const log = useLog()
   const [status, setStatus] = useState('active')
   const [acc, setAcc] = useState('')
@@ -362,7 +362,7 @@ export default function MobileCamps({ periodo }: { periodo: PeriodValue }) {
     } catch (e: any) { setReason(e.message) }
     setLoading(false)
   }
-  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [periodo, status, acc])
+  useEffect(() => { carregar() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [periodo, status, acc, recarga])
 
   /* Total do dia SÓ das campanhas que tiveram aumento hoje — é o "depois" do
    * tracker. Buscar isso pra lista inteira seria uma chamada por campanha à
