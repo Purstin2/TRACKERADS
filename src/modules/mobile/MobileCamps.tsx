@@ -699,19 +699,22 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                   </div>
                 </div>
 
-                {/* os números da decisão */}
-                <div className="mt-2.5 grid grid-cols-4 gap-1.5 border-t border-border/60 pt-2.5 text-center">
-                  {[
-                    ['Gasto', brlCurto(r.spend), 'text-warn'],
-                    ['Vendas hoje', String(r.real ? r.real.salesHoje : 0), 'text-ink'],
-                    ['No período', String(r.vendasReais || 0), 'text-ink'],
-                    ['Orçam.', r.budget != null ? brlCurto(r.budget) : '—', 'text-muted'],
-                  ].map(([k, v, cls]) => (
-                    <div key={k}>
-                      <div className="text-[9.5px] font-semibold uppercase tracking-wide text-muted2">{k}</div>
-                      <div className={`mt-0.5 text-[12.5px] font-bold ${cls}`}>{v}</div>
-                    </div>
-                  ))}
+                {/* Era uma grade de 4 colunas com rotulo de 9,5px maiusculo. Num
+                    celular de 360px cada coluna ficava com ~75px: quatro numeros
+                    do mesmo tamanho, nenhum legivel de relance. Virou uma linha
+                    so, com o numero grande e a unidade pequena do lado — que e
+                    como a gente le "gastei X, vendi Y". */}
+                <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border/60 pt-2.5 text-[13px]">
+                  <span className="font-bold text-warn">{brlCurto(r.spend)}</span>
+                  <span className="text-[11px] text-muted2">gasto</span>
+                  <span className="font-bold text-ink">{r.vendasReais || 0}</span>
+                  <span className="text-[11px] text-muted2">
+                    venda{(r.vendasReais || 0) === 1 ? '' : 's'}
+                    {r.real && r.real.salesHoje > 0 && ` · ${r.real.salesHoje} hoje`}
+                  </span>
+                  {r.budget != null && (
+                    <span className="ml-auto text-[11px] text-muted2">orçam. <b className="text-[12.5px] text-muted">{brlCurto(r.budget)}</b></span>
+                  )}
                 </div>
 
                 {/* o que o aumento de hoje trouxe — mesma leitura do desktop */}
@@ -732,12 +735,15 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                   </div>
                 )}
 
-                {/* ajuste rápido de orçamento */}
+                {/* Os quatro botoes vinham preenchidos de verde/vermelho, com o
+                    mesmo peso do ROAS. Resultado: o card inteiro gritava e nada
+                    chamava atencao de verdade. Agora sao contorno discreto — a
+                    cor fica reservada pro dado que decide. */}
                 <div className="mt-2 grid grid-cols-4 gap-1.5">
                   {[-20, 20, 30, 50].map((q) => (
                     <button key={q} onClick={() => ajusteRapido(r, q)} disabled={orcando === r.id}
-                      className={`rounded-[9px] border py-2.5 text-[12.5px] font-bold active:scale-[0.97] disabled:opacity-40 ${
-                        q < 0 ? 'border-danger/40 bg-danger/10 text-danger' : 'border-ok/40 bg-ok/10 text-ok'
+                      className={`rounded-[9px] border border-border bg-surface2/50 py-2 text-[12.5px] font-bold active:scale-[0.97] disabled:opacity-40 ${
+                        q < 0 ? 'text-danger' : 'text-ok'
                       }`}>
                       {orcando === r.id ? '…' : `${q > 0 ? '+' : ''}${q}%`}
                     </button>
