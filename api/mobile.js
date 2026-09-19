@@ -367,9 +367,15 @@ async function camps(req, res) {
             spendRaw: +(parseFloat(r.spend) || 0).toFixed(2),
             cur: acc.cur || 'USD',
             cpa: cpa == null ? null : +(cpa * mult).toFixed(2),
+            // …e os mesmos dois na MOEDA DA CONTA, pelo mesmo motivo do spendRaw:
+            // o celular mostra a tabela na moeda em que a conta gasta (igual ao
+            // desktop), entao ele precisa do numero antes da conversao — dividir
+            // o BRL ja arredondado de volta pelo fx arrastaria erro de centavo.
+            cpaRaw: cpa == null ? null : +cpa.toFixed(2),
             revenue: roas != null ? +(roas * spend).toFixed(2) : 0,
             freq: parseFloat(r.frequency || '0') || 0,
             budget: md.budget == null ? null : +(md.budget * mult).toFixed(2),
+            budgetRaw: md.budget == null ? null : +md.budget.toFixed(2),
             status: md.status || null,
           }
         }),

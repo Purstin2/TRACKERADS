@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  RefreshCw, Search, X, Pause, Play, DollarSign, History,
+  RefreshCw, Search, X, Pause, Play, DollarSign, Clock,
   BarChart3, ArrowUpDown, Filter, Check, Zap,
 } from 'lucide-react'
-import { useLog, addAction, todayBR, KIND_LABEL, increasesForDay } from '@/modules/monitor/actionLog'
-import { campIdFromUtm } from '@/modules/monitor/realRoas'
+import { useLog, addAction, todayBR, increasesForDay } from '@/modules/monitor/actionLog'
+import { campIdFromUtm, fetchCampaignSales, type CampSale } from '@/modules/monitor/realRoas'
 import { loadFinParamsForAccount, rowFin } from '@/modules/monitor/finance'
 import { buildCards, verdictOf, roasOf, hourBR, type Win } from '@/modules/monitor/trackerMath'
 import { supabase, fetchAll, authHeaders } from '@/lib/supabase'
@@ -24,10 +24,13 @@ async function apiFetch(url: string, options: RequestInit = {}) {
  * cada uma delas (CPA real). Só quando não existe venda do gateway o número
  * grande cai pro ROAS do Meta, e o rótulo embaixo avisa qual dos dois é.
  *
- * Três botões, e nada além disso: os cortes de orçamento (onde a mão vai
- * primeiro), "Vendas" (o dia a dia dos últimos 7 dias) e o quadrado de
- * histórico (o que eu já mexi nela). Pausar/reativar ficou no rodapé do
- * painel — continua a um toque de distância, mas fora do caminho do polegar.
+ * Três botões, os mesmos da tira de ícones do desktop: "Vendas" (o dia a dia
+ * dos últimos 7 dias), "Orçamento" (aumentar ou diminuir) e o quadrado de
+ * relógio — vendas por horário, a hora exata de cada venda. Pausar/reativar
+ * ficou no rodapé do painel: a um toque, fora do caminho do polegar.
+ *
+ * Dinheiro na MOEDA DA CONTA, igual ao desktop. A conta do lucro/ROAS real é
+ * feita em BRL (o gateway só fala real) e convertida de volta no fim.
  *
  * Saíram daqui: o resumo de ROAS do período no topo, os avisos vermelhos por
  * conta, e a seleção múltipla com desativação em lote. Os três ocupavam a
@@ -36,12 +39,20 @@ async function apiFetch(url: string, options: RequestInit = {}) {
  *
  * O token NÃO vem pro browser: quem fala com a Meta é /api/mobile. */
 
-const brl = (v?: number | null) =>
-  'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const brlCurto = (v?: number | null) => {
+/* Dinheiro sempre com o SÍMBOLO DA CONTA que gastou — o celular mostrava tudo
+ * em R$ enquanto o desktop mostrava em US$ na mesma campanha. Como o celular
+ * não tem mais linha de total, cada card pode usar a moeda da sua própria
+ * conta; não existe soma misturando moedas pra proteger. */
+const simbolo = (cur?: string | null) => ((cur || 'USD').toUpperCase() === 'BRL' ? 'R$' : '$')
+const money = (v: number | null | undefined, s = 'R$') =>
+  s + ' ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const moneyCurto = (v: number | null | undefined, s = 'R$') => {
   const n = v || 0
-  return n >= 1000 ? 'R$ ' + (n / 1000).toFixed(1).replace('.', ',') + 'k' : brl(n)
+  return n >= 1000 ? s + ' ' + (n / 1000).toFixed(1).replace('.', ',') + 'k' : money(n, s)
 }
+/** quanto vale, na moeda da conta, um valor que veio em BRL do gateway */
+const deBRL = (v: number, cur: string | null | undefined, fx: number) =>
+  (cur || 'USD').toUpperCase() === 'BRL' ? v : v / (fx || 1)
 
 const STATUS: [string, string][] = [
   ['active', 'Ativas'],
@@ -60,8 +71,12 @@ interface Row {
   id: string; name: string; accId: string; accName: string
   spend: number; roas: number | null; sales: number; cpa: number | null
   revenue: number; freq: number; budget: number | null; status: string | null
-  /** gasto na moeda da CONTA (sem conversão) — é o que o tracker compara */
+  /* os três na MOEDA DA CONTA, sem conversão. `spend`/`cpa`/`budget` acima vêm
+     convertidos pra BRL (o real precisa deles pra casar com o gateway); estes
+     são os que aparecem na tela, na mesma moeda do desktop. */
   spendRaw?: number
+  cpaRaw?: number | null
+  budgetRaw?: number | null
   /** moeda da conta (USD/BRL) */
   cur?: string
 }
@@ -137,11 +152,114 @@ function TrackerAumento({
   )
 }
 
+/* ── Vendas por horário ───────────────────────────────────────────────────────
+ * A hora exata em que cada venda caiu, igual ao relógio da tira do desktop.
+ * Responde duas coisas que o total do dia não responde: a venda foi AGORA
+ * (então vale subir orçamento pra pegar o embalo), e em que faixa do dia essa
+ * campanha converte.
+ *
+ * Fonte é o gateway (kirvano_orders) — o único com o instante do pedido; o
+ * Meta só devolve agregado do dia. Por isso os valores aqui são em R$ mesmo
+ * quando a conta gasta em dólar: é dinheiro que entrou em real. */
+function PorHorario({ campId }: { campId: string }) {
+  const [dias, setDias] = useState(0) // 0 = hoje
+  const [vendas, setVendas] = useState<CampSale[] | null>(null)
+  const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    let vivo = true
+    setVendas(null); setErro('')
+    const desde = dias === 0
+      ? resolvePeriod({ id: 'today' }).sinceISO
+      : new Date(Date.now() - dias * 86400000).toISOString()
+    fetchCampaignSales(campId, desde)
+      .then((v) => vivo && setVendas(v))
+      .catch((e) => { if (vivo) { setErro(e?.message || 'falha ao buscar vendas'); setVendas([]) } })
+    return () => { vivo = false }
+  }, [campId, dias])
+
+  /* 24 baldes de uma hora, no fuso BR — a mesma régua do gasto por hora do
+     Meta, pra dar pra comparar "vendi às 20h" com "gastei às 20h". */
+  const porHora = useMemo(() => {
+    const h = Array.from({ length: 24 }, () => ({ n: 0, v: 0 }))
+    for (const s of vendas || []) {
+      const i = new Date(new Date(s.at).getTime() - 3 * 3600000).getUTCHours()
+      h[i].n += 1; h[i].v += s.value
+    }
+    return h
+  }, [vendas])
+  const pico = Math.max(...porHora.map((h) => h.n), 0)
+  const total = (vendas || []).reduce((s, v) => s + v.value, 0)
+
+  return (
+    <>
+      <div className="mb-2 flex gap-1.5">
+        {([[0, 'Hoje'], [7, '7 dias'], [30, '30 dias']] as const).map(([d, lb]) => (
+          <button key={d} onClick={() => setDias(d)}
+            className={`flex-1 rounded-[9px] border py-2 text-[12px] font-bold active:scale-[0.98] ${
+              dias === d ? 'border-brand bg-brand text-brand-ink' : 'border-border text-muted'
+            }`}>{lb}</button>
+        ))}
+      </div>
+
+      {vendas == null ? (
+        <div className="py-8 text-center text-[12.5px] text-muted2">carregando vendas…</div>
+      ) : erro ? (
+        <div className="rounded-[10px] border border-danger/30 bg-danger/[0.07] p-3 text-[12.5px] text-danger">{erro}</div>
+      ) : vendas.length === 0 ? (
+        <div className="py-8 text-center text-[12.5px] text-muted2">nenhuma venda nesse período</div>
+      ) : (
+        <>
+          <div className="mb-2 text-[12px] text-muted">
+            <b className="text-ink">{vendas.length}</b> venda{vendas.length === 1 ? '' : 's'} · <b className="text-ok">{money(total)}</b>
+          </div>
+
+          {/* barras de 24h: altura pelo nº de vendas da hora, pico = 100% */}
+          <div className="flex h-[74px] items-end gap-[2px] rounded-[10px] border border-border bg-surface2/40 px-2 pt-2">
+            {porHora.map((h, i) => (
+              <div key={i} className="group flex flex-1 flex-col items-center justify-end" title={`${i}h — ${h.n} venda(s) · ${money(h.v)}`}>
+                <div
+                  className={`w-full rounded-t-[2px] ${h.n > 0 ? 'bg-brand' : 'bg-border'}`}
+                  style={{ height: h.n > 0 && pico > 0 ? `${Math.max(8, (h.n / pico) * 52)}px` : '2px' }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mb-3 mt-1 flex justify-between px-2 text-[9.5px] text-muted2">
+            <span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span>
+          </div>
+
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted2">Cada venda</div>
+          <div className="flex flex-col gap-1">
+            {vendas.slice(0, 60).map((s, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-[9px] border border-border bg-surface2/50 px-3 py-2 text-[12.5px]">
+                <span className="w-[42px] shrink-0 font-mono font-bold text-ink">
+                  {new Date(s.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
+                </span>
+                {dias > 0 && (
+                  <span className="w-[38px] shrink-0 font-mono text-[11px] text-muted2">
+                    {new Date(s.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1 truncate text-muted">{s.product || '—'}</span>
+                <span className="shrink-0 font-mono font-semibold text-ok">{money(s.value)}</span>
+              </div>
+            ))}
+            {vendas.length > 60 && (
+              <div className="py-2 text-center text-[11px] text-muted2">+{vendas.length - 60} vendas mais antigas</div>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
 /* ── painel do card ───────────────────────────────────────────────────────────
  * Abre direto na aba que o botão pediu:
- *   vendas → o dia a dia dos últimos 7 dias (é o "histórico de vendas")
- *   orc    → ajuste fino (o card já resolve os cortes redondos)
- *   hist   → o que EU já mexi nela
+ *   vendas  → o dia a dia dos últimos 7 dias
+ *   orc     → ajuste fino do orçamento
+ *   horario → a hora exata de cada venda
  * Pausar/reativar mora no rodapé daqui. Saiu do card pra não competir com o
  * número que decide, mas tirar do celular inteiro deixaria campanha ruim sem
  * como desligar longe do PC. */
@@ -149,13 +267,13 @@ function Detalhe({
   r, abaInicial, onClose, onBudget, onStatus,
 }: {
   r: Row
-  abaInicial: 'vendas' | 'orc' | 'hist'
+  abaInicial: 'vendas' | 'orc' | 'horario'
   onClose: () => void
   onBudget: (novo: number, antes: number | null) => void
   onStatus: (novo: string) => void
 }) {
-  const log = useLog()
-  const [aba, setAba] = useState<'vendas' | 'orc' | 'hist'>(abaInicial)
+  const s = simbolo(r.cur)
+  const [aba, setAba] = useState<'vendas' | 'orc' | 'horario'>(abaInicial)
   const [info, setInfo] = useState<any>(null)
   const [dias, setDias] = useState<any[] | null>(null)
   const [pct, setPct] = useState(20)
@@ -173,7 +291,6 @@ function Detalhe({
 
   const atual = info?.ok ? info.totalMoeda : null
   const novo = modo === 'abs' ? parseFloat(abs || '0') : atual != null ? atual * (1 + pct / 100) : 0
-  const meu = useMemo(() => log.filter((e) => e.campId === r.id).slice(0, 12), [log, r.id])
   const on = (r.status || '').toUpperCase() === 'ACTIVE'
 
   async function aplicar() {
@@ -243,7 +360,7 @@ function Detalhe({
         </div>
 
         <div className="mb-3 flex overflow-hidden rounded-[10px] border border-border">
-          {([['vendas', 'Vendas', BarChart3], ['orc', 'Orçamento', DollarSign], ['hist', 'Histórico', History]] as const).map(([id, lb, Ic]) => (
+          {([['vendas', 'Vendas', BarChart3], ['orc', 'Orçamento', DollarSign], ['horario', 'Horário', Clock]] as const).map(([id, lb, Ic]) => (
             <button key={id} onClick={() => setAba(id)}
               className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[12.5px] font-bold ${aba === id ? 'bg-brand text-brand-ink' : 'text-muted2'}`}>
               <Ic className="h-4 w-4" /> {lb}
@@ -270,7 +387,7 @@ function Detalhe({
                     <span className={`w-[52px] shrink-0 font-bold ${d.roas == null ? 'text-muted2' : d.roas >= 2 ? 'text-ok' : d.roas < 1.25 ? 'text-danger' : 'text-warn'}`}>
                       {d.roas != null ? d.roas.toFixed(2) : '—'}
                     </span>
-                    <span className="flex-1 text-right text-muted">{brl(d.spend)}</span>
+                    <span className="flex-1 text-right text-muted">{money(d.spend, s)}</span>
                     <span className="w-[36px] shrink-0 text-right font-bold text-ink">{d.sales || '—'}</span>
                   </div>
                 ))}
@@ -284,7 +401,7 @@ function Detalhe({
             <>
               <div className="flex items-center justify-between rounded-[10px] border border-border bg-surface2 px-3.5 py-3 text-[13px]">
                 <span className="text-muted2">Atual ({info.nivel}{info.nivel === 'ABO' ? ` · ${info.itens.length} conj.` : ''})</span>
-                <b className="font-mono">{brl(atual)}/dia</b>
+                <b className="font-mono">{money(atual, s)}/dia</b>
               </div>
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 {[-30, -20, -10, 10, 20, 30, 50, 100].map((q) => (
@@ -294,12 +411,12 @@ function Detalhe({
                   </button>
                 ))}
               </div>
-              <input type="number" inputMode="decimal" value={abs} placeholder={`ou valor fixo (${brl(atual)})`}
+              <input type="number" inputMode="decimal" value={abs} placeholder={`ou valor fixo (${money(atual, s)})`}
                 onChange={(e) => { setModo('abs'); setAbs(e.target.value) }}
                 className={`mt-2 h-[44px] w-full rounded-[10px] border bg-surface px-3 text-[13px] text-ink focus:outline-none ${modo === 'abs' ? 'border-ok/60' : 'border-border'}`} />
               <div className={`mt-2 flex items-center justify-between rounded-[10px] border px-3.5 py-3 ${novo >= (atual || 0) ? 'border-ok/30 bg-ok/[0.06]' : 'border-warn/30 bg-warn/[0.06]'}`}>
                 <span className="text-[12.5px] text-muted">Novo orçamento</span>
-                <b className={`font-mono text-[15px] ${novo >= (atual || 0) ? 'text-ok' : 'text-warn'}`}>{brl(novo)}/dia</b>
+                <b className={`font-mono text-[15px] ${novo >= (atual || 0) ? 'text-ok' : 'text-warn'}`}>{money(novo, s)}/dia</b>
               </div>
               <button onClick={aplicar} disabled={aplicando || !(novo > 0)}
                 className="mt-3 w-full rounded-[10px] border border-ok/50 bg-ok/15 py-3.5 text-[13.5px] font-bold text-ok active:scale-[0.99] disabled:opacity-50">
@@ -308,29 +425,7 @@ function Detalhe({
             </>
           )
         ) : (
-          <>
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted2">O que já fiz nela</div>
-            {meu.length === 0 ? (
-              <div className="rounded-[9px] border border-dashed border-border py-5 text-center text-[12px] text-muted2">
-                nenhuma alteração registrada
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {meu.map((e) => (
-                  <div key={e.id} className="rounded-[9px] border border-border bg-surface2/50 px-3 py-2">
-                    <div className="flex items-center gap-2 text-[11px] text-muted2">
-                      <span className="font-bold text-brand-2">{KIND_LABEL[e.kind] || e.kind}</span>
-                      <span className="font-mono">{new Date(e.ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                      {e.budgetBefore != null && e.budgetAfter != null && (
-                        <span className="ml-auto font-mono text-ink">{e.budgetBefore.toFixed(0)}→{e.budgetAfter.toFixed(0)}</span>
-                      )}
-                    </div>
-                    {e.detail && <div className="mt-0.5 text-[11.5px] text-muted">{e.detail}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
+          <PorHorario campId={r.id} />
         )}
 
         {/* ligar/desligar: fica no rodapé do painel, longe de um toque sem querer */}
@@ -373,7 +468,7 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(true)
   /** qual campanha está com o painel aberto, e em que aba ele abriu */
-  const [detalhe, setDetalhe] = useState<{ r: Row; aba: 'vendas' | 'orc' | 'hist' } | null>(null)
+  const [detalhe, setDetalhe] = useState<{ r: Row; aba: 'vendas' | 'orc' | 'horario' } | null>(null)
   const [flash, setFlash] = useState<Record<string, string>>({})
   /** total de HOJE por campanha que teve aumento — alimenta o tracker */
   const [dias, setDias] = useState<Record<string, DiaWin>>({})
@@ -493,24 +588,32 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
    * celular não tem — o /api/mobile já devolve a linha pronta e em BRL.
    * Diferença pro rowFin: o faturamento do gateway JÁ é venda aprovada, então
    * não leva o fator de aprovação — só taxa de gateway e imposto. */
+  const fx = params?.fx || 5.4
   const enriquecidas = useMemo(() => rows.map((r) => {
     const rl: Real | null = real[r.id] || null
     const FIN = loadFinParamsForAccount(r.accId)
+    /* a conta do REAL é toda em BRL — o gateway só fala real. Por isso ela usa
+       `r.spend` (convertido) e não `spendRaw`. Só no fim o resultado volta pra
+       moeda da conta, que é como o desktop mostra. */
     const roasReal = rl && r.spend > 0 ? rl.revenue / r.spend : null
     const fatLiqReal = rl ? rl.revenue * (1 - (FIN.gateway + FIN.imposto) / 100) : 0
-    const lucroReal = rl ? fatLiqReal - r.spend - rl.sales * FIN.custoUn : null
-    const margemReal = rl && fatLiqReal > 0 && lucroReal != null ? lucroReal / fatLiqReal : null
+    const lucroRealBRL = rl ? fatLiqReal - r.spend - rl.sales * FIN.custoUn : null
+    const margemReal = rl && fatLiqReal > 0 && lucroRealBRL != null ? lucroRealBRL / fatLiqReal : null
     return {
       ...r,
       real: rl,
+      sym: simbolo(r.cur),
       roasReal,
-      lucroReal,
+      // ROAS e margem são razão: não têm moeda, atravessam a conversão intactos
+      lucroReal: lucroRealBRL == null ? null : deBRL(lucroRealBRL, r.cur, fx),
       margemReal,
+      gastoConta: r.spendRaw ?? r.spend,
+      cpaConta: r.cpaRaw ?? null,
       // o que manda na decisão: o real quando existe, senão o do Meta
       roasDecisao: roasReal != null ? roasReal : r.roas,
       vendasReais: rl ? rl.sales : r.sales,
     }
-  }), [rows, real])
+  }), [rows, real, fx])
 
   type Enr = typeof enriquecidas[number]
 
@@ -640,20 +743,23 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                     <span className="ml-1 text-[11px] text-muted2">v. reais</span>
                   </span>
                   <span className="whitespace-nowrap">
-                    <b className={`font-bold ${r.cpa == null ? 'text-muted2' : params && r.cpa <= params.cpaMax ? 'text-ok' : 'text-danger'}`}>
-                      {r.cpa != null ? brlCurto(r.cpa) : '—'}
+                    {/* cpaMax dos Parâmetros está na moeda da conta (o desktop
+                        compara com o valor exibido) — comparar com o BRL aqui
+                        pintaria toda conta em dólar de vermelho */}
+                    <b className={`font-bold ${r.cpaConta == null ? 'text-muted2' : params && r.cpaConta <= params.cpaMax ? 'text-ok' : 'text-danger'}`}>
+                      {r.cpaConta != null ? moneyCurto(r.cpaConta, r.sym) : '—'}
                     </b>
                     <span className="ml-1 text-[11px] text-muted2">cpa</span>
                   </span>
                   <span className="ml-auto whitespace-nowrap">
                     <b className={`font-bold ${r.lucroReal == null ? 'text-muted2' : r.lucroReal >= 0 ? 'text-ok' : 'text-danger'}`}>
-                      {r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '−') + brlCurto(Math.abs(r.lucroReal))}
+                      {r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '−') + moneyCurto(Math.abs(r.lucroReal), r.sym)}
                     </b>
                     <span className="ml-1 text-[11px] text-muted2">lucro real</span>
                   </span>
                 </div>
                 <div className="mt-1 flex items-baseline gap-x-3 text-[11px] text-muted2">
-                  <span className="whitespace-nowrap">gasto <b className="font-semibold text-muted">{brlCurto(r.spend)}</b></span>
+                  <span className="whitespace-nowrap">gasto <b className="font-semibold text-muted">{moneyCurto(r.gastoConta, r.sym)}</b></span>
                   {r.margemReal != null && (
                     <span className="ml-auto whitespace-nowrap">
                       margem <b className={`font-semibold ${r.margemReal >= 0 ? 'text-muted' : 'text-danger'}`}>{(r.margemReal * 100).toFixed(0)}%</b>
@@ -662,7 +768,7 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                 </div>
 
                 {/* o que o aumento de hoje trouxe — mesma leitura do desktop */}
-                <TrackerAumento r={r} win={dias[r.id] || { win: null, carregando: false }} sym={(r.cur || 'USD') === 'BRL' ? 'R$' : '$'} />
+                <TrackerAumento r={r} win={dias[r.id] || { win: null, carregando: false }} sym={r.sym} />
 
                 {/* confirmação do ajuste que acabei de fazer */}
                 {flash[r.id] && (
@@ -691,9 +797,9 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-ok/40 bg-ok/[0.08] py-2.5 text-[12px] font-bold text-ok active:scale-[0.99]">
                     <DollarSign className="h-4 w-4" /> Orçamento
                   </button>
-                  <button onClick={() => setDetalhe({ r, aba: 'hist' })} aria-label="histórico da campanha"
+                  <button onClick={() => setDetalhe({ r, aba: 'horario' })} aria-label="vendas por horário"
                     className="flex w-[46px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface2/60 active:scale-[0.97]">
-                    <History className="h-4 w-4 text-muted" />
+                    <Clock className="h-4 w-4 text-muted" />
                   </button>
                 </div>
               </div>
