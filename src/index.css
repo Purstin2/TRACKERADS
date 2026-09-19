@@ -18,10 +18,23 @@
     box-sizing: border-box;
   }
 
+  /* 100% aqui resolve contra o viewport GRANDE (a altura com a barra de URL
+     do celular escondida). Com a barra visivel, html/body/#root ficam mais
+     altos que a area util e sobra uma folga rolavel no fim da pagina — e e
+     nela que a nav fixa do app parece descolar do rodape.
+     dvh acompanha a altura real; o 100% fica de reserva pra quem nao suporta. */
   html,
   body,
   #root {
     height: 100%;
+  }
+
+  @supports (height: 100dvh) {
+    html,
+    body,
+    #root {
+      height: 100dvh;
+    }
   }
 
   body {
