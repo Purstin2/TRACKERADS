@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  RefreshCw, Search, X, Pause, Play, DollarSign, History, ChevronRight,
-  Receipt, ArrowUpDown, Filter, Check, Zap,
+  RefreshCw, Search, X, Pause, Play, DollarSign, History,
+  BarChart3, ArrowUpDown, Filter, Check, Zap,
 } from 'lucide-react'
 import { useLog, addAction, todayBR, KIND_LABEL, increasesForDay } from '@/modules/monitor/actionLog'
 import { campIdFromUtm } from '@/modules/monitor/realRoas'
@@ -151,7 +151,7 @@ function Detalhe({
   r: Row
   abaInicial: 'vendas' | 'orc' | 'hist'
   onClose: () => void
-  onBudget: (novo: number) => void
+  onBudget: (novo: number, antes: number | null) => void
   onStatus: (novo: string) => void
 }) {
   const log = useLog()
@@ -192,7 +192,7 @@ function Detalhe({
           dateBR: todayBR(), budgetBefore: j.antes, budgetAfter: j.depois,
           detail: `${modo === 'pct' ? (pct >= 0 ? '+' : '') + pct + '%' : 'valor fixo'} (${j.nivel}) · pelo celular`,
         })
-        onBudget(j.depois)
+        onBudget(j.depois, j.antes ?? null)
         if (j.effective_status && j.effective_status !== 'ACTIVE') {
           alert(`⚠ Orçamento aplicado, mas a campanha está "${j.effective_status}". Reative se não foi você.`)
         }
@@ -243,7 +243,7 @@ function Detalhe({
         </div>
 
         <div className="mb-3 flex overflow-hidden rounded-[10px] border border-border">
-          {([['vendas', 'Vendas', Receipt], ['orc', 'Orçamento', DollarSign], ['hist', 'Histórico', History]] as const).map(([id, lb, Ic]) => (
+          {([['vendas', 'Vendas', BarChart3], ['orc', 'Orçamento', DollarSign], ['hist', 'Histórico', History]] as const).map(([id, lb, Ic]) => (
             <button key={id} onClick={() => setAba(id)}
               className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[12.5px] font-bold ${aba === id ? 'bg-brand text-brand-ink' : 'text-muted2'}`}>
               <Ic className="h-4 w-4" /> {lb}
@@ -372,7 +372,6 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
   const [params, setParams] = useState<Params | null>(null)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(true)
-  const [orcando, setOrcando] = useState<string | null>(null)
   /** qual campanha está com o painel aberto, e em que aba ele abriu */
   const [detalhe, setDetalhe] = useState<{ r: Row; aba: 'vendas' | 'orc' | 'hist' } | null>(null)
   const [flash, setFlash] = useState<Record<string, string>>({})
@@ -489,21 +488,27 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
     return m
   }, [log])
 
+  /* MESMA conta da tabela do desktop (analyzeListaRows). Repetida aqui e não
+   * importada porque lá ela vive dentro de um map sobre InsightRow, que o
+   * celular não tem — o /api/mobile já devolve a linha pronta e em BRL.
+   * Diferença pro rowFin: o faturamento do gateway JÁ é venda aprovada, então
+   * não leva o fator de aprovação — só taxa de gateway e imposto. */
   const enriquecidas = useMemo(() => rows.map((r) => {
     const rl: Real | null = real[r.id] || null
+    const FIN = loadFinParamsForAccount(r.accId)
     const roasReal = rl && r.spend > 0 ? rl.revenue / r.spend : null
-    const vendasReais = rl ? rl.sales : r.sales
+    const fatLiqReal = rl ? rl.revenue * (1 - (FIN.gateway + FIN.imposto) / 100) : 0
+    const lucroReal = rl ? fatLiqReal - r.spend - rl.sales * FIN.custoUn : null
+    const margemReal = rl && fatLiqReal > 0 && lucroReal != null ? lucroReal / fatLiqReal : null
     return {
       ...r,
       real: rl,
       roasReal,
+      lucroReal,
+      margemReal,
       // o que manda na decisão: o real quando existe, senão o do Meta
       roasDecisao: roasReal != null ? roasReal : r.roas,
-      vendasReais,
-      /* CPA real = o que gastei ÷ vendas que o gateway confirmou. Não é o CPA
-         da Meta: ela conta a conversão que o pixel viu, que costuma ser mais
-         otimista. Ambos em BRL — `spend` já vem convertido da listagem. */
-      cpaReal: vendasReais > 0 ? r.spend / vendasReais : null,
+      vendasReais: rl ? rl.sales : r.sales,
     }
   }), [rows, real])
 
@@ -531,38 +536,12 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
   }
   const ativa = (s: string | null) => (s || '').toUpperCase() === 'ACTIVE'
 
-  /** aumento/redução direto no card: lê o orçamento atual e aplica */
-  async function ajusteRapido(r: Row, pct: number) {
-    setOrcando(r.id)
-    try {
-      const info = await (await apiFetch(`/api/mobile?fn=camp-budget&id=${r.id}`)).json()
-      if (!info || !info.ok || !(info.totalMoeda > 0)) {
-        alert('Não consegui ler o orçamento atual dessa campanha.')
-        setOrcando(null); return
-      }
-      const novo = info.totalMoeda * (1 + pct / 100)
-      const j = await (await apiFetch('/api/mobile?fn=camp-budget', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: r.id, novoTotal: novo }),
-      })).json()
-      if (!j.ok) { alert('Erro: ' + (j.error || 'falha')); setOrcando(null); return }
-      addAction({
-        accId: r.accId, name: r.name, campId: r.id, kind: 'orcamento', sim: false,
-        cur: r.cur || 'USD', roasAtTime: r.roas, spendAtTime: r.spendRaw ?? null, salesAtTime: r.sales,
-        dateBR: todayBR(), budgetBefore: j.antes, budgetAfter: j.depois,
-        detail: `${pct > 0 ? '+' : ''}${pct}% (${j.nivel}) · card do celular`,
-      })
-      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, budget: j.depois } : x)))
-      // confirmação VISÍVEL: sem isso não dá pra saber se o aumento pegou
-      const antes = j.antes != null ? Number(j.antes).toFixed(0) : '?'
-      const depois = j.depois != null ? Number(j.depois).toFixed(0) : '?'
-      setFlash((f) => ({ ...f, [r.id]: `orçamento ${antes} → ${depois} aplicado` }))
-      setTimeout(() => setFlash((f) => { const n = { ...f }; delete n[r.id]; return n }), 10000)
-      if (j.effective_status && j.effective_status !== 'ACTIVE') {
-        alert(`⚠ Orçamento aplicado, mas a campanha está "${j.effective_status}".`)
-      }
-    } catch (e: any) { alert('Erro: ' + e.message) }
-    setOrcando(null)
+  /** confirmação VISÍVEL no card: sem isso não dá pra saber se o ajuste pegou */
+  function avisarOrcamento(campId: string, antes: number | null, depois: number) {
+    const a = antes != null ? Number(antes).toFixed(0) : '?'
+    const d = Number(depois).toFixed(0)
+    setFlash((f) => ({ ...f, [campId]: `orçamento ${a} → ${d} aplicado` }))
+    setTimeout(() => setFlash((f) => { const n = { ...f }; delete n[campId]; return n }), 10000)
   }
 
   const chip = (ativo: boolean) =>
@@ -652,22 +631,34 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                   </div>
                 </div>
 
-                {/* os três números que sustentam a decisão de orçamento:
-                    quanto saiu, quantas vendas o gateway confirmou, e o que
-                    cada uma dessas vendas custou de verdade */}
+                {/* as mesmas colunas da tabela do desktop, na mesma ordem:
+                    V. reais · CPA · Lucro real — e embaixo gasto e margem,
+                    que são o contexto e não a decisão */}
                 <div className="mt-2.5 flex items-baseline gap-x-3 border-t border-border/60 pt-2.5 text-[13px]">
                   <span className="whitespace-nowrap">
                     <b className="font-bold text-ink">{r.vendasReais || 0}</b>
-                    <span className="ml-1 text-[11px] text-muted2">venda{(r.vendasReais || 0) === 1 ? '' : 's'}</span>
+                    <span className="ml-1 text-[11px] text-muted2">v. reais</span>
                   </span>
                   <span className="whitespace-nowrap">
-                    <b className="font-bold text-ink">{r.cpaReal != null ? brlCurto(r.cpaReal) : '—'}</b>
-                    <span className="ml-1 text-[11px] text-muted2">cpa real</span>
+                    <b className={`font-bold ${r.cpa == null ? 'text-muted2' : params && r.cpa <= params.cpaMax ? 'text-ok' : 'text-danger'}`}>
+                      {r.cpa != null ? brlCurto(r.cpa) : '—'}
+                    </b>
+                    <span className="ml-1 text-[11px] text-muted2">cpa</span>
                   </span>
                   <span className="ml-auto whitespace-nowrap">
-                    <b className="font-bold text-warn">{brlCurto(r.spend)}</b>
-                    <span className="ml-1 text-[11px] text-muted2">gasto</span>
+                    <b className={`font-bold ${r.lucroReal == null ? 'text-muted2' : r.lucroReal >= 0 ? 'text-ok' : 'text-danger'}`}>
+                      {r.lucroReal == null ? '—' : (r.lucroReal >= 0 ? '' : '−') + brlCurto(Math.abs(r.lucroReal))}
+                    </b>
+                    <span className="ml-1 text-[11px] text-muted2">lucro real</span>
                   </span>
+                </div>
+                <div className="mt-1 flex items-baseline gap-x-3 text-[11px] text-muted2">
+                  <span className="whitespace-nowrap">gasto <b className="font-semibold text-muted">{brlCurto(r.spend)}</b></span>
+                  {r.margemReal != null && (
+                    <span className="ml-auto whitespace-nowrap">
+                      margem <b className={`font-semibold ${r.margemReal >= 0 ? 'text-muted' : 'text-danger'}`}>{(r.margemReal * 100).toFixed(0)}%</b>
+                    </span>
+                  )}
                 </div>
 
                 {/* o que o aumento de hoje trouxe — mesma leitura do desktop */}
@@ -688,26 +679,17 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
                   </div>
                 )}
 
-                {/* orçamento: os cortes redondos que resolvem 90% dos casos.
-                    Contorno discreto de propósito — a cor forte fica reservada
-                    pro número que decide, não pro botão. */}
-                <div className="mt-2 grid grid-cols-4 gap-1.5">
-                  {[-20, 20, 30, 50].map((q) => (
-                    <button key={q} onClick={() => ajusteRapido(r, q)} disabled={orcando === r.id}
-                      className={`rounded-[9px] border border-border bg-surface2/50 py-2 text-[12.5px] font-bold active:scale-[0.97] disabled:opacity-40 ${
-                        q < 0 ? 'text-danger' : 'text-ok'
-                      }`}>
-                      {orcando === r.id ? '…' : `${q > 0 ? '+' : ''}${q}%`}
-                    </button>
-                  ))}
-                </div>
-
-                {/* vendas (largo, é o que mais se abre) + histórico (quadrado) */}
-                <div className="mt-1.5 flex gap-1.5">
+                {/* os MESMOS três da tira de ícones do desktop, na mesma ordem:
+                    gráfico (escala/vendas), cifrão (ajustar orçamento pra cima
+                    ou pra baixo) e o relógio de histórico, esse em quadrado */}
+                <div className="mt-2 flex gap-1.5">
                   <button onClick={() => setDetalhe({ r, aba: 'vendas' })}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-border bg-surface2/60 py-2.5 text-[12px] font-semibold text-muted active:scale-[0.99]">
-                    <Receipt className="h-3.5 w-3.5 text-brand-2" /> Vendas
-                    <ChevronRight className="h-4 w-4 text-muted2" />
+                    <BarChart3 className="h-4 w-4 text-brand-2" /> Vendas
+                  </button>
+                  <button onClick={() => setDetalhe({ r, aba: 'orc' })}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-ok/40 bg-ok/[0.08] py-2.5 text-[12px] font-bold text-ok active:scale-[0.99]">
+                    <DollarSign className="h-4 w-4" /> Orçamento
                   </button>
                   <button onClick={() => setDetalhe({ r, aba: 'hist' })} aria-label="histórico da campanha"
                     className="flex w-[46px] shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface2/60 active:scale-[0.97]">
@@ -725,7 +707,10 @@ export default function MobileCamps({ periodo, recarga = 0 }: { periodo: PeriodV
           r={detalhe.r}
           abaInicial={detalhe.aba}
           onClose={() => setDetalhe(null)}
-          onBudget={(novo) => setRows((prev) => prev.map((x) => (x.id === detalhe.r.id ? { ...x, budget: novo } : x)))}
+          onBudget={(novo, antes) => {
+            setRows((prev) => prev.map((x) => (x.id === detalhe.r.id ? { ...x, budget: novo } : x)))
+            avisarOrcamento(detalhe.r.id, antes, novo)
+          }}
           onStatus={(st) => {
             setRows((prev) => prev.map((x) => (x.id === detalhe.r.id ? { ...x, status: st } : x)))
             setDetalhe((d) => (d ? { ...d, r: { ...d.r, status: st } } : d))

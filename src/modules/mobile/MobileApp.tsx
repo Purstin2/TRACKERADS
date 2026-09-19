@@ -385,7 +385,7 @@ export default function MobileApp() {
       {/* o respiro embaixo tem que ser a ALTURA DA NAV + safe-area, nao um
           pb-28 chutado (112px) que sobrava vazio no fim da rolagem */}
       <main className="mx-auto max-w-[560px] px-4 pt-3"
-        style={{ paddingBottom: 'calc(62px + env(safe-area-inset-bottom))' }}>
+        style={{ paddingBottom: 'calc(56px + min(env(safe-area-inset-bottom), 10px))' }}>
         {/* o período vale pras abas de dados; em "Mais" não faz sentido */}
         {tab !== 'mais' && <PeriodBar value={periodo} onChange={setPeriodo} />}
 
@@ -573,14 +573,17 @@ export default function MobileApp() {
       {/* ── abas fixas embaixo ── */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-bg/95 backdrop-blur-xl"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        /* O inset da barra de gestos inteiro virava uma faixa vazia do tamanho
+           da propria nav, pintada com o fundo dela. 10px ja mantem os rotulos
+           fora do alcance da pilula do sistema sem doar meia nav pro vazio. */
+        style={{ paddingBottom: 'min(env(safe-area-inset-bottom), 10px)' }}
       >
         <div className="mx-auto flex max-w-[560px]">
           {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard], ['mais', 'Mais', LayoutGrid]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-bold transition-colors ${
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-bold transition-colors ${
                 tab === id ? 'text-brand-2' : 'text-muted2'
               }`}
             >
