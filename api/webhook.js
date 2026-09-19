@@ -701,9 +701,17 @@ async function sendCAPI(o, req, route, eventName) {
     // Facebook IDs (NÃO hasheados — são tokens opacos)
     fbc: o.fbc || undefined,
     fbp: o.fbp || undefined,
-    // sinais de cliente (sobem o match rate sem precisar de PII extra)
-    client_ip_address: clientIp || undefined,
-    client_user_agent: clientUa || undefined,
+    /* IP e UA vão JUNTOS ou não vão — regra do Meta. Mandar só o IP é pior que
+     * não mandar nada: o Gerenciador de Eventos abre o erro "parâmetro de agente
+     * de usuário ausente" e marca 100% dos Purchase/InitiateCheckout/AddPaymentInfo
+     * como afetados, o que atrapalha atribuição e otimização.
+     * Conferido no payload real: a Kirvano manda body.ip mas NUNCA manda user
+     * agent (12/12 pedidos, nenhuma assinatura de navegador no JSON inteiro — só
+     * fbclid/gclid em cookies); a Hotmart não manda nenhum dos dois. Então o par
+     * só é enviado quando os DOIS existem de verdade.
+     * O sinal de navegador continua vindo pelo pixel do browser, que o Meta
+     * deduplica com este evento por event_id. */
+    ...(clientIp && clientUa ? { client_ip_address: clientIp, client_user_agent: clientUa } : {}),
   }
 
   // Remove undefined keys

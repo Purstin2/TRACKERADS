@@ -190,6 +190,10 @@ export default async function handler(req, res) {
   const fbp = rawFbp && /^fb\.1\./.test(rawFbp) ? rawFbp : (rawFbp ? `fb.1.${Date.now()}.${rawFbp}` : null)
   // a Hotmart não manda IP do comprador; a Kirvano manda em raw.ip
   const clientIp = ehHotmart ? null : (raw.ip || null)
+  // UA do comprador: a Kirvano nao manda em nenhum campo (conferido no payload
+  // real) e a Hotmart tambem nao. Fica null na pratica — e por isso o IP acima
+  // acaba nao sendo enviado, que e o comportamento correto pro Meta.
+  const rawUa = ehHotmart ? null : (raw.user_agent || raw.userAgent || cookies.user_agent || null)
 
   const iso = isoCountry(
     ehHotmart
@@ -223,7 +227,9 @@ export default async function handler(req, res) {
   if (external_id.length) userData.external_id = external_id
   if (fbc) userData.fbc = fbc
   if (fbp) userData.fbp = fbp
-  if (clientIp) userData.client_ip_address = clientIp
+  // mesma regra do webhook: IP sem user agent faz o Meta abrir erro de
+  // diagnostico. Este endpoint nunca teve UA, entao o IP sozinho so atrapalhava.
+  if (clientIp && rawUa) { userData.client_ip_address = clientIp; userData.client_user_agent = rawUa }
 
   // 4. Monta custom_data
   const products = Array.isArray(o.products) ? o.products : []
