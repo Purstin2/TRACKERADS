@@ -357,19 +357,25 @@ export default function MobileApp() {
   }, [orders, allOrders, taxasCfg, total, spend])
 
   return (
-    /* min-h-dvh, nao min-h-screen: 100vh no celular e a altura com a barra de
-       URL ESCONDIDA, entao a pagina fica mais alta que a tela e sobra um vazio
-       rolavel embaixo — e e nessa folga que a nav fixa parece "flutuar" quando
-       a barra do navegador entra e sai. dvh acompanha a altura real.
-       O padding de safe-area saiu daqui: o header ja trata o topo e a nav fixa
-       trata o rodape. Aplicar nos tres empilhava o mesmo respiro 2x. */
-    <div className="min-h-dvh bg-bg text-ink">
+    /* APP SHELL: a pagina inteira NAO rola. A caixa tem a altura exata da tela
+       (h-dvh) e e uma coluna: header, miolo, nav. Quem rola e so o miolo, por
+       dentro.
+
+       Antes a nav era position:fixed com bottom:0, e o respiro dela era
+       calculado a mao com env(safe-area-inset-bottom). Isso e frouxo por
+       natureza: o fixed se apoia no viewport, que no celular muda de tamanho
+       sozinho quando a barra
+       de URL entra e sai, e o env() e um numero do aparelho que eu nao consigo
+       medir daqui — errei pra mais duas vezes e sobrou faixa vazia. Como item
+       de flex no fim da coluna, a nav termina onde a tela termina. Nao existe
+       "abaixo da nav" pra sobrar espaco. */
+    <div className="flex h-dvh flex-col overflow-hidden bg-bg text-ink">
       {/* header */}
       {/* Barra minima. Antes ela tinha logo de 36px + o nome da aba em 15px
           extrabold — e o nome da aba ja aparece destacado na nav de baixo, entao
           eram ~60px de altura repetindo informacao. Sobrou o que so existe aqui:
           se o dado esta vivo, de quando ele e, e como forcar. */}
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-bg/90 px-4 py-1.5 backdrop-blur-xl"
+      <header className="flex shrink-0 items-center gap-2 border-b border-border bg-bg px-4 py-1.5"
         style={{ paddingTop: 'max(env(safe-area-inset-top), 6px)' }}>
         <span className="relative flex h-1.5 w-1.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-70" />
@@ -382,10 +388,12 @@ export default function MobileApp() {
         </button>
       </header>
 
-      {/* o respiro embaixo tem que ser a ALTURA DA NAV + safe-area, nao um
-          pb-28 chutado (112px) que sobrava vazio no fim da rolagem */}
-      <main className="mx-auto max-w-[560px] px-4 pt-3"
-        style={{ paddingBottom: 'calc(56px + min(env(safe-area-inset-bottom), 10px))' }}>
+      {/* o unico elemento que rola. min-h-0 e obrigatorio: sem ele um filho de
+          flex se recusa a encolher abaixo do proprio conteudo e o overflow
+          nunca chega a acontecer. Sem padding de rodape inventado — o fim do
+          conteudo e o comeco da nav. */}
+      <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto max-w-[560px] px-4 pb-4 pt-3">
         {/* o período vale pras abas de dados; em "Mais" não faz sentido */}
         {tab !== 'mais' && <PeriodBar value={periodo} onChange={setPeriodo} />}
 
@@ -568,16 +576,11 @@ export default function MobileApp() {
             ? 'Dados da Meta · toque em Atualizar pra recarregar'
             : 'Atualiza sozinho a cada 25s · puxe pra cima e toque ↻ pra forçar'}
         </p>
+        </div>
       </main>
 
       {/* ── abas fixas embaixo ── */}
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-bg/95 backdrop-blur-xl"
-        /* O inset da barra de gestos inteiro virava uma faixa vazia do tamanho
-           da propria nav, pintada com o fundo dela. 10px ja mantem os rotulos
-           fora do alcance da pilula do sistema sem doar meia nav pro vazio. */
-        style={{ paddingBottom: 'min(env(safe-area-inset-bottom), 10px)' }}
-      >
+      <nav className="shrink-0 border-t border-border bg-bg">
         <div className="mx-auto flex max-w-[560px]">
           {([['vendas', 'Vendas', ListOrdered], ['camps', 'Campanhas', Megaphone], ['dash', 'Dashboard', LayoutDashboard], ['mais', 'Mais', LayoutGrid]] as const).map(([id, label, Icon]) => (
             <button
