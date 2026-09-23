@@ -639,6 +639,9 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
         resumo.detalhes.push({
           pedido: o.checkout_id, item: item.nome, tipo: pf.tipo,
           status: (r.ok ? `homologação ok (nota ${r.numero})` : `homologação: ${r.erro}`) + ' · nada gravado',
+          // o que MANDEI como data da operação — pra comparar com o que voltou
+          // no XML e saber de quem é a culpa quando as duas divergirem
+          vendaEm: o.ordered_at,
         })
         await pausa(700)
         continue
