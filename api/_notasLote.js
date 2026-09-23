@@ -242,6 +242,38 @@ export async function diagnosticoBling() {
     }
     await pausa(400)
   }
+
+  /* Em QUE AMBIENTE a conta emite.
+   *
+   * O seletor homologação/produção do nosso painel é decorativo: nenhuma linha
+   * do código de emissão lê `cfg.ambiente` — quem decide é o cadastro do Bling.
+   * E o cadastro não expõe isso por API. O jeito de descobrir sem emitir é
+   * olhar uma nota que já existe: no XML da NF-e, a tag `tpAmb` vale 1 para
+   * produção e 2 para homologação. As três notas rejeitadas de agosto servem.
+   *
+   * Vale ouro antes do primeiro disparo: se for produção, a "nota de teste" é
+   * um documento fiscal de verdade, com CPF de cliente real. */
+  try {
+    await pausa(400)
+    const r = await bling('/nfe?limite=5')
+    const lista = Array.isArray(r.data?.data) ? r.data.data : []
+    out.notas = lista.map((n) => ({
+      id: n.id, numero: n.numero, situacao: n.situacao,
+      data: n.dataEmissao || n.data, chave: n.chaveAcesso ? String(n.chaveAcesso).slice(0, 8) + '…' : null,
+    }))
+    if (lista[0]?.id) {
+      await pausa(400)
+      const d = await bling('/nfe/' + lista[0].id)
+      const xml = JSON.stringify(d.data || '')
+      const m = xml.match(/tpAmb["'>\\\\:\s]*(\d)/)
+      out.ambiente = m
+        ? (m[1] === '2' ? 'HOMOLOGACAO (tpAmb=2) — nota de teste, sem valor fiscal' : 'PRODUCAO (tpAmb=1) — nota vale como documento fiscal')
+        : 'não deu pra ler o tpAmb da nota ' + lista[0].id
+    }
+  } catch (e) {
+    out.erros.push('ambiente → ' + String(e?.message || e).slice(0, 160))
+  }
+
   return out
 }
 
