@@ -350,6 +350,14 @@ export async function diagnosticoBling() {
       if (nota.xml) {
         try {
           const txt = await (await fetch(nota.xml)).text()
+          /* dhEmi = quando a nota foi transmitida · dhSaiEnt = quando a
+             operação aconteceu. A segunda é a que tem que bater com a data da
+             VENDA; se as duas forem sempre iguais, o `dataOperacao` não está
+             chegando e a nota está datando a venda pelo dia do lote. */
+          const emi = txt.match(/<dhEmi>([^<]+)<\/dhEmi>/)
+          const saida = txt.match(/<dhSaiEnt>([^<]+)<\/dhSaiEnt>/)
+          out.datas = { transmitida: emi?.[1] || null, operacao: saida?.[1] || null }
+
           const t = txt.match(/<tpAmb>(\d)<\/tpAmb>/)
           out.ambiente = !t
             ? 'xml baixado mas sem a tag tpAmb'
