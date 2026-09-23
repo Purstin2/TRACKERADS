@@ -168,6 +168,46 @@ async function pegarTrava() {
   return { ok: true }
 }
 
+/* ── saúde do lote ────────────────────────────────────────────────────────────
+ * Toda rodada deixa aqui o que aconteceu, inclusive quando falha. É o que a
+ * faixa do Dashboard lê.
+ *
+ * Existe porque, com o cron no ar, o modo de falha mudou: não é mais "ninguém
+ * rodou", é "rodou, falhou, e ninguém viu". Documento fiscal que para de sair
+ * sem avisar só aparece no fechamento do mês, pelo contador. */
+const SAUDE_KEY = 'notas_saude'
+
+async function registrarSaude(dados) {
+  const { url, headers } = sb()
+  await fetch(`${url}/rest/v1/app_state`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      key: SAUDE_KEY,
+      value: { em: new Date().toISOString(), ...dados },
+      updated_at: new Date().toISOString(),
+    }),
+  }).catch(() => {}) // registrar saúde nunca pode derrubar a emissão
+}
+
+/** Pedidos que esgotaram as tentativas: saíram da fila e ninguém foi avisado. */
+async function contarTravados(desdeISO) {
+  const { url, headers } = sb()
+  const q = [
+    'select=id',
+    'status=eq.APPROVED',
+    `ordered_at=gte.${desdeISO}`,
+    'nf_status=eq.erro',
+    `nf_tentativas=gte.${MAX_TENTATIVAS}`,
+  ].join('&')
+  const r = await fetch(`${url}/rest/v1/kirvano_orders?${q}`, {
+    headers: { ...headers, Prefer: 'count=exact', Range: '0-0' },
+  })
+  const cr = r.headers.get('content-range') || ''
+  const total = Number(cr.split('/')[1])
+  return Number.isFinite(total) ? total : 0
+}
+
 async function soltarTrava() {
   const { url, headers } = sb()
   await fetch(`${url}/rest/v1/app_state`, {
@@ -390,9 +430,13 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
      de ligar — que é a ordem errada pra documento fiscal. Emitir de verdade
      continua trancado. */
   if (!cfg.emissaoAtiva && !seco) {
+    // desligado e uma escolha, mas o Dashboard precisa dizer que esta desligado:
+    // um clique sem querer aqui para o faturamento e nao avisa ninguem
+    await registrarSaude({ ok: true, desligada: true })
     return { ok: true, pulado: 'emissão desligada na aba Notas Fiscais' }
   }
   if (!cfg.naturezaOperacaoId) {
+    await registrarSaude({ ok: false, erro: 'naturezaOperacaoId não configurado' })
     return { ok: false, erro: 'naturezaOperacaoId não configurado' }
   }
 
@@ -439,7 +483,9 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
       ambiente = await ambienteAtual()
     } catch (e) {
       await soltarTrava() // não segura a fila por causa de uma falha de leitura
-      return { ok: false, erro: `não consegui apurar o ambiente no Bling: ${String(e?.message || e).slice(0, 200)}` }
+      const msg = `não consegui apurar o ambiente no Bling: ${String(e?.message || e).slice(0, 200)}`
+      await registrarSaude({ ok: false, erro: msg })
+      return { ok: false, erro: msg }
     }
     if (ambiente == null) {
       await soltarTrava()
@@ -712,11 +758,28 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
     if (!seco) await soltarTrava()
   }
 
-  return {
+  const travados = seco ? 0 : await contarTravados(desde)
+  const saida = {
     ok: !interrompido,
     ambiente: seco ? 'simulação' : homologacaoGlobal ? 'homologação (nada gravado)' : 'produção',
     ...(interrompido ? { erro: interrompido } : {}),
     ...resumo,
+    travados,
     detalhes: resumo.detalhes.slice(0, 50),
   }
+  if (!seco) {
+    await registrarSaude({
+      ok: saida.ok,
+      ambiente: saida.ambiente,
+      emitidas: resumo.emitidas,
+      erros: resumo.erros,
+      restaram: resumo.restaram,
+      travados,
+      erro: interrompido || null,
+      // o motivo da última falha, pra faixa do Dashboard poder mostrar sem
+      // obrigar ninguém a abrir log nenhum
+      ultimoErro: (resumo.detalhes.find((d) => /erro:/i.test(d.status || '')) || {}).status || null,
+    })
+  }
+  return saida
 }

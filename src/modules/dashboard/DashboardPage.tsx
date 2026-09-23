@@ -17,6 +17,7 @@ import { loadFinParams, saveFinParams, syncFinParams, type FinParams } from '@/m
 import { loadTaxas, syncTaxas, type TaxasConfig } from '@/modules/taxas/taxas'
 import { Link } from 'react-router-dom'
 import { cacheGet, cacheSet, remoteSet, remoteGet } from '@/lib/appState'
+import AlertaNotas from './AlertaNotas'
 
 const ResponsiveGrid = WidthProvider(Responsive)
 const LS_KEY = 'purstin_dashboard_layout_v2'
@@ -599,6 +600,12 @@ export default function DashboardPage() {
 
   return (
     <div className={`relative flex flex-col gap-5 ${editing ? 'dash-editing' : ''}`}>
+      {/* Emissão de nota fiscal parada, falhando ou em teste. Fica FORA do
+          sistema de widgets de propósito: widget precisa ser adicionado ao
+          layout à mão, e alarme que depende disso não é alarme. Aparece
+          sozinho e, no dia normal, não ocupa pixel nenhum. */}
+      <AlertaNotas />
+
       {editing && (
         <div className="sticky top-[57px] z-20 -mx-4 mb-1 flex flex-wrap items-center gap-3 border-b border-border bg-brand/10 px-4 py-2.5 backdrop-blur lg:-mx-7 lg:px-7">
           <Pencil className="h-3.5 w-3.5 text-brand-2" /><span className="text-[13px] font-semibold">Editando o dashboard</span>
