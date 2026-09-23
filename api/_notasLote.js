@@ -22,7 +22,7 @@
  * Segurança: exige o mesmo WEBHOOK_SECRET dos outros endpoints, ou o header que
  * a Vercel injeta nos crons.
  */
-import { emitir, payloadNfe, payloadNfse, pausa, tokenValido, bling } from './_bling.js'
+import { emitir, payloadNfe, payloadNfse, pausa, tokenValido, bling, ambienteAtual } from './_bling.js'
 
 const NOTAS_KEY = 'notas_fiscais_v1' // config da aba Notas Fiscais do painel
 const MAX_TENTATIVAS = 3
@@ -105,6 +105,51 @@ async function gravarNota(row) {
     body: JSON.stringify([{ ...row, atualizada_em: new Date().toISOString() }]),
   })
   return r.ok
+}
+
+/** Igual, mas ESTOURA se não gravar — quem chama não pode seguir no escuro. */
+async function gravarNotaOuFalhar(row) {
+  const ok = await gravarNota(row)
+  if (!ok) throw new Error('Supabase recusou a gravação da nota')
+}
+
+/* ── trava de rodada ──────────────────────────────────────────────────────────
+ * Duas rodadas ao mesmo tempo (o cron e alguém apertando o botão, ou dois
+ * cliques) leem a MESMA fila de pendentes e emitem as mesmas notas: dois
+ * documentos fiscais pra uma venda só. Não existe nada no caminho que impeça
+ * isso — o estado só muda no fim do processamento de cada pedido.
+ *
+ * A trava é uma linha em app_state com validade. Vence sozinha porque o
+ * processo pode morrer sem soltar (timeout da Vercel não roda `finally`), e
+ * uma trava eterna seria pior que trava nenhuma: ninguém emite mais nada e
+ * ninguém entende por quê. */
+const LOCK_KEY = 'notas_lote_lock'
+const LOCK_MS = 3 * 60 * 1000
+
+async function pegarTrava() {
+  const { url, headers } = sb()
+  const r = await fetch(`${url}/rest/v1/app_state?key=eq.${LOCK_KEY}&select=value`, { headers })
+  const rows = await r.json().catch(() => [])
+  const atual = Array.isArray(rows) && rows.length ? rows[0].value : null
+  const desde = atual?.em ? new Date(atual.em).getTime() : 0
+  if (desde && Date.now() - desde < LOCK_MS) {
+    return { ok: false, desde: atual.em }
+  }
+  await fetch(`${url}/rest/v1/app_state`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ key: LOCK_KEY, value: { em: new Date().toISOString() }, updated_at: new Date().toISOString() }),
+  })
+  return { ok: true }
+}
+
+async function soltarTrava() {
+  const { url, headers } = sb()
+  await fetch(`${url}/rest/v1/app_state`, {
+    method: 'POST',
+    headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ key: LOCK_KEY, value: { em: null }, updated_at: new Date().toISOString() }),
+  }).catch(() => {})
 }
 
 /** Chave do produto no mesmo formato que a aba Taxas/Notas usa. */
@@ -323,11 +368,43 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
   const dias = Number(diasParam) || 7
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
 
+  /* AMBIENTE apurado UMA vez, antes de emitir qualquer coisa. Antes eu só
+     descobria pelo tpAmb da resposta — ou seja, depois de a nota já existir.
+     Tarde demais: pra decidir se a rodada escreve no banco, é preciso saber
+     ANTES. Sem essa informação a rodada não anda; em documento fiscal,
+     adivinhar o ambiente é inaceitável nos dois sentidos (não gravar nota
+     real perde a venda, gravar nota de teste consome a venda). */
+  let ambiente = null
+  if (!seco) {
+    try {
+      ambiente = await ambienteAtual()
+    } catch (e) {
+      return { ok: false, erro: `não consegui apurar o ambiente no Bling: ${String(e?.message || e).slice(0, 200)}` }
+    }
+    if (ambiente == null) {
+      return {
+        ok: false,
+        erro: 'ambiente indeterminado — a conta do Bling não tem nenhuma nota pra amostrar o tpAmb. Emita uma pelo painel do Bling e rode de novo.',
+      }
+    }
+  }
+  const homologacaoGlobal = ambiente === '2'
+
+  /* Uma rodada por vez. Sem isto, o cron e um clique no botão podem ler a
+     mesma fila e emitir as mesmas notas duas vezes. */
+  if (!seco) {
+    const t = await pegarTrava()
+    if (!t.ok) return { ok: true, pulado: `outra rodada em andamento desde ${t.desde}` }
+  }
+
   const inicio = Date.now()
   const pedidos = await pedidosPendentes(desde)
   const jaEmitidas = seco ? new Map() : await notasExistentes(pedidos.map((p) => p.id))
   const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, restaram: 0, detalhes: [] }
+  /** motivo pra abortar a rodada inteira; null = seguiu normal */
+  let interrompido = null
 
+  try {
   for (const o of pedidos) {
     /* O limite do rollout tem que cortar AQUI, no laço dos pedidos, e não só
        no dos itens. Cortando só lá dentro, o pedido seguinte ainda entrava,
@@ -449,8 +526,39 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
         break
       }
 
-      // passa o id da tentativa anterior, se houver: evita criar segunda nota
-      const r = await emitir(pf.tipo, payload, previa?.bling_id || null)
+      /* REGISTRO ANTECIPADO (só em produção — homologação não escreve nada).
+         Grava a linha com o id do rascunho ANTES de a nota ir pra SEFAZ. É a
+         última janela em que dá pra anotar sem que exista documento fiscal.
+         Se a gravação falhar, `emitir` aborta sem enviar: rascunho órfão no
+         Bling é inofensivo, nota autorizada e não registrada não é. */
+      const aoCriar = homologacaoGlobal
+        ? null
+        : async (blingId, base) => {
+            await gravarNotaOuFalhar({
+              order_id: o.id,
+              produto_key: item.key,
+              produto_nome: item.nome,
+              tipo: pf.tipo,
+              valor: item.valor,
+              bling_id: blingId,
+              numero: base.numero || null,
+              serie: base.serie || null,
+              status: 'enviando',
+            })
+          }
+
+      // passa o id da tentativa anterior, se houver: `emitir` consulta a
+      // situação antes de reenviar e reconhece nota já autorizada
+      const r = await emitir(pf.tipo, payload, previa?.bling_id || null, aoCriar)
+
+      /* Conferência cruzada. A rodada apurou o ambiente no começo; se a SEFAZ
+         responder um tpAmb diferente, alguém virou a chave no Bling no meio da
+         execução. Parar é a única saída segura: seguir gravando decidiria
+         errado sobre documento fiscal. */
+      if (r.tpAmb && (r.tpAmb === '2') !== homologacaoGlobal) {
+        interrompido = `ambiente mudou no meio da rodada (apurei ${ambiente}, a SEFAZ respondeu ${r.tpAmb})`
+        break
+      }
 
       /* ── HOMOLOGAÇÃO NÃO ESCREVE NO BANCO ─────────────────────────────────
        * Nota de homologação não vale nada fiscalmente, mas gravá-la CONSOME o
@@ -474,7 +582,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
        *
        * `tpAmb` nulo (NFS-e, que é municipal e não usa essa tag) cai no
        * comportamento de sempre — grava. */
-      if (r.tpAmb === '2') {
+      if (homologacaoGlobal) {
         homologacao = true
         if (r.ok) resumo.emitidas++
         else resumo.erros++
@@ -517,7 +625,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
        chegaria aqui com os dois flags em false e gravaria `dispensada` — que é
        definitivo e some da fila pra sempre. Seria trocar um jeito de perder a
        venda por outro. */
-    if (!seco && !homologacao) {
+    if (!seco && !homologacao && !interrompido) {
       await marcarPedido(o.id, {
         nf_status: houveErro ? 'erro' : houveEmissao ? 'emitida' : 'dispensada',
         nf_at: new Date().toISOString(),
@@ -525,7 +633,20 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
         nf_tentativas: (o.nf_tentativas || 0) + 1,
       })
     }
+
+    // aborto vindo do laco dos itens precisa sair do laco dos pedidos tambem
+    if (interrompido) break
+  }
+  } finally {
+    // a trava tem validade propria, mas soltar cedo libera a proxima rodada
+    if (!seco) await soltarTrava()
   }
 
-  return { ok: true, ...resumo, detalhes: resumo.detalhes.slice(0, 50) }
+  return {
+    ok: !interrompido,
+    ambiente: seco ? 'simulação' : homologacaoGlobal ? 'homologação (nada gravado)' : 'produção',
+    ...(interrompido ? { erro: interrompido } : {}),
+    ...resumo,
+    detalhes: resumo.detalhes.slice(0, 50),
+  }
 }

@@ -34,10 +34,20 @@ create table if not exists notas_fiscais (
   numero        text,
   serie         text,
   chave_acesso  text,
-  situacao      int,          -- NFe: 1=rascunho 4=autorizada · NFSe: 0=pendente
+  -- situacao do Bling. O mapa aqui estava ERRADO (dizia 4=autorizada) e foi o
+  -- que fez o lote de 20/08 reportar 3 notas como emitidas enquanto o painel
+  -- do Bling mostrava REJEITADA nas tres. Apurado na pratica:
+  --   1 = pendente/rascunho · 4 = REJEITADA · 5 = AUTORIZADA
+  -- Mesmo assim nao decida por este campo: quem manda e o cStat do protocolo.
+  situacao      int,
   link_danfe    text,
 
-  status        text not null default 'pendente', -- pendente | emitida | erro | cancelada
+  -- pendente | enviando | emitida | erro | cancelada
+  -- 'enviando' = rascunho criado no Bling e ainda nao transmitido. E gravado
+  -- ANTES do envio de proposito: se o processo morrer no meio, a proxima
+  -- rodada acha esta linha, pergunta a situacao no Bling e reconhece a nota
+  -- ja autorizada em vez de emitir uma segunda pra mesma venda.
+  status        text not null default 'pendente',
   erro          text,
   tentativas    int not null default 0,
 

@@ -196,10 +196,62 @@ export function payloadNfse({ cliente, servico }) {
  * AUTORIZADAS pro mesmo pedido. Desfazer isso é bem mais caro do que evitar.
  * Então quando já existe id, pula a criação e só retenta o envio.
  */
-export async function emitir(tipo, payload, blingIdExistente = null) {
+/** `situacao` do Bling — mapa apurado na prática, não na documentação. */
+export const SITUACAO = { PENDENTE: 1, REJEITADA: 4, AUTORIZADA: 5 }
+
+/**
+ * Ambiente em que a conta emite HOJE: '1' produção, '2' homologação, null se
+ * não deu pra apurar (conta sem nenhuma nota ainda).
+ *
+ * O Bling não expõe essa configuração por API, então a fonte é o `tpAmb` do
+ * XML de uma nota já existente. Apurar isto UMA VEZ por rodada (e não a cada
+ * nota) é o que permite decidir se a rodada escreve no banco ANTES de emitir
+ * qualquer coisa — sem isso, só dava pra saber depois de já ter emitido, que é
+ * tarde demais pra proteger o registro.
+ */
+export async function ambienteAtual() {
+  const lista = await bling('/nfe?limite=1')
+  const n = (lista.data?.data || [])[0]
+  if (!n?.id) return null // conta sem notas: nada pra amostrar
+  await pausa(400)
+  const det = await bling('/nfe/' + n.id)
+  const link = det.data?.data?.xml
+  if (!link) return null
+  const txt = await (await fetch(link)).text()
+  const m = txt.match(/<tpAmb>(\d)<\/tpAmb>/)
+  return m ? m[1] : null
+}
+
+export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = null) {
   const rota = tipo === 'nfse' ? '/nfse' : '/nfe'
   let id = blingIdExistente
   let base = { blingId: id, numero: null, serie: null }
+
+  /* RECONCILIAÇÃO — antes de reenviar, pergunta em que pé a nota está.
+   *
+   * Um rascunho de tentativa anterior pode ter sido AUTORIZADO sem a gente ter
+   * conseguido registrar (queda no meio, timeout, Supabase fora). Reenviar às
+   * cegas nesse caso produziria um segundo documento fiscal pra mesma venda —
+   * o pior erro possível aqui, e um que só aparece na contabilidade. */
+  if (id) {
+    const ja = await bling(`${rota}/${id}`)
+    const n = ja.data?.data || {}
+    if (ja.ok && Number(n.situacao) === SITUACAO.AUTORIZADA) {
+      return {
+        ok: true,
+        etapa: 'reconciliada',
+        blingId: id,
+        numero: n.numero || n.numeroRPS || null,
+        serie: n.serie || null,
+        chaveAcesso: n.chaveAcesso || null,
+        situacao: n.situacao ?? null,
+        linkDanfe: n.linkDanfe || null,
+        erro: null,
+        tpAmb: null, // veio de consulta, não de protocolo: quem sabe é a rodada
+      }
+    }
+    await pausa(400)
+  }
 
   if (!id) {
     const criada = await bling(rota, { method: 'POST', body: payload })
@@ -209,6 +261,19 @@ export async function emitir(tipo, payload, blingIdExistente = null) {
     id = d.id
     base = { blingId: id, numero: d.numero || d.numeroRPS || null, serie: d.serie || null }
     if (!id) return { ok: false, etapa: 'criar', erro: 'Bling não devolveu id da nota', ...base }
+
+    /* REGISTRO ANTECIPADO. O rascunho já existe mas ainda NÃO foi pra SEFAZ —
+     * esta é a última janela em que dá pra anotar o id sem que exista
+     * documento fiscal. Se a gravação falhar, aborta ANTES de enviar: melhor
+     * um rascunho órfão no Bling (inofensivo, não é documento) do que uma nota
+     * autorizada que o banco desconhece. */
+    if (aoCriar) {
+      try {
+        await aoCriar(id, base)
+      } catch (e) {
+        return { ok: false, etapa: 'registrar', erro: `não gravei o id antes de enviar: ${e?.message || e}`, ...base }
+      }
+    }
 
     await pausa()
   }
