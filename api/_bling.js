@@ -234,6 +234,8 @@ export async function emitir(tipo, payload, blingIdExistente = null) {
     situacao: n.situacao ?? null,
     linkDanfe: n.linkDanfe || null,
     erro: veredito.ok ? null : veredito.motivo,
+    /** '1' produção · '2' homologação · null quando não deu pra apurar */
+    tpAmb: veredito.tpAmb ?? null,
   }
 }
 
@@ -263,12 +265,19 @@ function lerRespostaSefaz(tipo, xmlResposta) {
   const cStat = [...String(xmlResposta).matchAll(/<cStat>(\d+)<\/cStat>/g)].map((m) => m[1])
   const motivos = [...String(xmlResposta).matchAll(/<xMotivo>([^<]*)<\/xMotivo>/g)].map((m) => m[1])
 
-  if (cStat.includes('100')) return { ok: true, motivo: null }
-  if (!cStat.length) return { ok: false, motivo: 'SEFAZ não devolveu status (cStat ausente)' }
+  /* O ambiente vem no MESMO protocolo: 1 = produção, 2 = homologação. É a
+     única fonte confiável dele em tempo de emissão — o Bling não expõe essa
+     configuração por API, e o seletor do nosso painel nunca foi lido por
+     ninguém. Quem decide o que vai pro banco é este número. */
+  const amb = String(xmlResposta).match(/<tpAmb>(\d)<\/tpAmb>/)
+  const tpAmb = amb ? amb[1] : null
+
+  if (cStat.includes('100')) return { ok: true, motivo: null, tpAmb }
+  if (!cStat.length) return { ok: false, motivo: 'SEFAZ não devolveu status (cStat ausente)', tpAmb }
 
   // 104 = "Lote processado" é só o envelope; o veredito real é o código do item
   const recusa = motivos.find((m) => /rejei|denega|inval/i.test(m)) || motivos[motivos.length - 1]
-  return { ok: false, motivo: `[cStat ${cStat.join('/')}] ${recusa || 'sem motivo'}`.slice(0, 300) }
+  return { ok: false, motivo: `[cStat ${cStat.join('/')}] ${recusa || 'sem motivo'}`.slice(0, 300), tpAmb }
 }
 
 /**

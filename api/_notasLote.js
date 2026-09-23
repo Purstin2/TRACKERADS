@@ -387,6 +387,8 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
 
     let houveErro = false
     let houveEmissao = false
+    /** alguma nota deste pedido voltou com tpAmb=2 → rodada de teste, não escritura */
+    let homologacao = false
 
     for (const item of itens) {
       const pf = cfg.produtos?.[item.key]
@@ -450,6 +452,40 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
       // passa o id da tentativa anterior, se houver: evita criar segunda nota
       const r = await emitir(pf.tipo, payload, previa?.bling_id || null)
 
+      /* ── HOMOLOGAÇÃO NÃO ESCREVE NO BANCO ─────────────────────────────────
+       * Nota de homologação não vale nada fiscalmente, mas gravá-la CONSOME o
+       * pedido de duas formas, as duas silenciosas e as duas definitivas:
+       *
+       *   sucesso → `nf_status='emitida'`, e a fila só busca null ou 'erro'.
+       *             O pedido some. Quando a conta virar pra produção, essa
+       *             venda nunca mais recebe nota de verdade.
+       *   erro    → gasta uma das 3 tentativas. Três testes de homologação e
+       *             o pedido bate o teto e fica preso, também sem nunca ser
+       *             faturado em produção.
+       *
+       * Ou seja: testar aqui destruiria em silêncio a chance de faturar venda
+       * real. Por isso, em homologação, a rodada é só teatro — emite, mostra
+       * o resultado e não persiste nada. A escrituração começa quando as
+       * notas passam a ser reais.
+       *
+       * A escolha NÃO é o seletor do painel (que ninguém lê) nem uma flag de
+       * chamada: é o `tpAmb` do protocolo que a própria SEFAZ devolveu nesta
+       * emissão. Não dá pra estar em produção e o número dizer 2.
+       *
+       * `tpAmb` nulo (NFS-e, que é municipal e não usa essa tag) cai no
+       * comportamento de sempre — grava. */
+      if (r.tpAmb === '2') {
+        homologacao = true
+        if (r.ok) resumo.emitidas++
+        else resumo.erros++
+        resumo.detalhes.push({
+          pedido: o.checkout_id, item: item.nome, tipo: pf.tipo,
+          status: (r.ok ? `homologação ok (nota ${r.numero})` : `homologação: ${r.erro}`) + ' · nada gravado',
+        })
+        await pausa(700)
+        continue
+      }
+
       await gravarNota({
         order_id: o.id,
         produto_key: item.key,
@@ -477,7 +513,11 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
       await pausa(700) // teto de 3 req/s do Bling, com folga
     }
 
-    if (!seco) {
+    /* Homologação não marca o pedido. Sem esta guarda o `continue` acima
+       chegaria aqui com os dois flags em false e gravaria `dispensada` — que é
+       definitivo e some da fila pra sempre. Seria trocar um jeito de perder a
+       venda por outro. */
+    if (!seco && !homologacao) {
       await marcarPedido(o.id, {
         nf_status: houveErro ? 'erro' : houveEmissao ? 'emitida' : 'dispensada',
         nf_at: new Date().toISOString(),
