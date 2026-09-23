@@ -627,22 +627,34 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
         continue
       }
 
-      await gravarNota({
-        order_id: o.id,
-        produto_key: item.key,
-        produto_nome: item.nome,
-        tipo: pf.tipo,
-        valor: item.valor,
-        bling_id: r.blingId || null,
-        numero: r.numero || null,
-        serie: r.serie || null,
-        chave_acesso: r.chaveAcesso || null,
-        situacao: r.situacao ?? null,
-        link_danfe: r.linkDanfe || null,
-        status: r.ok ? 'emitida' : 'erro',
-        erro: r.ok ? null : `[${r.etapa}] ${r.erro}`,
-        emitida_em: r.ok ? new Date().toISOString() : null,
-      })
+      /* Gravação do veredito. Se ELA falhar, a rodada para.
+         O registro antecipado já garante que a linha existe com o bling_id,
+         então dá pra reconciliar depois — mas só se o PEDIDO continuar na
+         fila. Seguindo em frente, o `marcarPedido` do fim do laço o marcaria
+         como 'emitida', ele sairia da fila, e a linha presa em 'enviando'
+         nunca mais seria revisitada: nota autorizada, registro pela metade,
+         ninguém avisado. Parar aqui mantém o pedido pendente pra próxima. */
+      try {
+        await gravarNotaOuFalhar({
+          order_id: o.id,
+          produto_key: item.key,
+          produto_nome: item.nome,
+          tipo: pf.tipo,
+          valor: item.valor,
+          bling_id: r.blingId || null,
+          numero: r.numero || null,
+          serie: r.serie || null,
+          chave_acesso: r.chaveAcesso || null,
+          situacao: r.situacao ?? null,
+          link_danfe: r.linkDanfe || null,
+          status: r.ok ? 'emitida' : 'erro',
+          erro: r.ok ? null : `[${r.etapa}] ${r.erro}`,
+          emitida_em: r.ok ? new Date().toISOString() : null,
+        })
+      } catch (e) {
+        interrompido = `nota ${r.numero || r.blingId} saiu no Bling mas não gravou no banco (${String(e?.message || e).slice(0, 120)}). Rodada parada; o pedido segue pendente e a próxima rodada reconcilia.`
+        break
+      }
 
       if (r.ok) { resumo.emitidas++; houveEmissao = true }
       else { resumo.erros++; houveErro = true }
