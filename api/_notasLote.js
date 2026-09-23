@@ -393,6 +393,19 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
   const dias = Number(diasParam) || 7
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
 
+  /* TRAVA PRIMEIRO — antes de qualquer conversa com o Bling.
+   *
+   * Uma rodada por vez, senão o cron e um clique no botão leem a mesma fila e
+   * emitem as mesmas notas. Mas a ORDEM também importa: apurar o ambiente
+   * custa 2 requisições e o Bling só aceita 3 por segundo. Com a trava depois,
+   * toda rodada simultânea ia ao Bling e estourava o limite — foi assim que
+   * três rodadas relataram "a conta não tem nenhuma nota" tendo 22 notas.
+   * Travando antes, só uma rodada fala com o Bling. */
+  if (!seco) {
+    const t = await pegarTrava()
+    if (!t.ok) return { ok: true, pulado: `outra rodada em andamento desde ${t.desde}` }
+  }
+
   /* AMBIENTE apurado UMA vez, antes de emitir qualquer coisa. Antes eu só
      descobria pelo tpAmb da resposta — ou seja, depois de a nota já existir.
      Tarde demais: pra decidir se a rodada escreve no banco, é preciso saber
@@ -404,23 +417,18 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
     try {
       ambiente = await ambienteAtual()
     } catch (e) {
+      await soltarTrava() // não segura a fila por causa de uma falha de leitura
       return { ok: false, erro: `não consegui apurar o ambiente no Bling: ${String(e?.message || e).slice(0, 200)}` }
     }
     if (ambiente == null) {
+      await soltarTrava()
       return {
         ok: false,
-        erro: 'ambiente indeterminado — a conta do Bling não tem nenhuma nota pra amostrar o tpAmb. Emita uma pelo painel do Bling e rode de novo.',
+        erro: 'a conta do Bling não tem nenhuma nota ainda, então não há de onde ler o tpAmb. Emita uma pelo painel do Bling e rode de novo.',
       }
     }
   }
   const homologacaoGlobal = ambiente === '2'
-
-  /* Uma rodada por vez. Sem isto, o cron e um clique no botão podem ler a
-     mesma fila e emitir as mesmas notas duas vezes. */
-  if (!seco) {
-    const t = await pegarTrava()
-    if (!t.ok) return { ok: true, pulado: `outra rodada em andamento desde ${t.desde}` }
-  }
 
   const inicio = Date.now()
   const pedidos = await pedidosPendentes(desde)
