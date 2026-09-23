@@ -393,14 +393,27 @@ export default function NotasPage() {
               </code>
             </p>
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 flex flex-wrap gap-2">
             <a
               href="https://www.bling.com.br/configuracoes.notas.servicos.php"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-ghost btn-sm"
             >
-              <ExternalLink className="h-3.5 w-3.5" /> Abrir configurações de NFS-e no Bling
+              <ExternalLink className="h-3.5 w-3.5" /> Configurações de NFS-e no Bling
+            </a>
+            {/* Onde mora a chave homologação/produção — e é lá mesmo, não aqui:
+                o seletor de ambiente desta aba nunca foi lido pelo código de
+                emissão. Link direto porque achar isso no menu do Bling custou
+                uma conversa inteira: Preferências › Notas Fiscais ›
+                Configurações de NF-e › Configurações de emissão. */}
+            <a
+              href="https://www.bling.com.br/preferencias.php#notas-fiscais/notas-fiscais-nfe-configuracoes/nfe-emissao"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost btn-sm"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Ambiente da NF-e (homologação/produção)
             </a>
           </div>
         </div>
