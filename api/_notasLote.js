@@ -266,10 +266,13 @@ export async function diagnosticoBling() {
       const d = await bling('/nfe/' + lista[0].id)
       const nota = (d.data && d.data.data) || {}
 
-      /* Pegadinha da SEFAZ que já entrega a resposta sozinha: em homologação
-         ela EXIGE que o destinatário se chame literalmente "NF-E EMITIDA EM
-         AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL". Nome de cliente de
-         verdade aí só é possível em produção. */
+      /* NÃO use este nome pra deduzir o ambiente — eu usei e errei.
+         O raciocínio parecia sólido: em homologação a SEFAZ exige que o
+         destinatário se chame "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM
+         VALOR FISCAL", então nome de cliente real significaria produção. A
+         nota 000003 tem "Diogo Santos de oliveira" E tpAmb=2. A exigência vale
+         pra nota ACEITA; esta foi rejeitada antes (IE do emitente inválida) e
+         nunca chegou nessa validação. Fica só como informação. */
       out.destinatario = (nota.contato || {}).nome || null
 
       /* Prova definitiva: `xml` é uma URL, e o tpAmb mora LÁ DENTRO — no JSON
