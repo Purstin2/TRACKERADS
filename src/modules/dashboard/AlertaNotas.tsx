@@ -36,6 +36,7 @@ interface Saude {
   restaram?: number
   travados?: number
   erro?: string | null
+  semRevisao?: string[]
   ultimoErro?: string | null
 }
 
@@ -81,6 +82,15 @@ function avaliar(s: Saude | null): Aviso[] {
       nivel: 'atencao',
       icone: AlertTriangle,
       texto: `${s.erros} nota(s) falharam na última rodada${s.ultimoErro ? ` · ${s.ultimoErro}` : ''}`,
+    })
+  }
+
+  if ((s.semRevisao || []).length > 0) {
+    const n = s.semRevisao!.length
+    avisos.push({
+      nivel: 'atencao',
+      icone: FlaskConical,
+      texto: `${n} produto(s) sendo faturados no padrão, sem ninguém ter revisado: ${s.semRevisao!.slice(0, 3).join(', ')}${n > 3 ? '…' : ''}`,
     })
   }
 

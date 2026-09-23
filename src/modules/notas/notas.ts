@@ -20,6 +20,23 @@ export const NOTAS_KEY = 'notas_fiscais_v1'
 /** Limite da API do Bling, confirmado na prática: 3 req/s. */
 export const BLING_RATE_LIMIT = 3
 
+/**
+ * Tipo de nota de um produto AINDA NÃO REVISADO.
+ *
+ * Era 'nenhum': produto novo nascia fora do faturamento e só entrava quando
+ * alguém lembrasse de abrir a aba e trocar o dropdown. O padrão parecia
+ * seguro, mas o risco que ele cria é o pior dos dois: deixar de emitir não
+ * gera erro nenhum: a venda passa, a nota não sai, e isso só aparece no
+ * fechamento do mês. Emitir um produto não revisado, ao contrário, aparece na
+ * hora — a SEFAZ recusa, ou a nota está lá pra conferir.
+ *
+ * NF-e com NCM 4901.99.00 é a regra do contador pra arquivo digital pronto,
+ * que é ~94% do que se vende aqui. A exceção (serviço sob encomenda, tipo o
+ * Melodify) continua sendo marcada à mão como NFS-e, e 'nenhum' continua
+ * existindo como escolha explícita de não emitir.
+ */
+export const TIPO_PADRAO: TipoNota = 'nfe'
+
 export type TipoNota = 'nfse' | 'nfe' | 'nenhum'
 
 export interface ProdutoFiscal {
@@ -217,8 +234,14 @@ export function progressoChecklist(cfg: NotasConfig) {
 }
 
 /** Produtos que ainda não têm tipo de nota definido. */
+/** Produtos que NINGUÉM revisou — estão saindo no padrão, sem alguém ter olhado. */
+export function produtosSemRevisao(cfg: NotasConfig, keys: string[]) {
+  return keys.filter((k) => !cfg.produtos[k])
+}
+
+/** Produtos marcados explicitamente pra não emitir. Escolha, não esquecimento. */
 export function produtosSemConfig(cfg: NotasConfig, keys: string[]) {
-  return keys.filter((k) => !cfg.produtos[k] || cfg.produtos[k].tipo === 'nenhum')
+  return keys.filter((k) => cfg.produtos[k]?.tipo === 'nenhum')
 }
 
 export function produtoFiscal(cfg: NotasConfig, key: string, nome: string): ProdutoFiscal {
@@ -226,7 +249,7 @@ export function produtoFiscal(cfg: NotasConfig, key: string, nome: string): Prod
     cfg.produtos[key] || {
       key,
       nome,
-      tipo: 'nenhum',
+      tipo: TIPO_PADRAO,
       codigoServico: '',
       ncm: cfg.ncmPadrao || '4901.99.00',
       descricao: '',

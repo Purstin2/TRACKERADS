@@ -77,7 +77,12 @@ export default function NotasPage() {
           ? 'Configuração completa. Ligue quando quiser começar a emitir.'
           : 'NF-e liberada (~94% da receita). NFS-e do Melodify segue travada até 01/09.',
       }
-    : { level: 'ok' as const, label: 'Emitindo', detalhe: `Lote diário às 6h · ambiente: ${cfg.ambiente}.` }
+    /* Dizia "Lote diário às 6h" — nunca houve cron nenhum até hoje, e agora
+       ele roda às 9h. E mostrava `cfg.ambiente`, o seletor decorativo desta
+       tela, que nenhuma linha do código de emissão lê: quem decide é o
+       cadastro do Bling. Dois números errados numa frase só, na tela que
+       responde "está tudo certo com o faturamento?". */
+    : { level: 'ok' as const, label: 'Emitindo', detalhe: 'Lote diário às 9h. O ambiente real vem do Bling — veja no Dashboard.' }
 
   const statusCls = {
     ok: 'border-ok/30 bg-ok/10 text-ok',

@@ -515,6 +515,8 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
   const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, restaram: 0, detalhes: [] }
   /** motivo pra abortar a rodada inteira; null = seguiu normal */
   let interrompido = null
+  /** produtos que ninguem revisou: saem no padrao e viram aviso no Dashboard */
+  const semRevisao = new Map()
 
   try {
   for (const o of pedidos) {
@@ -580,10 +582,25 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
     let homologacao = false
 
     for (const item of itens) {
-      const pf = cfg.produtos?.[item.key]
-      if (!pf || pf.tipo === 'nenhum') {
+      /* Produto sem configuração agora EMITE no padrão, em vez de ser pulado.
+       *
+       * Antes, produto novo ficava fora do faturamento até alguém abrir a aba
+       * e trocar um dropdown. Parecia o lado seguro, mas é o pior dos dois:
+       * deixar de emitir não gera erro nenhum — a venda passa, a nota não sai,
+       * e ninguém descobre até o fechamento do mês. Emitir sem revisão aparece
+       * na hora, pela SEFAZ ou pela própria nota.
+       *
+       * NF-e com o NCM padrão é a regra do contador pra arquivo digital
+       * pronto, ~94% do que se vende. 'nenhum' continua valendo, mas só quando
+       * é ESCOLHA explícita de alguém — não mais o silêncio do esquecimento.
+       * Quem nunca foi olhado entra em `semRevisao` e aparece no Dashboard. */
+      const registrado = cfg.produtos?.[item.key]
+      if (!registrado) semRevisao.set(item.key, item.nome)
+      const pf = registrado || { tipo: 'nfe', ncm: cfg.ncmPadrao, descricao: '', codigoServico: '' }
+
+      if (pf.tipo === 'nenhum') {
         resumo.puladas++
-        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'sem configuração fiscal' })
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: 'marcado para não emitir' })
         continue
       }
 
@@ -787,6 +804,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
       erros: resumo.erros,
       restaram: resumo.restaram,
       travados,
+      semRevisao: [...semRevisao.values()].slice(0, 12),
       erro: interrompido || null,
       // o motivo da última falha, pra faixa do Dashboard poder mostrar sem
       // obrigar ninguém a abrir log nenhum
