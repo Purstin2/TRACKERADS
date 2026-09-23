@@ -229,12 +229,14 @@ export async function diagnosticoBling() {
   }
   // A v3 não documenta bem o endpoint da própria empresa; tenta os candidatos
   // e devolve o primeiro que responder, junto do que falhou.
+  // `bling()` NÃO devolve um Response: ele já lê o corpo e entrega
+  // { ok, status, data }. Chamar .json() nele quebra com "r.json is not a
+  // function" — erro que some no catch e vira "endpoint não existe".
   for (const p of ['/empresas/me/dados-basicos', '/empresas/me', '/empresas']) {
     try {
       const r = await bling(p)
-      const j = await r.json().catch(() => null)
-      if (r.ok && j) { out.empresa = { endpoint: p, dados: j.data ?? j }; break }
-      out.erros.push(p + ' → HTTP ' + r.status)
+      if (r.ok && r.data) { out.empresa = { endpoint: p, dados: r.data.data ?? r.data }; break }
+      out.erros.push(p + ' → HTTP ' + r.status + ' ' + JSON.stringify(r.data).slice(0, 160))
     } catch (e) {
       out.erros.push(p + ' → ' + String(e?.message || e).slice(0, 120))
     }
