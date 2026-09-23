@@ -107,6 +107,23 @@ async function gravarNota(row) {
   return r.ok
 }
 
+/* Recusas que NAO sao do pedido: sao da conta, do certificado ou da SEFAZ.
+ * Todas reprovariam qualquer pedido igualmente, entao insistir so queima as 3
+ * tentativas de cada um ate a fila inteira sair de circulacao.
+ *   203 emissor nao habilitado · 209 IE invalida · 163 IE ativa no cadastro
+ *   213 CNPJ do certificado difere · 252 ambiente divergente
+ *   280-286 certificado (vencido, revogado, sem cadeia)
+ *   108/109 servico da SEFAZ paralisado
+ * O teste por texto pega as variacoes que o codigo nao cobre. */
+const CSTAT_DA_CONTA = ['203', '209', '163', '213', '252', '280', '281', '282', '283', '284', '285', '286', '108', '109']
+
+function ehErroDaConta(msg) {
+  const t = String(msg || '')
+  const cod = t.match(/cStat ([\d/]+)/)
+  if (cod && cod[1].split('/').some((c) => CSTAT_DA_CONTA.includes(c))) return true
+  return /emitente|emissor|certificado|ambiente informado|paralisad/i.test(t)
+}
+
 /** Desfaz um registro antecipado que se revelou de teste (só o bootstrap usa). */
 async function apagarNota(orderId, produtoKey) {
   const { url, headers } = sb()
@@ -766,6 +783,25 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
        *
        * `tpAmb` nulo (NFS-e, que é municipal e não usa essa tag) cai no
        * comportamento de sempre — grava. */
+      /* ── ERRO DA CONTA ≠ ERRO DO PEDIDO ──────────────────────────────────
+       * Recusa que fala do EMITENTE (não habilitado, IE inválida, certificado
+       * vencido, ambiente divergente) ou da SEFAZ fora do ar vai reprovar
+       * TODOS os pedidos igualmente. Tratar isso como falha de pedido queima
+       * uma das 3 tentativas de cada um — em três dias de cron a fila inteira
+       * sai de circulação e vira "travado", exigindo conserto manual, por um
+       * problema que nunca foi dos pedidos.
+       *
+       * Descoberto na primeira emissão em produção: cStat 203, "Emissor não
+       * habilitado", que é o credenciamento na SEFAZ. Sem esta guarda, três
+       * rodadas e 120 vendas precisariam de reset no banco.
+       *
+       * Para a rodada inteira e NÃO marca o pedido: ninguém perde tentativa
+       * por um problema que não é dele. */
+      if (!r.ok && ehErroDaConta(r.erro)) {
+        interrompido = `problema na CONTA, não no pedido: ${r.erro}. Rodada parada; nenhum pedido perdeu tentativa.`
+        break
+      }
+
       if (homologacaoGlobal) {
         homologacao = true
         if (r.ok) resumo.emitidas++
