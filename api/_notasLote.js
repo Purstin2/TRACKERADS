@@ -22,7 +22,7 @@
  * Segurança: exige o mesmo WEBHOOK_SECRET dos outros endpoints, ou o header que
  * a Vercel injeta nos crons.
  */
-import { emitir, payloadNfe, payloadNfse, pausa } from './_bling.js'
+import { emitir, payloadNfe, payloadNfse, pausa, tokenValido, bling } from './_bling.js'
 
 const NOTAS_KEY = 'notas_fiscais_v1' // config da aba Notas Fiscais do painel
 const MAX_TENTATIVAS = 3
@@ -205,6 +205,42 @@ function clienteDoPedido(o, enderecoPadrao) {
     /** true = o endereço veio do padrão, não do comprador (fica registrado) */
     enderecoPadrao: !(a.city && a.state),
   }
+}
+
+/**
+ * Diagnóstico só-leitura da conexão com o Bling. Não cria nada.
+ *
+ * Existe porque o refresh_token do Bling é de USO ÚNICO e o access_token dura
+ * 6h: se ninguém emitiu nada por semanas, a autorização pode ter morrido sem
+ * aviso, e o primeiro sinal disso seria uma nota falhando. Melhor descobrir
+ * antes de ligar a emissão do que no meio do lote.
+ *
+ * Também devolve os dados da empresa cadastrada no Bling — é por eles que se
+ * confere se a Inscrição Estadual entrou, sem precisar abrir o painel.
+ */
+export async function diagnosticoBling() {
+  const out = { token: null, empresa: null, erros: [] }
+  try {
+    const t = await tokenValido()
+    out.token = { ok: true, prefixo: String(t).slice(0, 12) + '…' }
+  } catch (e) {
+    out.token = { ok: false, erro: String(e?.message || e).slice(0, 300) }
+    return out // sem token não adianta tentar o resto
+  }
+  // A v3 não documenta bem o endpoint da própria empresa; tenta os candidatos
+  // e devolve o primeiro que responder, junto do que falhou.
+  for (const p of ['/empresas/me/dados-basicos', '/empresas/me', '/empresas']) {
+    try {
+      const r = await bling(p)
+      const j = await r.json().catch(() => null)
+      if (r.ok && j) { out.empresa = { endpoint: p, dados: j.data ?? j }; break }
+      out.erros.push(p + ' → HTTP ' + r.status)
+    } catch (e) {
+      out.erros.push(p + ' → ' + String(e?.message || e).slice(0, 120))
+    }
+    await pausa(400)
+  }
+  return out
 }
 
 /**

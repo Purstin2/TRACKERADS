@@ -221,6 +221,11 @@ export default async function handler(req, res) {
   // derrubar a recuperação de carrinho, que é o que essa função existe pra fazer.
   if ((req.query.job || '') === 'notas') {
     try {
+      // ?diag=1 → só checa a conexão com o Bling, não toca em pedido nenhum
+      if (req.query.diag === '1') {
+        const { diagnosticoBling } = await import('./_notasLote.js')
+        return res.status(200).json(await diagnosticoBling())
+      }
       const { rodarLoteNotas } = await import('./_notasLote.js')
       const out = await rodarLoteNotas({
         dias: req.query.dias,
