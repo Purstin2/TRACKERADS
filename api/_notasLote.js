@@ -329,6 +329,15 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
   const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, restaram: 0, detalhes: [] }
 
   for (const o of pedidos) {
+    /* O limite do rollout tem que cortar AQUI, no laço dos pedidos, e não só
+       no dos itens. Cortando só lá dentro, o pedido seguinte ainda entrava,
+       não emitia nada e caía no `marcarPedido` do fim como `dispensada` — ou
+       seja, o limite de teste apagaria da fila, em silêncio, todo pedido que
+       sobrou. Dispensada é definitivo: não volta em rodada nenhuma. */
+    if (max && resumo.emitidas + resumo.erros >= max) {
+      resumo.restaram = pedidos.length - (resumo.emitidas + resumo.erros + resumo.puladas)
+      break
+    }
     // para antes do timeout — o resto sai na próxima rodada
     if (!seco && Date.now() - inicio > ORCAMENTO_MS) {
       resumo.restaram = pedidos.length - (resumo.emitidas + resumo.erros + resumo.puladas)
@@ -426,9 +435,14 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
               textoImunidade: cfg.textoImunidade,
             })
 
-      // `max` existe pro rollout controlado: emitir 1 nota, conferir no painel
-      // do Bling, e só então soltar o lote inteiro.
-      if (max && resumo.emitidas >= max) {
+      /* `max` existe pro rollout controlado: mandar UMA nota, conferir no
+         painel do Bling, e só então soltar o lote inteiro.
+         Contava `emitidas` — ou seja, só os SUCESSOS. Com a configuração
+         errada nada é sucesso, o contador nunca sobe e o limite nunca fecha:
+         pedi max=1 e ele tentou 8 notas, todas rejeitadas pelo mesmo motivo,
+         até o tempo acabar. Justamente o contrário do que um limite serve.
+         Agora conta TENTATIVA: uma ida à SEFAZ é uma ida, dê no que der. */
+      if (max && resumo.emitidas + resumo.erros >= max) {
         resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: `parou no limite de ${max}` })
         break
       }
