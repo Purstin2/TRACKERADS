@@ -118,12 +118,28 @@ const soDigitos = (v) => String(v || '').replace(/\D/g, '')
  * só com nome e CPF, o que importa porque o checkout da Kirvano não coleta
  * endereço em NENHUMA venda (0 de 1.487 em agosto/2026).
  */
-export function payloadNfe({ cliente, item, naturezaOperacaoId, textoImunidade }) {
+/** ISO → 'YYYY-MM-DD HH:mm:ss', que é o formato que o Bling aceita. */
+const dataBling = (iso) => {
+  const d = iso ? new Date(iso) : new Date()
+  return (isNaN(d.getTime()) ? new Date() : d).toISOString().slice(0, 19).replace('T', ' ')
+}
+
+export function payloadNfe({ cliente, item, naturezaOperacaoId, textoImunidade, dataVenda }) {
   const end = cliente.endereco || {}
   const temEndereco = !!(end.municipio && end.uf)
   return {
     tipo: 1, // saída
-    dataOperacao: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    /* A data da OPERAÇÃO é a da venda, não a de quando o lote rodou.
+     *
+     * Isto era `new Date()`: uma venda de seis dias atrás saía com a nota
+     * datada de hoje. O erro passava despercebido porque a janela era curta —
+     * mas ele existia desde sempre, e crescia junto com qualquer atraso. Com
+     * a janela em 30 dias ficaria grotesco.
+     *
+     * Consertar isto é o que torna o atraso inofensivo: emitir tarde vira
+     * problema de pontualidade, não de conteúdo. A nota continua dizendo a
+     * verdade sobre QUANDO a venda aconteceu. */
+    dataOperacao: dataBling(dataVenda),
     naturezaOperacao: { id: naturezaOperacaoId },
     contato: {
       nome: cliente.nome,

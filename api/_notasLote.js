@@ -388,9 +388,17 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
     return { ok: false, erro: 'naturezaOperacaoId não configurado' }
   }
 
-  // janela: respeitando o prazo de 7 dias que o contador deu pra devolução —
-  // emitir antes disso evita nota emitida e cancelada no mesmo dia.
-  const dias = Number(diasParam) || 7
+  /* Janela de 30 dias, não 7.
+   *
+   * Com 7, qualquer parada maior que uma semana apagava vendas em silêncio:
+   * elas saíam da janela e NUNCA mais seriam faturadas, sem erro e sem
+   * alerta. Não é hipótese — o token do Bling ficou morto um mês.
+   *
+   * O argumento original (o prazo de devolução) justifica ESPERAR pra emitir,
+   * não DESISTIR de emitir. E o que tornava o atraso problemático era a nota
+   * sair com a data de hoje; agora ela sai com a data da venda, então emitir
+   * tarde não distorce mais o documento. */
+  const dias = Number(diasParam) || 30
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
 
   /* TRAVA PRIMEIRO — antes de qualquer conversa com o Bling.
@@ -545,6 +553,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
               item: { codigo: item.key.slice(0, 30), descricao: pf.descricao || item.nome, valor: item.valor, ncm: pf.ncm || cfg.ncmPadrao },
               naturezaOperacaoId: cfg.naturezaOperacaoId,
               textoImunidade: cfg.textoImunidade,
+              dataVenda: o.ordered_at,
             })
 
       /* `max` existe pro rollout controlado: mandar UMA nota, conferir no
