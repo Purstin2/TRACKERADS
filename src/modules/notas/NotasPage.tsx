@@ -357,7 +357,12 @@ export default function NotasPage() {
             {!prog.liberaNfe
               ? 'Resolva o checklist para liberar.'
               : cfg.emissaoAtiva
-              ? 'Lote roda todo dia às 6h.'
+              /* Dizia 'roda todo dia às 6h' e NÃO roda: o vercel.json só agenda
+                 briefing (11h) e notify (3h), e o Hobby limita a 2 crons — os dois
+                 já ocupados. Enquanto o lote não pegar carona num deles, ele só
+                 sai quando alguém chama. Promessa que o sistema não cumpre, em
+                 tela de documento fiscal, é pior que ausência de promessa. */
+              ? 'Ligada, mas ainda SEM agendamento: o lote só roda quando chamado.'
               : 'Emite NF-e em lote diário. NFS-e entra depois de 01/09.'}
           </div>
         </div>
