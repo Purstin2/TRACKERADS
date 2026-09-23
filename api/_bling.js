@@ -140,10 +140,21 @@ export function payloadNfe({ cliente, item, naturezaOperacaoId, textoImunidade, 
      * 505); como a emissão ficou em hoje por omissão, a saída foi puxada
      * junto. O problema era eu não estar mandando a emissão.
      *
-     * A SEFAZ aceita emissão no passado dentro de uma tolerância (rejeição
-     * 228, "Data de Emissão muito atrasada", na casa de 30 dias e variando
-     * por UF) — o que casa com a janela de 30 dias do lote. Fora dela, a nota
-     * é recusada e o motivo aparece no `xMotivo`, que já é registrado. */
+     * MEDIDO NAS DUAS VERSÕES, e o resultado é o mesmo: o Bling ignora as
+     * duas datas e carimba o instante da transmissão.
+     *   · só `dataOperacao` = 24/08 → XML voltou 23/09 nos dois campos
+     *   · `data` + `dataOperacao` = 20/09 → XML voltou 23/09 nos dois campos
+     *
+     * Não é limite da SEFAZ (ela aceita emissão no passado dentro de uma
+     * tolerância — rejeição 228, na casa de 30 dias, variando por UF): é o
+     * Bling que não repassa. Se existir jeito, é chave no painel dele, não
+     * campo da API; o candidato é "Configurações de preenchimento" dentro das
+     * configurações de NF-e.
+     *
+     * Os campos ficam: não custam nada e passam a valer se algum dia forem
+     * honrados. Mas o código NÃO DEVE CONTAR com eles. Consequência prática:
+     * atraso não se conserta depois, então o que protege é o lote rodar todo
+     * dia — a janela de 30 dias é rede, não plano. */
     data: dataBling(dataVenda),
     dataOperacao: dataBling(dataVenda),
     naturezaOperacao: { id: naturezaOperacaoId },
