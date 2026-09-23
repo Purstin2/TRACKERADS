@@ -54,6 +54,31 @@ export interface EnderecoPadrao {
   cep: string
 }
 
+/**
+ * Identidade fiscal do EMITENTE. Não entra no payload da nota — quem carimba o
+ * emitente é o Bling, a partir do cadastro da empresa lá. Fica aqui porque a
+ * ausência da Inscrição Estadual foi o que derrubou as três notas de teste
+ * (SEFAZ: "Rejeição: IE do emitente inválida"), e um número que reprova
+ * documento fiscal precisa estar à vista no painel, não só num commit.
+ */
+export interface IdentidadeFiscal {
+  razaoSocial: string
+  cnpj: string
+  inscricaoEstadual: string
+  nire: string
+}
+
+export const IDENTIDADE: IdentidadeFiscal = {
+  razaoSocial: 'MALVOO BRASIL NEGOCIOS DIGITAIS LTDA',
+  cnpj: '52307660000113',
+  inscricaoEstadual: '264579429',
+  nire: '42210372987',
+}
+
+/** 52307660000113 → 52.307.660/0001-13 */
+export const formatarCnpj = (v: string) =>
+  v.replace(/D/g, '').replace(/^(d{2})(d{3})(d{3})(d{4})(d{2})$/, '$1.$2.$3/$4-$5') || v
+
 export interface NotasConfig {
   emissaoAtiva: boolean
   ambiente: 'homologacao' | 'producao'
@@ -143,6 +168,14 @@ export const CHECKLIST_ITENS: {
       'Contador autorizou usar o endereço do próprio CNPJ quando o comprador não informa, e confirmou que o ISS é devido em Balneário Camboriú de qualquer forma.',
     responsavel: 'contador',
     resolvido: true,
+  },
+  {
+    id: 'ie_bling',
+    label: 'Inscrição Estadual cadastrada no Bling',
+    detalhe:
+      'Foi o que reprovou as três NF-e de teste — a SEFAZ devolveu "Rejeição: IE do emitente inválida". A IE saiu: 264579429 (NIRE 42210372987). Falta colar no cadastro da empresa no Bling; o emitente é carimbado por lá, não por este app.',
+    responsavel: 'bling',
+    bloqueiaNfe: true,
   },
   {
     id: 'senha_prefeitura',

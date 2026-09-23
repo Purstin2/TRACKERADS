@@ -213,7 +213,12 @@ function clienteDoPedido(o, enderecoPadrao) {
  */
 export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } = {}) {
   const cfg = await lerConfig()
-  if (!cfg.emissaoAtiva) {
+  /* A simulação atravessa a chave desligada de propósito: é exatamente com a
+     emissão OFF que se quer ver o que sairia. Antes o modo seco parava aqui e
+     só respondia 'emissão desligada', então não dava pra conferir nada antes
+     de ligar — que é a ordem errada pra documento fiscal. Emitir de verdade
+     continua trancado. */
+  if (!cfg.emissaoAtiva && !seco) {
     return { ok: true, pulado: 'emissão desligada na aba Notas Fiscais' }
   }
   if (!cfg.naturezaOperacaoId) {

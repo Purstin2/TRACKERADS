@@ -7,7 +7,7 @@ import { usePersistentState } from '@/lib/appState'
 import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
 import { discoverProducts } from '@/modules/taxas/taxas'
 import {
-  NOTAS_KEY, CONFIG_INICIAL, CHECKLIST_ITENS, RESP_LABEL, TIPO_LABEL,
+  NOTAS_KEY, CONFIG_INICIAL, CHECKLIST_ITENS, RESP_LABEL, TIPO_LABEL, IDENTIDADE, formatarCnpj,
   progressoChecklist, produtoFiscal, itemFeito, brl,
   type NotasConfig, type TipoNota, type ProdutoFiscal,
 } from './notas'
@@ -124,6 +124,29 @@ export default function NotasPage() {
           </div>
         </div>
       )}
+
+      {/* Quem emite. Fica antes do checklist porque a rejeição das notas de
+          teste veio daqui: IE errada reprova na SEFAZ e a mensagem não diz
+          qual é a certa. Com os quatro números à vista, dá pra conferir contra
+          o cadastro do Bling em dez segundos. */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="text-[13px] font-bold">Emitente</h3>
+        </div>
+        <div className="card-body grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {([
+            ['Razão social', IDENTIDADE.razaoSocial],
+            ['CNPJ', formatarCnpj(IDENTIDADE.cnpj)],
+            ['Inscrição Estadual', IDENTIDADE.inscricaoEstadual],
+            ['NIRE', IDENTIDADE.nire],
+          ] as const).map(([lb, v]) => (
+            <div key={lb} className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-[.12em] text-muted2">{lb}</div>
+              <div className="mt-0.5 break-words font-mono text-[12.5px] text-ink">{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* checklist */}
       <div className="card">
