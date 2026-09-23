@@ -107,7 +107,15 @@ async function gravarNota(row) {
   return r.ok
 }
 
-/** Igual, mas ESTOURA se não gravar — quem chama não pode seguir no escuro. */
+/** Desfaz um registro antecipado que se revelou de teste (só o bootstrap usa). */
+async function apagarNota(orderId, produtoKey) {
+  const { url, headers } = sb()
+  await fetch(`${url}/rest/v1/notas_fiscais?order_id=eq.${orderId}&produto_key=eq.${encodeURIComponent(produtoKey)}`, {
+    method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' },
+  }).catch(() => {})
+}
+
+/** Igual ao gravarNota, mas ESTOURA se falhar — quem chama não pode seguir no escuro. */
 async function gravarNotaOuFalhar(row) {
   const ok = await gravarNota(row)
   if (!ok) throw new Error('Supabase recusou a gravação da nota')
@@ -454,7 +462,10 @@ export async function diagnosticoBling() {
  * Roda o lote. Autenticação fica com quem chama (recover.js já exige o
  * WEBHOOK_SECRET ou header de cron antes de chegar aqui).
  */
-export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } = {}) {
+export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxParam = 0 } = {}) {
+  let max = Number(maxParam) || 0
+  /** rodada de descoberta: ambiente novo, sem nota pra amostrar o tpAmb */
+  let bootstrap = false
   const cfg = await lerConfig()
   /* A simulação atravessa a chave desligada de propósito: é exatamente com a
      emissão OFF que se quer ver o que sairia. Antes o modo seco parava aqui e
@@ -519,12 +530,27 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
       await registrarSaude({ ok: false, erro: msg })
       return { ok: false, erro: msg }
     }
+    /* BOOTSTRAP — ambiente novo, sem nenhuma nota pra amostrar.
+     *
+     * Furo do desenho original: a apuração lê o tpAmb de uma nota existente,
+     * então num ambiente recém-virado ela nunca consegue emitir a PRIMEIRA. E
+     * isso não é hipótese: ao trocar de homologação pra produção a listagem do
+     * Bling passa a mostrar só as notas do ambiente ativo, ou seja, nenhuma —
+     * e o lote travava pra sempre, exatamente no momento em que mais importa
+     * ele funcionar.
+     *
+     * Saída: assume PRODUÇÃO e emite UMA nota. A escolha do assume é pelo
+     * risco, não pelo palpite — gravar uma nota que depois se revele de teste
+     * é desfazível (apaga-se a linha); NÃO gravar uma nota real gera duplicata
+     * na rodada seguinte, que é documento fiscal a mais e não se desfaz.
+     *
+     * A resposta da SEFAZ traz o tpAmb e resolve o impasse em definitivo: se
+     * vier 2, a linha gravada é apagada e a rodada para. Uma nota de risco,
+     * uma vez, contra um lote travado indefinidamente. */
     if (ambiente == null) {
-      await soltarTrava()
-      return {
-        ok: false,
-        erro: 'a conta do Bling não tem nenhuma nota ainda, então não há de onde ler o tpAmb. Emita uma pelo painel do Bling e rode de novo.',
-      }
+      ambiente = '1'
+      bootstrap = true
+      max = 1
     }
   }
   const homologacaoGlobal = ambiente === '2'
@@ -706,7 +732,15 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
          execução. Parar é a única saída segura: seguir gravando decidiria
          errado sobre documento fiscal. */
       if (r.tpAmb && (r.tpAmb === '2') !== homologacaoGlobal) {
-        interrompido = `ambiente mudou no meio da rodada (apurei ${ambiente}, a SEFAZ respondeu ${r.tpAmb})`
+        if (bootstrap) {
+          /* A aposta do bootstrap era producao e a SEFAZ disse homologacao.
+             A linha ja foi gravada pelo registro antecipado — apaga, porque
+             nota de teste no banco consome o pedido pra sempre. */
+          await apagarNota(o.id, item.key)
+          interrompido = 'ambiente e HOMOLOGACAO (descoberto na primeira nota). Nada foi gravado; rode de novo e a proxima rodada ja sabe.'
+        } else {
+          interrompido = `ambiente mudou no meio da rodada (apurei ${ambiente}, a SEFAZ respondeu ${r.tpAmb})`
+        }
         break
       }
 
