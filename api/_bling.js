@@ -270,3 +270,58 @@ function lerRespostaSefaz(tipo, xmlResposta) {
   const recusa = motivos.find((m) => /rejei|denega|inval/i.test(m)) || motivos[motivos.length - 1]
   return { ok: false, motivo: `[cStat ${cStat.join('/')}] ${recusa || 'sem motivo'}`.slice(0, 300) }
 }
+
+/**
+ * Reautorização do OAuth.
+ *
+ * Não havia caminho pra isso: o par de tokens foi colocado na mão em `app_state`
+ * na primeira vez, e quando o refresh expirou (uso único, e ninguém emitiu nada
+ * por semanas) a emissão morreu sem ter como voltar pelo painel. Como o plano
+ * Hobby está no teto de 12 funções, isto pega carona no `recover.js?job=notas`
+ * em vez de virar um endpoint próprio.
+ *
+ * Duas etapas, porque o Bling exige o consentimento no navegador:
+ *   1. `urlAutorizacao()` devolve o link pra abrir logado no Bling;
+ *   2. o Bling redireciona pra URI cadastrada no app com `?code=…`;
+ *      `trocarCodigo()` troca esse code pelo par de tokens e grava.
+ *
+ * O `redirect_uri` tem que ser IDÊNTICO ao cadastrado no app do Bling — ele
+ * entra na troca só pra conferência, e diferença de barra no fim já reprova.
+ */
+export function urlAutorizacao(redirectUri, estado = 'trackerads') {
+  const q = new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.BLING_CLIENT_ID || '',
+    state: estado,
+    ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+  })
+  return `https://www.bling.com.br/Api/v3/oauth/authorize?${q}`
+}
+
+export async function trocarCodigo(code, redirectUri) {
+  if (!code) throw new Error('code ausente')
+  const basic = Buffer.from(`${process.env.BLING_CLIENT_ID}:${process.env.BLING_CLIENT_SECRET}`).toString('base64')
+  const r = await fetch(`${BASE}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+    }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || !j.access_token) {
+    throw new Error(`Troca do code falhou: ${r.status} ${JSON.stringify(j).slice(0, 300)}`)
+  }
+  await gravarOauth({
+    access_token: j.access_token,
+    refresh_token: j.refresh_token,
+    expires_at: new Date(Date.now() + (j.expires_in || 21600) * 1000).toISOString(),
+  })
+  return { ok: true, expira_em: new Date(Date.now() + (j.expires_in || 21600) * 1000).toISOString() }
+}

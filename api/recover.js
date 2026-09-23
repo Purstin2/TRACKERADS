@@ -226,6 +226,22 @@ export default async function handler(req, res) {
         const { diagnosticoBling } = await import('./_notasLote.js')
         return res.status(200).json(await diagnosticoBling())
       }
+
+      // ── reautorização do Bling (o refresh_token é de uso único e expira) ──
+      // ?oauth=url&redirect=<uri>   → devolve o link pra abrir logado no Bling
+      // ?oauth=<code>&redirect=<uri> → troca o code pelo par de tokens e grava
+      if (req.query.oauth) {
+        const { urlAutorizacao, trocarCodigo } = await import('./_bling.js')
+        const redirect = req.query.redirect || ''
+        if (req.query.oauth === 'url') {
+          return res.status(200).json({ ok: true, abrir: urlAutorizacao(redirect) })
+        }
+        try {
+          return res.status(200).json(await trocarCodigo(req.query.oauth, redirect))
+        } catch (e) {
+          return res.status(400).json({ ok: false, erro: String(e?.message || e).slice(0, 400) })
+        }
+      }
       const { rodarLoteNotas } = await import('./_notasLote.js')
       const out = await rodarLoteNotas({
         dias: req.query.dias,
