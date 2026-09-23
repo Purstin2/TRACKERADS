@@ -330,6 +330,18 @@ function clienteDoPedido(o, enderecoPadrao) {
  */
 export async function diagnosticoBling() {
   const out = { token: null, empresa: null, erros: [] }
+
+  /* O que a faixa do Dashboard está lendo agora. Se isto vier vazio, o alarme
+     não tem fonte — e um alarme sem fonte mostra "lote parado" pra sempre,
+     que é pior que alarme nenhum: ensina a ignorar. */
+  try {
+    const { url, headers } = sb()
+    const r = await fetch(`${url}/rest/v1/app_state?key=eq.${SAUDE_KEY}&select=value,updated_at`, { headers })
+    const rows = await r.json().catch(() => [])
+    out.saude = Array.isArray(rows) && rows.length ? rows[0].value : 'NENHUM REGISTRO'
+  } catch (e) {
+    out.erros.push('saude → ' + String(e?.message || e).slice(0, 120))
+  }
   try {
     const t = await tokenValido()
     out.token = { ok: true, prefixo: String(t).slice(0, 12) + '…' }
