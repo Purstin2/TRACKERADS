@@ -126,20 +126,45 @@ async function gravarNotaOuFalhar(row) {
 const LOCK_KEY = 'notas_lote_lock'
 const LOCK_MS = 3 * 60 * 1000
 
+/**
+ * Pega a trava de forma ATÔMICA.
+ *
+ * A primeira versão lia a linha e depois escrevia. Entre a leitura e a escrita
+ * cabe a outra rodada inteira: as duas leem "livre", as duas escrevem, as duas
+ * seguem — e a trava não trava nada justamente no caso pra que ela existe. Num
+ * teste com duas chamadas simultâneas o comportamento já saiu inconsistente.
+ *
+ * Aqui é um compare-and-set: o UPDATE só casa se a trava estiver livre OU
+ * vencida, e o banco resolve o empate. `return=representation` devolve as
+ * linhas afetadas — zero linhas significa que a outra rodada chegou primeiro.
+ * Uma condição no WHERE do Postgres não tem janela; duas viagens em JS têm.
+ */
 async function pegarTrava() {
   const { url, headers } = sb()
-  const r = await fetch(`${url}/rest/v1/app_state?key=eq.${LOCK_KEY}&select=value`, { headers })
-  const rows = await r.json().catch(() => [])
-  const atual = Array.isArray(rows) && rows.length ? rows[0].value : null
-  const desde = atual?.em ? new Date(atual.em).getTime() : 0
-  if (desde && Date.now() - desde < LOCK_MS) {
-    return { ok: false, desde: atual.em }
-  }
+  const agora = new Date().toISOString()
+  const vencidaAntesDe = new Date(Date.now() - LOCK_MS).toISOString()
+
+  // garante que a linha existe, sem pisar numa trava viva
   await fetch(`${url}/rest/v1/app_state`, {
     method: 'POST',
-    headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify({ key: LOCK_KEY, value: { em: new Date().toISOString() }, updated_at: new Date().toISOString() }),
+    headers: { ...headers, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+    body: JSON.stringify({ key: LOCK_KEY, value: { em: null }, updated_at: agora }),
+  }).catch(() => {})
+
+  const q = `key=eq.${LOCK_KEY}&or=(value->>em.is.null,value->>em.lt.${vencidaAntesDe})`
+  const r = await fetch(`${url}/rest/v1/app_state?${q}`, {
+    method: 'PATCH',
+    headers: { ...headers, Prefer: 'return=representation' },
+    body: JSON.stringify({ value: { em: agora }, updated_at: agora }),
   })
+  const linhas = await r.json().catch(() => [])
+  if (!r.ok) return { ok: false, desde: 'erro ao tentar travar: ' + JSON.stringify(linhas).slice(0, 120) }
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    // não casou: a trava está viva com outra rodada
+    const atual = await fetch(`${url}/rest/v1/app_state?key=eq.${LOCK_KEY}&select=value`, { headers })
+    const rows = await atual.json().catch(() => [])
+    return { ok: false, desde: rows?.[0]?.value?.em || 'agora' }
+  }
   return { ok: true }
 }
 
