@@ -400,12 +400,17 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max = 0 } 
    *
    * Com 7, qualquer parada maior que uma semana apagava vendas em silêncio:
    * elas saíam da janela e NUNCA mais seriam faturadas, sem erro e sem
-   * alerta. Não é hipótese — o token do Bling ficou morto um mês.
+   * alerta. Não é hipótese — o token do Bling ficou morto um mês. O prazo de
+   * devolução, que motivou os 7 dias, justifica ESPERAR pra emitir e não
+   * DESISTIR de emitir.
    *
-   * O argumento original (o prazo de devolução) justifica ESPERAR pra emitir,
-   * não DESISTIR de emitir. E o que tornava o atraso problemático era a nota
-   * sair com a data de hoje; agora ela sai com a data da venda, então emitir
-   * tarde não distorce mais o documento. */
+   * O que a janela larga NÃO resolve: a nota sai datada do dia em que o lote
+   * roda, sempre. Tentei mandar a data da venda em `dataOperacao` e a NF-e
+   * não aceita — ver a medição no comentário de payloadNfe. Então 30 dias
+   * evita PERDER a venda, mas não evita emitir com atraso.
+   *
+   * Ou seja: esta janela é rede de segurança, não plano. O plano é o lote
+   * rodar todo dia e alguém ser avisado quando ele parar. */
   const dias = Number(diasParam) || 30
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
 

@@ -129,16 +129,23 @@ export function payloadNfe({ cliente, item, naturezaOperacaoId, textoImunidade, 
   const temEndereco = !!(end.municipio && end.uf)
   return {
     tipo: 1, // saída
-    /* A data da OPERAÇÃO é a da venda, não a de quando o lote rodou.
+    /* ⚠ NÃO ADIANTA: a nota SEMPRE sai com a data de hoje.
      *
-     * Isto era `new Date()`: uma venda de seis dias atrás saía com a nota
-     * datada de hoje. O erro passava despercebido porque a janela era curta —
-     * mas ele existia desde sempre, e crescia junto com qualquer atraso. Com
-     * a janela em 30 dias ficaria grotesco.
+     * Medido, não suposto. Pedido 5QZV3Y1K, vendido em 24/08/2026: mandei
+     * `dataOperacao` = 24/08 e o XML autorizado voltou com dhEmi E dhSaiEnt
+     * = 23/09, o dia em que o lote rodou.
      *
-     * Consertar isto é o que torna o atraso inofensivo: emitir tarde vira
-     * problema de pontualidade, não de conteúdo. A nota continua dizendo a
-     * verdade sobre QUANDO a venda aconteceu. */
+     * A causa é regra da própria NF-e: a data de saída não pode ser anterior
+     * à de emissão, e a de emissão é sempre a da transmissão. Não existe
+     * backdating em NF-e — quem emite atrasado emite um documento datado de
+     * hoje, e é assim pra todo mundo.
+     *
+     * O parâmetro fica porque não custa nada e passa a valer se o Bling algum
+     * dia honrar, mas ninguém deve contar com ele. A consequência prática é
+     * que ATRASO NÃO SE CONSERTA DEPOIS: uma venda faturada 30 dias depois
+     * gera uma nota emitida com 30 dias de atraso, com o que isso implicar.
+     * Por isso o que protege de verdade não é a janela larga — é o lote rodar
+     * todo dia e alguém ser avisado quando ele parar. */
     dataOperacao: dataBling(dataVenda),
     naturezaOperacao: { id: naturezaOperacaoId },
     contato: {
