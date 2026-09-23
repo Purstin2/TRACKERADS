@@ -49,13 +49,15 @@ export default function NotasPage() {
     [orders],
   )
 
-  const semTipo = produtos.filter((p) => (cfg.produtos[p.key]?.tipo ?? 'nenhum') === 'nenhum')
+  // 'nenhum' agora e escolha explicita; produto nao configurado sai no padrao
+  const semTipo = produtos.filter((p) => cfg.produtos[p.key]?.tipo === 'nenhum')
+  const semRevisao = produtos.filter((p) => !cfg.produtos[p.key])
   const cobertas = aprovadas.filter((o) => {
     const main = Array.isArray(o.products) && o.products.length
       ? (o.products.find((p: any) => p && !p.is_order_bump) || o.products[0])
       : null
     const key = main?.id != null ? String(main.id) : 'n:' + String(main?.name || o.product || '').trim().toLowerCase()
-    return (cfg.produtos[key]?.tipo ?? 'nenhum') !== 'nenhum'
+    return cfg.produtos[key]?.tipo !== 'nenhum'
   }).length
 
   function patchItem(id: string, p: Partial<{ feito: boolean; valor: string }>) {
@@ -107,16 +109,17 @@ export default function NotasPage() {
         </button>
       </div>
 
-      {/* NF-e liberada mas NFS-e ainda travada */}
+      {/* NF-e liberada mas NFS-e ainda travada.
+          Era um parágrafo de cinco linhas contando a história inteira do
+          projeto, e com uma data que já passou ("esperando 01/09"). Texto
+          longo numa faixa de aviso não é lido: vira paisagem, e aí o dia em
+          que a faixa disser algo urgente ninguém vai reparar. */}
       {prog.liberaNfe && !prog.completo && (
-        <div className="flex gap-2 rounded-[8px] border border-warn/30 border-l-[3px] border-l-warn bg-warn/[0.07] px-3 py-2.5 text-[11.5px] text-muted">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+        <div className="flex gap-2 rounded-[8px] border border-warn/30 border-l-[3px] border-l-warn bg-warn/[0.07] px-3 py-2 text-[11.5px] text-muted">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
           <div>
-            <b>NF-e pronta, NFS-e esperando 01/09.</b> A NF-e já foi testada ponta a ponta — nota
-            autorizada pela SEFAZ com chave de acesso, sem precisar de endereço do comprador. Isso
-            cobre os arquivos digitais, que são ~94% do faturamento. Só o Melodify (NFS-e) segue
-            travado, porque o provedor municipal exige uma senha de credenciamento da prefeitura que
-            deixa de ser necessária quando o município migrar para o portal nacional.
+            <b className="text-ink">NF-e funcionando · NFS-e travada.</b> Falta a senha da
+            prefeitura, que só afeta o Melodify (~6% do faturamento).
           </div>
         </div>
       )}
@@ -160,7 +163,12 @@ export default function NotasPage() {
           <span className="text-[11.5px] text-muted2">{prog.feitos} de {prog.total} resolvidas</span>
         </div>
         <div className="card-body flex flex-col gap-2">
-          {CHECKLIST_ITENS.map((it) => {
+          {/* Resolvido nao e pendencia, e historia. Sete dos oito itens ja
+              estavam feitos e ocupavam caixas do mesmo tamanho das que ainda
+              pedem acao — quem abre a tela pra ver O QUE FALTA tinha que
+              rolar por tudo que ja passou. Os feitos viram uma linha so, e o
+              detalhe continua a um clique (e da pra reabrir). */}
+          {CHECKLIST_ITENS.filter((it) => !itemFeito(cfg, it.id)).map((it) => {
             const st = cfg.checklist[it.id]
             const feito = itemFeito(cfg, it.id)
             return (
@@ -201,6 +209,37 @@ export default function NotasPage() {
               </div>
             )
           })}
+
+          {prog.feitos > 0 && (
+            <details className="rounded-[9px] border border-ok/25 bg-ok/[0.04] px-3 py-2">
+              <summary className="cursor-pointer list-none text-[12px] font-semibold text-ok">
+                <Check className="mr-1 inline h-3.5 w-3.5" />
+                {prog.feitos} já resolvida{prog.feitos === 1 ? '' : 's'}
+                <span className="ml-1.5 font-normal text-muted2">— clique pra ver</span>
+              </summary>
+              <div className="mt-2 flex flex-col gap-1.5 border-t border-ok/15 pt-2">
+                {CHECKLIST_ITENS.filter((it) => itemFeito(cfg, it.id)).map((it) => (
+                  <div key={it.id} className="flex items-start gap-2 text-[11.5px]">
+                    <Check className="mt-0.5 h-3 w-3 shrink-0 text-ok" />
+                    <div className="min-w-0">
+                      <button
+                        onClick={() => patchItem(it.id, { feito: false })}
+                        className="text-left font-semibold text-muted hover:text-ink hover:underline"
+                        title="Reabrir esta pendência"
+                      >
+                        {it.label}
+                      </button>
+                      <span className="ml-1.5 text-muted2">{it.detalhe}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {prog.feitos === prog.total && (
+            <div className="py-1 text-center text-[12px] text-muted2">Nada pendente.</div>
+          )}
         </div>
       </div>
 
@@ -210,7 +249,8 @@ export default function NotasPage() {
           <h3 className="text-[13px] font-bold">Qual nota cada produto emite</h3>
           <span className="text-[11.5px] text-muted2">
             {produtos.length} produto(s) vendido(s) nos últimos 30 dias
-            {semTipo.length > 0 && <span className="ml-1 text-warn">· {semTipo.length} sem definição</span>}
+            {semRevisao.length > 0 && <span className="ml-1 text-warn">· {semRevisao.length} no padrão, sem revisão</span>}
+            {semTipo.length > 0 && <span className="ml-1 text-muted2">· {semTipo.length} não emite</span>}
           </span>
         </div>
         <div className="card-body">
