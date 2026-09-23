@@ -378,6 +378,9 @@ export async function diagnosticoBling() {
   try {
     await pausa(400)
     const r = await bling('/nfe?limite=5')
+    // resposta crua da listagem: quando ela vem vazia o lote inteiro para,
+    // então é preciso conseguir ver o que o Bling respondeu de verdade
+    out.listagemCrua = { status: r.status, corpo: JSON.stringify(r.data).slice(0, 300) }
     const lista = Array.isArray(r.data?.data) ? r.data.data : []
     out.notas = lista.map((n) => ({
       id: n.id, numero: n.numero, situacao: n.situacao,
