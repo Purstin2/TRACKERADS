@@ -129,23 +129,22 @@ export function payloadNfe({ cliente, item, naturezaOperacaoId, textoImunidade, 
   const temEndereco = !!(end.municipio && end.uf)
   return {
     tipo: 1, // saída
-    /* ⚠ NÃO ADIANTA: a nota SEMPRE sai com a data de hoje.
+    /* DUAS datas, e a distinção é o que eu tinha errado antes.
      *
-     * Medido, não suposto. Pedido 5QZV3Y1K, vendido em 24/08/2026: mandei
-     * `dataOperacao` = 24/08 e o XML autorizado voltou com dhEmi E dhSaiEnt
-     * = 23/09, o dia em que o lote rodou.
+     * `data`         → data de EMISSÃO (dhEmi no XML)
+     * `dataOperacao` → data de SAÍDA   (dhSaiEnt no XML)
      *
-     * A causa é regra da própria NF-e: a data de saída não pode ser anterior
-     * à de emissão, e a de emissão é sempre a da transmissão. Não existe
-     * backdating em NF-e — quem emite atrasado emite um documento datado de
-     * hoje, e é assim pra todo mundo.
+     * Na primeira tentativa mandei só `dataOperacao` com a data da venda e o
+     * XML voltou com tudo datado de hoje. Concluí que NF-e não retroage —
+     * conclusão apressada. A saída não pode ser ANTERIOR à emissão (rejeição
+     * 505); como a emissão ficou em hoje por omissão, a saída foi puxada
+     * junto. O problema era eu não estar mandando a emissão.
      *
-     * O parâmetro fica porque não custa nada e passa a valer se o Bling algum
-     * dia honrar, mas ninguém deve contar com ele. A consequência prática é
-     * que ATRASO NÃO SE CONSERTA DEPOIS: uma venda faturada 30 dias depois
-     * gera uma nota emitida com 30 dias de atraso, com o que isso implicar.
-     * Por isso o que protege de verdade não é a janela larga — é o lote rodar
-     * todo dia e alguém ser avisado quando ele parar. */
+     * A SEFAZ aceita emissão no passado dentro de uma tolerância (rejeição
+     * 228, "Data de Emissão muito atrasada", na casa de 30 dias e variando
+     * por UF) — o que casa com a janela de 30 dias do lote. Fora dela, a nota
+     * é recusada e o motivo aparece no `xMotivo`, que já é registrado. */
+    data: dataBling(dataVenda),
     dataOperacao: dataBling(dataVenda),
     naturezaOperacao: { id: naturezaOperacaoId },
     contato: {
