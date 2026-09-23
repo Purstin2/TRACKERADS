@@ -377,10 +377,27 @@ export async function diagnosticoBling() {
    * um documento fiscal de verdade, com CPF de cliente real. */
   try {
     await pausa(400)
+    /* A listagem começou a voltar {"data":[]} com HTTP 200, tendo 26 notas na
+       conta — e como a checagem de ambiente depende dela, o lote inteiro
+       parou. Testa as formas de consulta pra achar uma que responda. */
+    const hoje = new Date().toISOString().slice(0, 10)
+    const mesPassado = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10)
+    out.tentativas = {}
+    for (const q of [
+      '/nfe?limite=5',
+      '/nfe',
+      '/nfe?pagina=1&limite=5',
+      `/nfe?dataEmissaoInicial=${mesPassado}&dataEmissaoFinal=${hoje}`,
+      '/nfe?situacao=5',
+    ]) {
+      const t = await bling(q)
+      const n = Array.isArray(t.data?.data) ? t.data.data.length : -1
+      out.tentativas[q] = `${t.status} · ${n} nota(s)`
+      await pausa(400)
+    }
+
     const r = await bling('/nfe?limite=5')
-    // resposta crua da listagem: quando ela vem vazia o lote inteiro para,
-    // então é preciso conseguir ver o que o Bling respondeu de verdade
-    out.listagemCrua = { status: r.status, corpo: JSON.stringify(r.data).slice(0, 300) }
+    out.listagemCrua = { status: r.status, corpo: JSON.stringify(r.data).slice(0, 200) }
     const lista = Array.isArray(r.data?.data) ? r.data.data : []
     out.notas = lista.map((n) => ({
       id: n.id, numero: n.numero, situacao: n.situacao,
