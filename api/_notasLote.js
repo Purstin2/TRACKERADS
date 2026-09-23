@@ -266,6 +266,12 @@ export async function diagnosticoBling() {
       const d = await bling('/nfe/' + lista[0].id)
       const xml = JSON.stringify(d.data || '')
       const m = xml.match(/tpAmb["'>\\\\:\s]*(\d)/)
+      out.camposDaNota = Object.keys((d.data && d.data.data) || d.data || {})
+      const dest = ((d.data && d.data.data) || {}).contato || {}
+      // pegadinha da SEFAZ: em homologacao ela EXIGE que o destinatario se chame
+      // "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL". Se o nome
+      // do contato for um cliente de verdade, a nota saiu em producao.
+      out.destinatario = dest.nome || null
       out.ambiente = m
         ? (m[1] === '2' ? 'HOMOLOGACAO (tpAmb=2) — nota de teste, sem valor fiscal' : 'PRODUCAO (tpAmb=1) — nota vale como documento fiscal')
         : 'não deu pra ler o tpAmb da nota ' + lista[0].id
