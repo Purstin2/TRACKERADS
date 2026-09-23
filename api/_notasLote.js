@@ -264,17 +264,31 @@ export async function diagnosticoBling() {
     if (lista[0]?.id) {
       await pausa(400)
       const d = await bling('/nfe/' + lista[0].id)
-      const xml = JSON.stringify(d.data || '')
-      const m = xml.match(/tpAmb["'>\\\\:\s]*(\d)/)
-      out.camposDaNota = Object.keys((d.data && d.data.data) || d.data || {})
-      const dest = ((d.data && d.data.data) || {}).contato || {}
-      // pegadinha da SEFAZ: em homologacao ela EXIGE que o destinatario se chame
-      // "NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL". Se o nome
-      // do contato for um cliente de verdade, a nota saiu em producao.
-      out.destinatario = dest.nome || null
-      out.ambiente = m
-        ? (m[1] === '2' ? 'HOMOLOGACAO (tpAmb=2) — nota de teste, sem valor fiscal' : 'PRODUCAO (tpAmb=1) — nota vale como documento fiscal')
-        : 'não deu pra ler o tpAmb da nota ' + lista[0].id
+      const nota = (d.data && d.data.data) || {}
+
+      /* Pegadinha da SEFAZ que já entrega a resposta sozinha: em homologação
+         ela EXIGE que o destinatário se chame literalmente "NF-E EMITIDA EM
+         AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL". Nome de cliente de
+         verdade aí só é possível em produção. */
+      out.destinatario = (nota.contato || {}).nome || null
+
+      /* Prova definitiva: `xml` é uma URL, e o tpAmb mora LÁ DENTRO — no JSON
+         da nota ele não existe. 1 = produção, 2 = homologação. */
+      if (nota.xml) {
+        try {
+          const txt = await (await fetch(nota.xml)).text()
+          const t = txt.match(/<tpAmb>(\d)<\/tpAmb>/)
+          out.ambiente = !t
+            ? 'xml baixado mas sem a tag tpAmb'
+            : t[1] === '2'
+              ? 'HOMOLOGACAO (tpAmb=2) — nota de teste, sem valor fiscal'
+              : 'PRODUCAO (tpAmb=1) — a nota vale como documento fiscal'
+        } catch (e) {
+          out.erros.push('xml → ' + String(e && e.message).slice(0, 120))
+        }
+      } else {
+        out.ambiente = 'a nota ' + lista[0].id + ' não tem link de xml'
+      }
     }
   } catch (e) {
     out.erros.push('ambiente → ' + String(e?.message || e).slice(0, 160))
