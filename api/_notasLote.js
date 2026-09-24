@@ -754,7 +754,9 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
       }
 
       if (seco) {
-        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, tipo: pf.tipo, valor: item.valor, status: 'simulado' })
+        // a CHAVE e o que vira cProd na nota; sem ela nao da pra investigar
+        // divergencia entre o produto vendido e o que a SEFAZ registrou
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, chave: item.key, tipo: pf.tipo, valor: item.valor, status: 'simulado' })
         continue
       }
 
