@@ -630,6 +630,8 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
   let interrompido = null
   /** produtos que ninguem revisou: saem no padrao e viram aviso no Dashboard */
   const semRevisao = new Map()
+  /** produtos renomeados na origem cuja descricao configurada envelheceu */
+  const renomeados = new Map()
 
   try {
   for (const o of pedidos) {
@@ -708,6 +710,26 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
        * é ESCOLHA explícita de alguém — não mais o silêncio do esquecimento.
        * Quem nunca foi olhado entra em `semRevisao` e aparece no Dashboard. */
       const registrado = cfg.produtos?.[item.key]
+
+      /* ── DESCRICAO QUE ENVELHECEU ────────────────────────────────────────
+       * A aba tem um campo de descricao por produto, e ele vencia o nome que
+       * veio na venda. Util quando o nome comercial nao serve pra nota (tirar
+       * acento, cortar "EXCLUSIVO!"), mas e um override PERMANENTE que ninguem
+       * revisita — e quando o produto e renomeado, a nota passa a descrever
+       * algo que o cliente nao comprou.
+       *
+       * Aconteceu: o produto edf3fad4 era "Guia Encanador Residencial", virou
+       * "ESTAMPADO - 50.000 DESIGNS PRONTOS" na Kirvano, e as notas seguiram
+       * saindo com o nome de agosto. E o produto mais vendido da fila.
+       *
+       * Nao precisa buscar nada fora: o nome da venda ja vem no proprio
+       * pedido, como estava no instante da compra — que e exatamente o que um
+       * documento fiscal deve descrever. E a config guarda o nome de quando
+       * foi editada, entao divergencia entre os dois DENUNCIA o rename.
+       * Nesse caso a venda vence, e o override so vale enquanto descreve o
+       * mesmo produto. */
+      const renomeado = !!(registrado?.nome && item.nome && registrado.nome !== item.nome)
+      if (renomeado) renomeados.set(item.key, { antes: registrado.nome, agora: item.nome })
       if (!registrado) semRevisao.set(item.key, item.nome)
       const pf = registrado || { tipo: 'nfe', ncm: cfg.ncmPadrao, descricao: '', codigoServico: '' }
 
@@ -760,7 +782,8 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
           pedido: o.checkout_id, item: item.nome, chave: item.key, tipo: pf.tipo, valor: item.valor,
           // o que REALMENTE vai no campo descricao da nota: a descricao
           // configurada na aba vence o nome do produto da Kirvano
-          enviaComoNome: pf.descricao || item.nome,
+          enviaComoNome: (!renomeado && pf.descricao) || item.nome,
+          renomeado,
           status: 'simulado',
         })
         continue
@@ -778,7 +801,13 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
           ? payloadNfse({ cliente, servico: { descricao: pf.descricao || item.nome, valor: item.valor, codigo: pf.codigoServico } })
           : payloadNfe({
               cliente,
-              item: { codigo: item.key.slice(0, 30), descricao: pf.descricao || item.nome, valor: item.valor, ncm: pf.ncm || cfg.ncmPadrao },
+              item: {
+                codigo: item.key.slice(0, 30),
+                // override so vale enquanto descreve o mesmo produto
+                descricao: (!renomeado && pf.descricao) || item.nome,
+                valor: item.valor,
+                ncm: pf.ncm || cfg.ncmPadrao,
+              },
               naturezaOperacaoId: cfg.naturezaOperacaoId,
               textoImunidade: cfg.textoImunidade,
               dataVenda: o.ordered_at,
@@ -979,6 +1008,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
       restaram: resumo.restaram,
       travados,
       semRevisao: [...semRevisao.values()].slice(0, 12),
+      renomeados: [...renomeados.values()].slice(0, 8).map((r) => r.antes + ' -> ' + r.agora),
       erro: interrompido || null,
       // o motivo da última falha, pra faixa do Dashboard poder mostrar sem
       // obrigar ninguém a abrir log nenhum
