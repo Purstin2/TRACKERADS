@@ -464,6 +464,7 @@ export async function diagnosticoBling() {
             return m ? m[1] : null
           }
           out.conferencia = {
+            nota: { numero: n.numero, id: n.id },
             emitente: { cnpj: tag('CNPJ'), ie: tag('IE'), nome: tag('xNome') },
             // o 2º xNome do XML é o destinatário (o 1º é o emitente)
             destinatario: {
@@ -479,7 +480,10 @@ export async function diagnosticoBling() {
             },
             totais: { nota: tag('vNF'), icms: tag('vICMS') },
             // a imunidade de ICMS de ebook TEM que estar escrita aqui
-            imunidade: (tag('infCpl') || '').slice(0, 120) || 'AUSENTE',
+            // 120 chars cortavam o texto antes da imunidade aparecer: o Bling
+            // poe o demonstrativo do IBPT primeiro e a imunidade vem depois
+            infCpl: (tag('infCpl') || 'AUSENTE').replace(/&lt;[^&]*&gt;|<[^>]*>/g, ' ').slice(0, 600),
+            temImunidade: /IMUNIDADE[\s\S]*ICMS|ART\.?\s*150/i.test(tag('infCpl') || ''),
             protocolo: { cStat: tag('cStat'), motivo: tag('xMotivo'), numero: tag('nProt') },
           }
 
