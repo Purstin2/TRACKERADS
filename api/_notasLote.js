@@ -464,7 +464,7 @@ export async function diagnosticoBling() {
             return m ? m[1] : null
           }
           out.conferencia = {
-            nota: { numero: n.numero, id: n.id },
+            nota: { numero: lista[0].numero, id: lista[0].id },
             emitente: { cnpj: tag('CNPJ'), ie: tag('IE'), nome: tag('xNome') },
             // o 2º xNome do XML é o destinatário (o 1º é o emitente)
             destinatario: {
