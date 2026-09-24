@@ -242,10 +242,31 @@ export default async function handler(req, res) {
           return res.status(400).json({ ok: false, erro: String(e?.message || e).slice(0, 400) })
         }
       }
+      /* EMITIR DE VERDADE exige segredo proprio.
+       *
+       * O WEBHOOK_SECRET esta escrito num repositorio PUBLICO (o comentario em
+       * refire-capi.js) e nao da pra rotacionar sozinho: e o mesmo que a
+       * Kirvano usa pra entregar as vendas, entao troca-lo sem atualizar o
+       * painel dela derrubaria a entrada de vendas — e com ela pixel, CAPI e
+       * recuperacao.
+       *
+       * Ate essa troca ser coordenada, qualquer pessoa que leia o repositorio
+       * poderia disparar emissao de NOTA FISCAL em nome da empresa. Este
+       * segundo segredo fecha so essa porta, que e a de consequencia
+       * irreversivel. Simulacao e diagnostico continuam no segredo normal:
+       * nao emitem nada.
+       */
+      const seco = req.query.seco === '1'
+      if (!seco) {
+        const dedicado = req.query.ns || req.headers['x-notas-secret']
+        if (!process.env.NOTAS_SECRET || dedicado !== process.env.NOTAS_SECRET) {
+          return res.status(401).json({ ok: false, erro: 'emissao real exige o segredo NOTAS_SECRET (use ?seco=1 para simular)' })
+        }
+      }
       const { rodarLoteNotas } = await import('./_notasLote.js')
       const out = await rodarLoteNotas({
         dias: req.query.dias,
-        seco: req.query.seco === '1',
+        seco,
         max: Number(req.query.max) || 0,
       })
       return res.status(200).json(out)
