@@ -14,10 +14,6 @@
     {
       "path": "/api/notify",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/recover?job=notas",
-      "schedule": "0 12 * * *"
     }
   ],
   "functions": {
