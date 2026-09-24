@@ -756,7 +756,13 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
       if (seco) {
         // a CHAVE e o que vira cProd na nota; sem ela nao da pra investigar
         // divergencia entre o produto vendido e o que a SEFAZ registrou
-        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, chave: item.key, tipo: pf.tipo, valor: item.valor, status: 'simulado' })
+        resumo.detalhes.push({
+          pedido: o.checkout_id, item: item.nome, chave: item.key, tipo: pf.tipo, valor: item.valor,
+          // o que REALMENTE vai no campo descricao da nota: a descricao
+          // configurada na aba vence o nome do produto da Kirvano
+          enviaComoNome: pf.descricao || item.nome,
+          status: 'simulado',
+        })
         continue
       }
 
