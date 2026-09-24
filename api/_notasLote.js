@@ -119,6 +119,13 @@ async function gravarNota(row) {
  * O teste por texto pega as variacoes que o codigo nao cobre. */
 const CSTAT_DA_CONTA = ['203', '209', '163', '213', '252', '280', '281', '282', '283', '284', '285', '286', '108', '109']
 
+/* Mesma regra do painel: vale o que foi marcado a mao; senao, o resolvido de
+ * fabrica da definicao do item. */
+function itemFeitoNaConfig(cfg, id) {
+  const marcado = (cfg.checklist || {})[id]
+  return marcado ? !!marcado.feito : false
+}
+
 function ehErroDaConta(msg) {
   const t = String(msg || '')
   const cod = t.match(/cStat ([\d/]+)/)
@@ -701,6 +708,25 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
         continue
       }
 
+      /* NFS-e ainda travada: nem tenta.
+       *
+       * A senha do portal da prefeitura nao saiu, entao TODA NFS-e sera
+       * recusada. Tentar assim mesmo gasta uma das 3 tentativas do pedido por
+       * rodada — em tres dias as vendas do Melodify travariam de vez, por um
+       * bloqueio que nao e delas.
+       *
+       * A conferencia antes de soltar o lote mostrou 22 itens nessa situacao
+       * (Melodify e seus bumps), nao os 5 que apareciam com a lista cortada em
+       * 50. Sem esta guarda, seriam 22 pedidos perdidos em silencio. */
+      if (pf.tipo === 'nfse' && !itemFeitoNaConfig(cfg, 'senha_prefeitura')) {
+        resumo.puladas++
+        resumo.detalhes.push({
+          pedido: o.checkout_id, item: item.nome, tipo: 'nfse',
+          status: 'NFS-e aguardando a senha da prefeitura — nao tentado, pedido segue na fila',
+        })
+        continue
+      }
+
       // NFS-e exige município, UF e bairro. Como o comprador nunca informa, o
       // `enderecoPadrao` cobre — mas se ele não estiver configurado, a nota vai
       // falhar na API. Melhor avisar do que queimar tentativa.
@@ -894,9 +920,14 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
        chegaria aqui com os dois flags em false e gravaria `dispensada` — que é
        definitivo e some da fila pra sempre. Seria trocar um jeito de perder a
        venda por outro. */
-    if (!seco && !homologacao && !interrompido) {
+    /* So marca quando algo ACONTECEU. Antes, pedido cujos itens foram todos
+       pulados caia no 'dispensada' — que e definitivo e some da fila pra
+       sempre. Bastava o produto estar aguardando configuracao, ou a NFS-e
+       estar travada, pra venda real nunca mais ser faturada. Nada aconteceu?
+       Entao nada muda, e ele volta na proxima rodada. */
+    if (!seco && !homologacao && !interrompido && (houveEmissao || houveErro)) {
       await marcarPedido(o.id, {
-        nf_status: houveErro ? 'erro' : houveEmissao ? 'emitida' : 'dispensada',
+        nf_status: houveErro ? 'erro' : 'emitida',
         nf_at: new Date().toISOString(),
         nf_erro: houveErro ? 'ver tabela notas_fiscais' : null,
         nf_tentativas: (o.nf_tentativas || 0) + 1,
