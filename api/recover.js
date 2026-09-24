@@ -201,7 +201,18 @@ export default async function handler(req, res) {
   if (!url || !key) return res.status(500).json({ error: 'supabase não configurado' })
 
   const isCron = !!req.headers['x-vercel-cron']
-  const secret = req.query.secret
+  /* O segredo tambem pode vir por HEADER, nao so na query.
+   *
+   * Na URL ele passa por codificacao: "+" vira espaco, "&" encerra o
+   * parametro, "#" corta o resto. Segredo forte costuma ter exatamente esses
+   * caracteres, entao o valor chega mutilado na Vercel mesmo estando correto
+   * na origem — e o erro devolvido e "invalid secret", que manda a pessoa
+   * procurar no lugar errado. Foi o que aconteceu com o agendador do Supabase
+   * logo depois de rotacionar o segredo.
+   *
+   * Header nao sofre essa transformacao. A query continua valendo pra nao
+   * quebrar o webhook da Kirvano nem os links ja em uso. */
+  const secret = req.query.secret || req.headers['x-webhook-secret']
   if (!isCron && (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET)) {
     return res.status(401).json({ error: 'invalid secret' })
   }
