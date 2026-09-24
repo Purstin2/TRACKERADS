@@ -437,10 +437,17 @@ export async function diagnosticoBling() {
       id: n.id, numero: n.numero, situacao: n.situacao,
       data: n.dataEmissao || n.data, chave: n.chaveAcesso ? String(n.chaveAcesso).slice(0, 8) + '…' : null,
     }))
-    if (lista[0]?.id) {
-      await pausa(400)
-      const d = await bling('/nfe/' + lista[0].id)
+    /* Confere VARIAS notas, nao so a ultima. Com uma so nao da pra ver um
+     * par de order bump — que sao duas notas do MESMO pedido, com numeros
+     * consecutivos. E o bump e justamente a regra mais facil de sair errada:
+     * se virasse item da mesma nota, o valor dobraria num documento fiscal. */
+    out.conferencias = []
+    for (const alvo of lista.slice(0, 4)) {
+      if (!alvo?.id) continue
+      await pausa(500)
+      const d = await bling('/nfe/' + alvo.id)
       const nota = (d.data && d.data.data) || {}
+      const numeroAtual = alvo.numero
 
       /* NÃO use este nome pra deduzir o ambiente — eu usei e errei.
          O raciocínio parecia sólido: em homologação a SEFAZ exige que o
@@ -472,8 +479,8 @@ export async function diagnosticoBling() {
             const m = txt.match(new RegExp('<' + n + '>([^<]*)</' + n + '>'))
             return m ? m[1] : null
           }
-          out.conferencia = {
-            nota: { numero: lista[0].numero, id: lista[0].id },
+          const conf = {
+            nota: { numero: numeroAtual, id: alvo.id },
             emitente: { cnpj: tag('CNPJ'), ie: tag('IE'), nome: tag('xNome') },
             // o 2º xNome do XML é o destinatário (o 1º é o emitente)
             destinatario: {
@@ -495,6 +502,8 @@ export async function diagnosticoBling() {
             temImunidade: /IMUNIDADE[\s\S]*ICMS|ART\.?\s*150/i.test(tag('infCpl') || ''),
             protocolo: { cStat: tag('cStat'), motivo: tag('xMotivo'), numero: tag('nProt') },
           }
+          out.conferencias.push(conf)
+          if (!out.conferencia) out.conferencia = conf // compatibilidade
 
           const t = txt.match(/<tpAmb>(\d)<\/tpAmb>/)
           out.ambiente = !t
@@ -506,7 +515,7 @@ export async function diagnosticoBling() {
           out.erros.push('xml → ' + String(e && e.message).slice(0, 120))
         }
       } else {
-        out.ambiente = 'a nota ' + lista[0].id + ' não tem link de xml'
+        out.ambiente = out.ambiente || ('a nota ' + alvo.id + ' não tem link de xml')
       }
     }
   } catch (e) {
