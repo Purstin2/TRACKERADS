@@ -260,36 +260,45 @@ export const SITUACAO = { PENDENTE: 1, REJEITADA: 4, AUTORIZADA: 5 }
  * tarde demais pra proteger o registro.
  */
 export async function ambienteAtual() {
-  /* Cada passo ESTOURA com o motivo real em vez de devolver null.
+  /* Percorre VARIAS notas ate achar uma utilizavel, em vez de depender da
+   * mais recente.
    *
-   * A primeira versão devolvia null em qualquer tropeço, e null virava a
-   * mensagem "a conta não tem nenhuma nota pra amostrar". Com três rodadas
-   * simultâneas o limite de 3 req/s do Bling derrubou a listagem e as três
-   * responderam exatamente isso — com 22 notas na conta. Diagnóstico falso
-   * manda a pessoa emitir nota manual no Bling sem necessidade; num fluxo
-   * fiscal, isso custa um documento. "Não sei" e "não tem" são respostas
-   * diferentes e precisam de mensagens diferentes. */
-  const lista = await bling('/nfe?limite=1')
-  if (!lista.ok) throw new Error(`Bling recusou a listagem de notas: ${erroDoBling(lista)}`)
+   * Dependia, e quebrou: bastou a ultima ser um rascunho (situacao 1) ou uma
+   * rejeitada — nenhuma das duas tem XML — pro lote inteiro se recusar a
+   * rodar, com a emissao parada ate alguem olhar. Ponto unico de falha na
+   * peca que precisa ser a mais robusta, porque tudo depende dela.
+   *
+   * Cada passo ESTOURA com o motivo real em vez de devolver null: com tres
+   * rodadas simultaneas o limite de 3 req/s do Bling derrubou a listagem e as
+   * tres responderam 'a conta nao tem nenhuma nota' — com 22 notas. "Nao sei"
+   * e "nao tem" pedem acoes diferentes. */
+  const lista = await bling('/nfe?limite=10')
+  if (!lista.ok) throw new Error('Bling recusou a listagem de notas: ' + erroDoBling(lista))
 
-  const n = (lista.data?.data || [])[0]
-  if (!n?.id) return null // aqui sim: a conta realmente não tem nota nenhuma
+  const notas = lista.data?.data || []
+  if (!notas.length) return null // aqui sim: a conta realmente nao tem nota nenhuma
 
-  await pausa(400)
-  const det = await bling('/nfe/' + n.id)
-  if (!det.ok) throw new Error(`Bling recusou a nota ${n.id}: ${erroDoBling(det)}`)
+  const pulados = []
+  for (const n of notas.slice(0, 6)) {
+    if (!n?.id) continue
+    const nome = n.numero || n.id
+    await pausa(400)
 
-  const link = det.data?.data?.xml
-  if (!link) throw new Error(`a nota ${n.id} não tem link de XML — sem ele não dá pra apurar o ambiente`)
+    const det = await bling('/nfe/' + n.id)
+    if (!det.ok) { pulados.push(nome + ': HTTP ' + det.status); continue }
 
-  const resp = await fetch(link)
-  if (!resp.ok) throw new Error(`não consegui baixar o XML da nota ${n.id}: HTTP ${resp.status}`)
+    const link = det.data?.data?.xml
+    if (!link) { pulados.push(nome + ': sem xml (rascunho ou rejeitada)'); continue }
 
-  const m = (await resp.text()).match(/<tpAmb>(\d)<\/tpAmb>/)
-  if (!m) throw new Error(`o XML da nota ${n.id} não traz a tag tpAmb`)
-  return m[1]
+    const resp = await fetch(link)
+    if (!resp.ok) { pulados.push(nome + ': xml HTTP ' + resp.status); continue }
+
+    const m = (await resp.text()).match(/<tpAmb>(\d)<\/tpAmb>/)
+    if (!m) { pulados.push(nome + ': xml sem tpAmb'); continue }
+    return m[1] // achou
+  }
+  throw new Error('nenhuma das ultimas notas serviu pra apurar o ambiente — ' + pulados.join(' | '))
 }
-
 export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = null) {
   const rota = tipo === 'nfse' ? '/nfse' : '/nfe'
   let id = blingIdExistente
