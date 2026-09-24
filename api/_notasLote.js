@@ -34,13 +34,17 @@ const LOTE_MAX = 120 // teto de pedidos lidos; quem manda mesmo é o orçamento 
  * quantas cabem, o lote para sozinho quando o tempo acaba — o que sobrar sai na
  * próxima rodada, porque a fila é justamente "quem ainda não tem nota".
  *
- * Eram 40s, com a justificativa de "dividir a função com a recuperação de
- * WhatsApp". A justificativa era falsa: o `?job=notas` retorna antes de
- * qualquer lógica de WhatsApp, e cada invocação da Vercel tem seu próprio teto
- * de tempo — elas não disputam nada. O medo custava ~7 notas por rodada.
- * 55s deixa 5s de margem para o teto de 60s do plano.
+ * O cronômetro começa no PRIMEIRO instante da função, não no início do laço.
+ * Medindo só o laço, os ~7s de apuração de ambiente, trava e consultas ficavam
+ * fora da conta: 55s de laço viraram 62s de função e a Vercel matou o processo
+ * no meio de uma emissão (FUNCTION_INVOCATION_TIMEOUT). Pior que perder a
+ * rodada, o  não roda quando a função é morta — a trava fica presa e
+ * as rodadas seguintes são recusadas por 3 minutos.
+ *
+ * 45s sobre o teto de 60s deixa margem para o setup e para uma nota em
+ * andamento terminar.
  */
-const ORCAMENTO_MS = 55_000
+const ORCAMENTO_MS = 45_000
 
 function sb() {
   const url = process.env.SUPABASE_URL
@@ -555,6 +559,7 @@ export async function diagnosticoBling() {
  * WEBHOOK_SECRET ou header de cron antes de chegar aqui).
  */
 export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxParam = 0 } = {}) {
+  const inicio = Date.now() // antes de tudo: o teto da Vercel conta a funcao inteira
   let max = Number(maxParam) || 0
   /** rodada de descoberta: ambiente novo, sem nota pra amostrar o tpAmb */
   let bootstrap = false
@@ -647,7 +652,6 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
   }
   const homologacaoGlobal = ambiente === '2'
 
-  const inicio = Date.now()
   const pedidos = await pedidosPendentes(desde)
   const jaEmitidas = seco ? new Map() : await notasExistentes(pedidos.map((p) => p.id))
   const resumo = { pedidos: pedidos.length, emitidas: 0, erros: 0, puladas: 0, restaram: 0, detalhes: [] }
