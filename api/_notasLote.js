@@ -858,7 +858,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
 
       const payload =
         pf.tipo === 'nfse'
-          ? payloadNfse({ cliente, servico: { descricao: nomeParaNota(item.nome), valor: item.valor, codigo: pf.codigoServico } })
+          ? payloadNfse({ cliente, servico: { descricao: nomeParaNota(item.nome), valor: item.valor, codigo: pf.codigoServico, indicadorOperacao: cfg.indicadorOperacao || '100301' } })
           : payloadNfe({
               cliente,
               item: {

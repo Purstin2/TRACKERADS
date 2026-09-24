@@ -213,7 +213,21 @@ export function payloadNfse({ cliente, servico }) {
         cep: soDigitos(end.cep),
       },
     },
-    servicos: [{ descricao: servico.descricao, valor: servico.valor, codigo: servico.codigo }],
+    servicos: [{
+      descricao: servico.descricao,
+      valor: servico.valor,
+      codigo: servico.codigo,
+      /* Indicador de operacao. O padrao do Bling era INTERNET e a prefeitura
+       * passou a recusar: "Indicador de operacao INTERN, invalido para o
+       * servico informado. Indicadores validos: 100301" — sinal de que a
+       * migracao pro portal nacional aconteceu e o codigo mudou.
+       *
+       * A API do Bling nao expoe esse campo em lugar nenhum (nem na lista de
+       * NFS-e, nem no detalhe), entao ajusta-lo pelo painel exigiria achar a
+       * tela certa. Mandando aqui, o valor fica sob nosso controle e visivel
+       * no codigo. */
+      ...(servico.indicadorOperacao ? { indicadorOperacao: servico.indicadorOperacao } : {}),
+    }],
   }
 }
 
