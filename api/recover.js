@@ -291,6 +291,7 @@ export default async function handler(req, res) {
         dias: req.query.dias,
         seco,
         max: Number(req.query.max) || 0,
+        tentarNfse: req.query.nfse === '1',
       })
       return res.status(200).json(out)
     } catch (e) {

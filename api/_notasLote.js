@@ -134,7 +134,9 @@ function ehErroDaConta(msg) {
   const t = String(msg || '')
   const cod = t.match(/cStat ([\d/]+)/)
   if (cod && cod[1].split('/').some((c) => CSTAT_DA_CONTA.includes(c))) return true
-  return /emitente|emissor|certificado|ambiente informado|paralisad/i.test(t)
+  // credencial de prefeitura tem o mesmo carater: reprova toda NFS-e igual,
+  // entao insistir so queimaria as 3 tentativas de cada pedido do Melodify
+  return /emitente|emissor|certificado|ambiente informado|paralisad|senha|credenc|usuario|login|autoriza/i.test(t)
 }
 
 /** Desfaz um registro antecipado que se revelou de teste (só o bootstrap usa). */
@@ -575,7 +577,12 @@ export async function diagnosticoBling() {
  * Roda o lote. Autenticação fica com quem chama (recover.js já exige o
  * WEBHOOK_SECRET ou header de cron antes de chegar aqui).
  */
-export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxParam = 0 } = {}) {
+/*  existe pra UMA pergunta: a prefeitura ja migrou pro portal
+ * nacional? O checklist previa 01/09/2026 e ninguem testou desde entao, entao
+ * as NFS-e do Melodify podem estar paradas a toa. Com a flag, a rodada tenta
+ * uma NFS-e mesmo com o item em aberto — e se a recusa vier, ela cai em
+ * ehErroDaConta e nao queima tentativa de ninguem. */
+export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxParam = 0, tentarNfse = false } = {}) {
   const inicio = Date.now() // antes de tudo: o teto da Vercel conta a funcao inteira
   let max = Number(maxParam) || 0
   /** rodada de descoberta: ambiente novo, sem nota pra amostrar o tpAmb */
@@ -792,7 +799,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
        * A conferencia antes de soltar o lote mostrou 22 itens nessa situacao
        * (Melodify e seus bumps), nao os 5 que apareciam com a lista cortada em
        * 50. Sem esta guarda, seriam 22 pedidos perdidos em silencio. */
-      if (pf.tipo === 'nfse' && !itemFeitoNaConfig(cfg, 'senha_prefeitura')) {
+      if (pf.tipo === 'nfse' && !itemFeitoNaConfig(cfg, 'senha_prefeitura') && !tentarNfse) {
         resumo.puladas++
         resumo.detalhes.push({
           pedido: o.checkout_id, item: item.nome, tipo: 'nfse',
