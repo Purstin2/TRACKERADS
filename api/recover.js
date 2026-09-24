@@ -245,6 +245,11 @@ export default async function handler(req, res) {
   if ((req.query.job || '') === 'notas') {
     try {
       // ?diag=1 → só checa a conexão com o Bling, não toca em pedido nenhum
+      // sonda so-leitura: ?espiar=/produtos?limite=5
+      if (req.query.espiar) {
+        const { espiarBling } = await import('./_notasLote.js')
+        return res.status(200).json(await espiarBling(String(req.query.espiar)))
+      }
       if (req.query.diag === '1') {
         const { diagnosticoBling } = await import('./_notasLote.js')
         return res.status(200).json(await diagnosticoBling())

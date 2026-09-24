@@ -410,6 +410,17 @@ function clienteDoPedido(o, enderecoPadrao) {
  * Também devolve os dados da empresa cadastrada no Bling — é por eles que se
  * confere se a Inscrição Estadual entrou, sem precisar abrir o painel.
  */
+/* Sonda SO-LEITURA da API do Bling.
+ * Existe porque investigar cadastro pelo menu do painel ja nos custou horas:
+ * o caminho muda, o rotulo nao bate com o nome do campo na API, e a pessoa
+ * caca tela enquanto a resposta esta a uma consulta de distancia. Aceita
+ * apenas GET, e so com o segredo dedicado. */
+export async function espiarBling(caminho) {
+  if (!caminho || !caminho.startsWith('/')) return { ok: false, erro: 'caminho deve comecar com /' }
+  const r = await bling(caminho)
+  return { ok: r.ok, status: r.status, dados: r.data }
+}
+
 export async function diagnosticoBling() {
   const out = { token: null, empresa: null, erros: [] }
 
