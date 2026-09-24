@@ -222,10 +222,13 @@ export function payloadNfse({ cliente, servico }) {
        * servico informado. Indicadores validos: 100301" — sinal de que a
        * migracao pro portal nacional aconteceu e o codigo mudou.
        *
-       * A API do Bling nao expoe esse campo em lugar nenhum (nem na lista de
-       * NFS-e, nem no detalhe), entao ajusta-lo pelo painel exigiria achar a
-       * tela certa. Mandando aqui, o valor fica sob nosso controle e visivel
-       * no codigo. */
+       * TESTADO E NAO ADIANTA: mandar o campo aqui nao muda nada — o Bling
+       * ignora e segue usando o INTERN do cadastro dele. Mesmo padrao das
+       * datas de emissao da NF-e: a API aceita o campo sem reclamar e nao
+       * repassa. Fica so pra valer se um dia honrarem.
+       *
+       * O ajuste REAL e no painel do Bling, em Configuracoes > Notas fiscais
+       * > NFS-e, no cadastro do servico 010901. */
       ...(servico.indicadorOperacao ? { indicadorOperacao: servico.indicadorOperacao } : {}),
     }],
   }

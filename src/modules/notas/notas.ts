@@ -196,9 +196,9 @@ export const CHECKLIST_ITENS: {
   },
   {
     id: 'senha_prefeitura',
-    label: 'Senha do portal da prefeitura (só NFS-e)',
+    label: 'Indicador de operação da NFS-e no Bling: 100301 (só NFS-e)',
     detalhe:
-      'Bloqueia SÓ a NFS-e do Melodify (~6% da receita). O município migra para o portal nacional em 01/09/2026, que autentica por certificado — então a tendência é resolver sozinho nessa data. Lembrete salvo no Diário.',
+      'NÃO é mais senha: testado em 24/09/2026 e a prefeitura recusa por OUTRO motivo — "Indicador de operação INTERN, inválido para o serviço informado. Indicadores válidos: 100301". A migração para o portal nacional aconteceu e o código de operação mudou. Ajuste o indicador do serviço 010901 no painel do Bling (mandar pela API não adianta: ele ignora). Bloqueia SÓ o Melodify (~6% da receita).',
     responsavel: 'prefeitura',
   },
 ]
