@@ -228,6 +228,23 @@ async function registrarSaude(dados) {
   }).catch(() => {}) // registrar saúde nunca pode derrubar a emissão
 }
 
+/* Quantos pedidos AINDA faltam, de verdade. A listagem para em LOTE_MAX=120,
+ * entao "pedidos: 120" nao distingue "120 na fila" de "400 na fila" — e durante
+ * o lote o numero nao se mexia, dando a impressao de que nada avancava. */
+async function contarPendentes(desdeISO) {
+  const { url, headers } = sb()
+  const q = [
+    'select=id',
+    'status=eq.APPROVED',
+    'ordered_at=gte.' + desdeISO,
+    'or=(nf_status.is.null,nf_status.eq.erro)',
+    'nf_tentativas=lt.' + MAX_TENTATIVAS,
+  ].join('&')
+  const r = await fetch(url + '/rest/v1/kirvano_orders?' + q, { headers: { ...headers, Prefer: 'count=exact', Range: '0-0' } })
+  const total = Number((r.headers.get('content-range') || '').split('/')[1])
+  return Number.isFinite(total) ? total : -1
+}
+
 /** Pedidos que esgotaram as tentativas: saíram da fila e ninguém foi avisado. */
 async function contarTravados(desdeISO) {
   const { url, headers } = sb()
@@ -997,12 +1014,14 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
   }
 
   const travados = seco ? 0 : await contarTravados(desde)
+  const aindaPendentes = await contarPendentes(desde)
   const saida = {
     ok: !interrompido,
     ambiente: seco ? 'simulação' : homologacaoGlobal ? 'homologação (nada gravado)' : 'produção',
     ...(interrompido ? { erro: interrompido } : {}),
     ...resumo,
     travados,
+    aindaPendentes,
     // 50 cortava justamente o que uma conferencia precisa ver: os pulados
     // ficam no fim da lista, depois dos emitidos
     detalhes: resumo.detalhes.slice(0, 200),
