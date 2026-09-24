@@ -4,6 +4,7 @@ import {
   AlertTriangle, Info, Power,
 } from 'lucide-react'
 import { usePersistentState } from '@/lib/appState'
+import EmissaoPainel from './EmissaoPainel'
 import { fetchOrders, type KirvanoOrder } from '@/modules/pixel/orders'
 import { discoverProducts } from '@/modules/taxas/taxas'
 import {
@@ -155,6 +156,11 @@ export default function NotasPage() {
           ))}
         </div>
       </div>
+
+      {/* Testar a emissão e ler a recusa da SEFAZ. Fica acima do checklist
+          porque é a pergunta que se faz ao abrir esta tela quando algo não
+          está saindo — e até agora ela só tinha resposta pelo terminal. */}
+      <EmissaoPainel />
 
       {/* checklist */}
       <div className="card">

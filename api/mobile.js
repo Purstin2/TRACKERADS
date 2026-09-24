@@ -532,5 +532,53 @@ export default async function handler(req, res) {
   if (fn === 'limites') return limites(req, res)
   if (fn === 'recup-melodify') return recupMelodify(req, res)
   if (fn === 'recup-email') return recupEmail(req, res)
-  return res.status(400).json({ error: 'fn inválido (camps | camp-action | meta-today | push-subscribe | limites | recup-melodify | recup-email)' })
+  if (fn === 'notas-status') return notasStatus(req, res)
+  if (fn === 'notas-rodar') return notasRodar(req, res)
+  return res.status(400).json({ error: 'fn inválido (camps | camp-action | meta-today | push-subscribe | limites | recup-melodify | recup-email | notas-status | notas-rodar)' })
+}
+
+/* ── Notas fiscais: status e disparo pelo painel ──────────────────────────────
+ * Existiam só pelo terminal, com o WEBHOOK_SECRET na URL — ou seja, quem usa o
+ * sistema não conseguia nem testar a emissão nem ver por que uma nota falhou.
+ * O erro da SEFAZ, que é a informação que resolve o problema, ficava preso no
+ * banco. Aqui ele chega na tela.
+ *
+ * Pega carona no /api/mobile porque este endpoint já valida a sessão do painel
+ * (requireSession) e o plano Hobby não comporta uma 13ª função. */
+async function notasStatus(req, res) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY
+  const h = sbHeaders(key)
+
+  const [saudeRaw, errosRaw] = await Promise.all([
+    fetch(`${url}/rest/v1/app_state?key=eq.notas_saude&select=value`, { headers: h }).then((r) => r.json()).catch(() => []),
+    // só o que FALHOU, mais recente primeiro: é disso que se precisa pra agir
+    fetch(
+      `${url}/rest/v1/notas_fiscais?status=eq.erro&select=produto_nome,valor,tipo,erro,atualizada_em&order=atualizada_em.desc&limit=20`,
+      { headers: h },
+    ).then((r) => r.json()).catch(() => []),
+  ])
+
+  return res.json({
+    ok: true,
+    saude: Array.isArray(saudeRaw) && saudeRaw.length ? saudeRaw[0].value : null,
+    erros: Array.isArray(errosRaw) ? errosRaw : [],
+  })
+}
+
+async function notasRodar(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' })
+  try {
+    const { rodarLoteNotas } = await import('./_notasLote.js')
+    // `seco` é o padrão de propósito: emitir de verdade tem que ser escolha
+    const seco = String(req.query.seco || '1') === '1'
+    const out = await rodarLoteNotas({
+      seco,
+      max: Number(req.query.max) || (seco ? 0 : 1), // real sem limite explícito = 1 nota
+      dias: req.query.dias,
+    })
+    return res.json(out)
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e?.message || e).slice(0, 300) })
+  }
 }
