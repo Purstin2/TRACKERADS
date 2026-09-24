@@ -213,7 +213,19 @@ export default async function handler(req, res) {
    * Header nao sofre essa transformacao. A query continua valendo pra nao
    * quebrar o webhook da Kirvano nem os links ja em uso. */
   const secret = req.query.secret || req.headers['x-webhook-secret']
-  if (!isCron && (!process.env.WEBHOOK_SECRET || secret !== process.env.WEBHOOK_SECRET)) {
+  /* O job de notas tem credencial propria e ela BASTA.
+   *
+   * Antes exigia os dois: o WEBHOOK_SECRET geral pra entrar, e o NOTAS_SECRET
+   * pra emitir. Duas chaves pra mesma porta so multiplicam o numero de
+   * lugares onde uma rotacao pode quebrar algo — e quebrou, logo na primeira.
+   *
+   * O NOTAS_SECRET e dedicado, forte e nunca esteve em repositorio publico:
+   * como credencial ele e mais solido que o geral, nao menos. Os outros jobs
+   * seguem exigindo o WEBHOOK_SECRET normalmente. */
+  const ehNotas = (req.query.job || '') === 'notas'
+  const notasOk = !!process.env.NOTAS_SECRET && (req.query.ns || req.headers['x-notas-secret']) === process.env.NOTAS_SECRET
+  const geralOk = !!process.env.WEBHOOK_SECRET && secret === process.env.WEBHOOK_SECRET
+  if (!isCron && !geralOk && !(ehNotas && notasOk)) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
