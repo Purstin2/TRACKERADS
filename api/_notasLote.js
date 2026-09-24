@@ -615,6 +615,23 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
   const dias = Number(diasParam) || 30
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
 
+  /* Fila vazia? Sai antes de falar com o Bling.
+   *
+   * Com o agendamento de 5 em 5 minutos sao 288 rodadas por dia, e a apuracao
+   * de ambiente gasta 2 requisicoes ao Bling cada uma. Na maior parte do dia
+   * nao ha nada pendente, entao seriam ~570 chamadas diarias so pra descobrir
+   * que nao havia trabalho — contra um limite de 3 por segundo que ja derrubou
+   * o diagnostico uma vez.
+   *
+   * Uma contagem no Postgres custa quase nada e responde a mesma pergunta. */
+  if (!seco) {
+    const pendentesAgora = await contarPendentes(desde)
+    if (pendentesAgora === 0) {
+      await registrarSaude({ ok: true, ambiente: 'produção', emitidas: 0, erros: 0, travados: 0, aindaPendentes: 0 })
+      return { ok: true, pulado: 'nada pendente', aindaPendentes: 0 }
+    }
+  }
+
   /* TRAVA PRIMEIRO — antes de qualquer conversa com o Bling.
    *
    * Uma rodada por vez, senão o cron e um clique no botão leem a mesma fila e
