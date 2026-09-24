@@ -196,9 +196,9 @@ export const CHECKLIST_ITENS: {
   },
   {
     id: 'senha_prefeitura',
-    label: 'Indicador de operação da NFS-e no Bling: 100301 (só NFS-e)',
+    label: 'NFS-e do Melodify: falta a senha da prefeitura (ou migrar pro ambiente nacional)',
     detalhe:
-      'NÃO é mais senha: testado em 24/09/2026 e a prefeitura recusa por OUTRO motivo — "Indicador de operação INTERN, inválido para o serviço informado. Indicadores válidos: 100301". A migração para o portal nacional aconteceu e o código de operação mudou. Ajuste o indicador do serviço 010901 no painel do Bling (mandar pela API não adianta: ele ignora). Bloqueia SÓ o Melodify (~6% da receita).',
+      'Eram DOIS bloqueios empilhados, e o primeiro escondia o segundo. (1) O indicador de operação do serviço 010901 estava INTERN e a prefeitura exigia 100301 — resolvido em 24/09/2026. (2) Atrás dele apareceu: "Você ainda não cadastrou a senha da Prefeitura". Enquanto o Bling estiver em Provedor Municipal, essa senha é obrigatória. A alternativa é mudar Ambiente de Emissão para Nacional, que autentica por certificado digital (já instalado) — mas isso é decisão do contador, porque muda numeração e para onde a nota é transmitida. Bloqueia SÓ o Melodify (~6% da receita).',
     responsavel: 'prefeitura',
   },
 ]
