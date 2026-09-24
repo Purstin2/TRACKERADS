@@ -136,7 +136,13 @@ function ehErroDaConta(msg) {
   if (cod && cod[1].split('/').some((c) => CSTAT_DA_CONTA.includes(c))) return true
   // credencial de prefeitura tem o mesmo carater: reprova toda NFS-e igual,
   // entao insistir so queimaria as 3 tentativas de cada pedido do Melodify
-  return /emitente|emissor|certificado|ambiente informado|paralisad|senha|credenc|usuario|login|autoriza/i.test(t)
+  /* 'prefeitura' e 'indisponivel' entraram depois de dois erros seguidos que
+   * escaparam do filtro e queimaram tentativa a toa: a recusa do indicador de
+   * operacao e o 'Tipo de emissao indisponivel para a sua Prefeitura'. Os dois
+   * reprovam TODA NFS-e igual — sao da conta, nao do pedido. O padrao e claro:
+   * mensagem que cita o orgao emissor ou a configuracao da conta nunca e culpa
+   * de um pedido especifico. */
+  return /emitente|emissor|certificado|ambiente informado|paralisad|senha|credenc|usuario|login|autoriza|prefeitura|indisponiv|configura|indicador/i.test(t)
 }
 
 /** Desfaz um registro antecipado que se revelou de teste (só o bootstrap usa). */
