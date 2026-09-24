@@ -455,6 +455,34 @@ export async function diagnosticoBling() {
           const saida = txt.match(/<dhSaiEnt>([^<]+)<\/dhSaiEnt>/)
           out.datas = { transmitida: emi?.[1] || null, operacao: saida?.[1] || null }
 
+          /* Conferência de campo a campo da nota, lida do XML AUTORIZADO — não
+             do que a gente mandou. É a diferença entre "acho que saiu certo" e
+             "a SEFAZ registrou isto". Vale principalmente na primeira nota
+             real: conferir uma é barato, cancelar 119 não é. */
+          const tag = (n) => {
+            const m = txt.match(new RegExp('<' + n + '>([^<]*)</' + n + '>'))
+            return m ? m[1] : null
+          }
+          out.conferencia = {
+            emitente: { cnpj: tag('CNPJ'), ie: tag('IE'), nome: tag('xNome') },
+            // o 2º xNome do XML é o destinatário (o 1º é o emitente)
+            destinatario: {
+              cpf: tag('CPF'),
+              nome: (txt.match(/<dest>[\s\S]*?<xNome>([^<]*)<\/xNome>/) || [])[1] || null,
+            },
+            item: {
+              codigo: tag('cProd'),
+              descricao: tag('xProd'),
+              ncm: tag('NCM'),
+              cfop: tag('CFOP'),
+              valor: tag('vProd'),
+            },
+            totais: { nota: tag('vNF'), icms: tag('vICMS') },
+            // a imunidade de ICMS de ebook TEM que estar escrita aqui
+            imunidade: (tag('infCpl') || '').slice(0, 120) || 'AUSENTE',
+            protocolo: { cStat: tag('cStat'), motivo: tag('xMotivo'), numero: tag('nProt') },
+          }
+
           const t = txt.match(/<tpAmb>(\d)<\/tpAmb>/)
           out.ambiente = !t
             ? 'xml baixado mas sem a tag tpAmb'
