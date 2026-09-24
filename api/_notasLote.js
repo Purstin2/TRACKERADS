@@ -918,7 +918,9 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
     ...(interrompido ? { erro: interrompido } : {}),
     ...resumo,
     travados,
-    detalhes: resumo.detalhes.slice(0, 50),
+    // 50 cortava justamente o que uma conferencia precisa ver: os pulados
+    // ficam no fim da lista, depois dos emitidos
+    detalhes: resumo.detalhes.slice(0, 200),
   }
   if (!seco) {
     await registrarSaude({
