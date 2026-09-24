@@ -332,8 +332,45 @@ export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = n
 
   if (!id) {
     const criada = await bling(rota, { method: 'POST', body: payload })
-    if (!criada.ok) return { ok: false, etapa: 'criar', erro: erroDoBling(criada) }
 
+    /* RASCUNHO ORFAO — adota em vez de insistir.
+     *
+     * "Ja existe uma nota fiscal cadastrada com este XML" e a protecao do
+     * Bling contra duplicata, e ela dispara quando um rascunho ficou la sem
+     * registro do nosso lado. Foi o que o timeout da Vercel deixou: a funcao
+     * criou a nota e morreu antes de gravar o id.
+     *
+     * Insistir nao resolve nunca — o conteudo e sempre o mesmo, entao a recusa
+     * se repete a cada rodada e queima as 3 tentativas do pedido ate ele sair
+     * da fila. Procurar o rascunho pelo CPF do comprador e adota-lo fecha o
+     * ciclo: a nota que ja existe passa a ser a nota daquele pedido. */
+    if (!criada.ok && /j[aá] existe uma nota fiscal cadastrada com este xml/i.test(erroDoBling(criada))) {
+      const doc = soDigitos(payload?.contato?.numeroDocumento)
+      const recentes = await bling(`${rota}?limite=50`)
+      const achada = (recentes.data?.data || []).find(
+        (n) => soDigitos(n?.contato?.numeroDocumento) === doc && doc,
+      )
+      if (achada?.id) {
+        id = achada.id
+        base = { blingId: id, numero: achada.numero || achada.numeroRPS || null, serie: achada.serie || null }
+        if (aoCriar) {
+          try { await aoCriar(id, base) } catch (e) {
+            return { ok: false, etapa: 'registrar', erro: `achei o rascunho orfao ${id} mas nao gravei: ${e?.message || e}`, ...base }
+          }
+        }
+        await pausa()
+        // segue o fluxo normal: envia/confirma esse id logo abaixo
+      } else {
+        return { ok: false, etapa: 'criar', erro: `${erroDoBling(criada)} — e nao achei a nota existente pelo CPF ${doc || '(vazio)'}` }
+      }
+    } else if (!criada.ok) {
+      return { ok: false, etapa: 'criar', erro: erroDoBling(criada) }
+    }
+
+    /* `criada.ok` guarda este bloco inteiro: sem ele, o caminho de adoção
+       acima seria desfeito logo em seguida — `id = d.id` viria vazio (não
+       houve criação) e sobrescreveria o rascunho que acabamos de achar. */
+    if (criada.ok) {
     const d = criada.data?.data || {}
     id = d.id
     base = { blingId: id, numero: d.numero || d.numeroRPS || null, serie: d.serie || null }
@@ -350,6 +387,7 @@ export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = n
       } catch (e) {
         return { ok: false, etapa: 'registrar', erro: `não gravei o id antes de enviar: ${e?.message || e}`, ...base }
       }
+    }
     }
 
     await pausa()

@@ -119,8 +119,8 @@ export default function NotasPage() {
         <div className="flex gap-2 rounded-[8px] border border-warn/30 border-l-[3px] border-l-warn bg-warn/[0.07] px-3 py-2 text-[11.5px] text-muted">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" />
           <div>
-            <b className="text-ink">NF-e funcionando · NFS-e travada.</b> Falta a senha da
-            prefeitura, que só afeta o Melodify (~6% do faturamento).
+            <b className="text-ink">NF-e emitindo · NFS-e parada.</b> O Melodify (~6% do
+            faturamento) espera a senha da prefeitura no Bling.
           </div>
         </div>
       )}
