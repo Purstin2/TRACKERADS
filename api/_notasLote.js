@@ -251,6 +251,31 @@ async function soltarTrava() {
   }).catch(() => {})
 }
 
+/* Nome do produto como ele vai pra nota.
+ *
+ * SEMPRE o nome que veio na venda — nunca um texto guardado na configuracao.
+ *
+ * A aba tinha um campo de descricao por produto que vencia este nome. Parecia
+ * inofensivo (servia pra tirar acento e cortar "EXCLUSIVO!"), mas era um
+ * override permanente: renomeou o produto na Kirvano, a nota seguia saindo com
+ * o nome antigo. Aconteceu com o mais vendido — "Guia Encanador Residencial"
+ * em notas de "ESTAMPADO - 50.000 DESIGNS PRONTOS", 46 das 138 pendentes.
+ *
+ * Tentei detectar a defasagem comparando com o nome guardado na config, e nao
+ * funciona: esse campo e atualizado sozinho quando a tela renderiza, entao ele
+ * acompanha o rename e a descricao nao. Nao existe sinal que separe override
+ * deliberado de override esquecido.
+ *
+ * Entao o override sai. A normalizacao que ele fazia a mao vira regra pra
+ * todos, e o nome fica em dia sozinho pra sempre. */
+function nomeParaNota(bruto) {
+  return String(bruto || 'Produto')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // acento fora: alguns emissores engasgam
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) // limite do xProd na NF-e
+}
+
 /** Chave do produto no mesmo formato que a aba Taxas/Notas usa. */
 const chaveProduto = (p, fallbackNome) =>
   p?.id != null ? String(p.id) : 'n:' + String(p?.name || fallbackNome || '').trim().toLowerCase()
@@ -630,8 +655,6 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
   let interrompido = null
   /** produtos que ninguem revisou: saem no padrao e viram aviso no Dashboard */
   const semRevisao = new Map()
-  /** produtos renomeados na origem cuja descricao configurada envelheceu */
-  const renomeados = new Map()
 
   try {
   for (const o of pedidos) {
@@ -711,25 +734,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
        * Quem nunca foi olhado entra em `semRevisao` e aparece no Dashboard. */
       const registrado = cfg.produtos?.[item.key]
 
-      /* ── DESCRICAO QUE ENVELHECEU ────────────────────────────────────────
-       * A aba tem um campo de descricao por produto, e ele vencia o nome que
-       * veio na venda. Util quando o nome comercial nao serve pra nota (tirar
-       * acento, cortar "EXCLUSIVO!"), mas e um override PERMANENTE que ninguem
-       * revisita — e quando o produto e renomeado, a nota passa a descrever
-       * algo que o cliente nao comprou.
-       *
-       * Aconteceu: o produto edf3fad4 era "Guia Encanador Residencial", virou
-       * "ESTAMPADO - 50.000 DESIGNS PRONTOS" na Kirvano, e as notas seguiram
-       * saindo com o nome de agosto. E o produto mais vendido da fila.
-       *
-       * Nao precisa buscar nada fora: o nome da venda ja vem no proprio
-       * pedido, como estava no instante da compra — que e exatamente o que um
-       * documento fiscal deve descrever. E a config guarda o nome de quando
-       * foi editada, entao divergencia entre os dois DENUNCIA o rename.
-       * Nesse caso a venda vence, e o override so vale enquanto descreve o
-       * mesmo produto. */
-      const renomeado = !!(registrado?.nome && item.nome && registrado.nome !== item.nome)
-      if (renomeado) renomeados.set(item.key, { antes: registrado.nome, agora: item.nome })
+
       if (!registrado) semRevisao.set(item.key, item.nome)
       const pf = registrado || { tipo: 'nfe', ncm: cfg.ncmPadrao, descricao: '', codigoServico: '' }
 
@@ -782,8 +787,7 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
           pedido: o.checkout_id, item: item.nome, chave: item.key, tipo: pf.tipo, valor: item.valor,
           // o que REALMENTE vai no campo descricao da nota: a descricao
           // configurada na aba vence o nome do produto da Kirvano
-          enviaComoNome: (!renomeado && pf.descricao) || item.nome,
-          renomeado,
+          enviaComoNome: nomeParaNota(item.nome),
           status: 'simulado',
         })
         continue
@@ -798,13 +802,13 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
 
       const payload =
         pf.tipo === 'nfse'
-          ? payloadNfse({ cliente, servico: { descricao: pf.descricao || item.nome, valor: item.valor, codigo: pf.codigoServico } })
+          ? payloadNfse({ cliente, servico: { descricao: nomeParaNota(item.nome), valor: item.valor, codigo: pf.codigoServico } })
           : payloadNfe({
               cliente,
               item: {
                 codigo: item.key.slice(0, 30),
                 // override so vale enquanto descreve o mesmo produto
-                descricao: (!renomeado && pf.descricao) || item.nome,
+                descricao: nomeParaNota(item.nome),
                 valor: item.valor,
                 ncm: pf.ncm || cfg.ncmPadrao,
               },
@@ -1008,7 +1012,6 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
       restaram: resumo.restaram,
       travados,
       semRevisao: [...semRevisao.values()].slice(0, 12),
-      renomeados: [...renomeados.values()].slice(0, 8).map((r) => r.antes + ' -> ' + r.agora),
       erro: interrompido || null,
       // o motivo da última falha, pra faixa do Dashboard poder mostrar sem
       // obrigar ninguém a abrir log nenhum
