@@ -34,11 +34,13 @@ const LOTE_MAX = 120 // teto de pedidos lidos; quem manda mesmo é o orçamento 
  * quantas cabem, o lote para sozinho quando o tempo acaba — o que sobrar sai na
  * próxima rodada, porque a fila é justamente "quem ainda não tem nota".
  *
- * 40s (e não 50) porque agora divide a função com a recuperação de WhatsApp:
- * deixa margem pra ela, já que o `?job=notas` é chamado separado mas o teto de
- * tempo da Vercel é da função inteira.
+ * Eram 40s, com a justificativa de "dividir a função com a recuperação de
+ * WhatsApp". A justificativa era falsa: o `?job=notas` retorna antes de
+ * qualquer lógica de WhatsApp, e cada invocação da Vercel tem seu próprio teto
+ * de tempo — elas não disputam nada. O medo custava ~7 notas por rodada.
+ * 55s deixa 5s de margem para o teto de 60s do plano.
  */
-const ORCAMENTO_MS = 40_000
+const ORCAMENTO_MS = 55_000
 
 function sb() {
   const url = process.env.SUPABASE_URL

@@ -19,5 +19,10 @@
       "path": "/api/recover?job=notas",
       "schedule": "0 12 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/recover.js": {
+      "maxDuration": 60
+    }
+  }
 }
