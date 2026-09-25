@@ -246,7 +246,7 @@ export default async function handler(req, res) {
       j1('app_state?key=eq.push_cursor&select=value,updated_at'),
       cnt('wa_messages?select=id'),
       cnt('wa_messages?select=id&created_at=gte.' + h24),
-      j1('wa_messages?select=order_id,step,status,created_at&order=created_at.desc&limit=8'),
+      j1('wa_messages?select=order_id,ok,http_status,provider,created_at&order=created_at.desc&limit=8'),
       cnt('kirvano_orders?select=id&status=eq.ABANDONED&created_at=gte.' + h24),
     ])
     const eps = (subs || []).map((x) => String(x.endpoint || ''))
