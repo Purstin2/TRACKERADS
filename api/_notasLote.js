@@ -253,6 +253,48 @@ async function contarPendentes(desdeISO) {
   return Number.isFinite(total) ? total : -1
 }
 
+/* Quem travou, e por que. Sem o motivo, "1 pedido saiu da fila" nao diz se
+ * e coisa de consertar em 5 segundos ou problema de verdade. */
+export async function listarTravados(dias = 40) {
+  const { url, headers } = sb()
+  const desde = new Date(Date.now() - dias * 864e5).toISOString()
+  const q = [
+    'select=id,checkout_id,customer_name,value,ordered_at,nf_erro,nf_tentativas',
+    'status=eq.APPROVED',
+    'ordered_at=gte.' + desde,
+    'nf_tentativas=gte.' + MAX_TENTATIVAS,
+    'order=ordered_at.desc',
+  ].join('&')
+  const r = await fetch(url + '/rest/v1/kirvano_orders?' + q, { headers })
+  const pedidos = (await r.json().catch(() => [])) || []
+  const ids = pedidos.map((p) => '"' + p.id + '"').join(',')
+  let notas = []
+  if (ids) {
+    const rn = await fetch(url + '/rest/v1/notas_fiscais?order_id=in.(' + ids + ')&select=order_id,produto_nome,status,erro', { headers })
+    notas = (await rn.json().catch(() => [])) || []
+  }
+  return pedidos.map((p) => ({
+    pedido: p.checkout_id, cliente: p.customer_name, valor: p.value, em: p.ordered_at,
+    tentativas: p.nf_tentativas,
+    motivo: (notas.find((n) => n.order_id === p.id && n.status === 'erro') || {}).erro || p.nf_erro || '(sem registro)',
+  }))
+}
+
+/* Devolve os travados pra fila, zerando as tentativas. Existe porque "nao
+ * voltam sozinhos" era literal: a unica saida era SQL no banco. */
+export async function destravarPedidos(dias = 40) {
+  const { url, headers } = sb()
+  const desde = new Date(Date.now() - dias * 864e5).toISOString()
+  const q = 'status=eq.APPROVED&ordered_at=gte.' + desde + '&nf_tentativas=gte.' + MAX_TENTATIVAS
+  const r = await fetch(url + '/rest/v1/kirvano_orders?' + q, {
+    method: 'PATCH',
+    headers: { ...headers, Prefer: 'return=representation' },
+    body: JSON.stringify({ nf_status: null, nf_erro: null, nf_tentativas: 0, updated_at: new Date().toISOString() }),
+  })
+  const linhas = await r.json().catch(() => [])
+  return { ok: r.ok, destravados: Array.isArray(linhas) ? linhas.length : 0 }
+}
+
 /** Pedidos que esgotaram as tentativas: saíram da fila e ninguém foi avisado. */
 async function contarTravados(desdeISO) {
   const { url, headers } = sb()

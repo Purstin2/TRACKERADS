@@ -282,6 +282,14 @@ export default async function handler(req, res) {
   if ((req.query.job || '') === 'notas') {
     try {
       // ?diag=1 → só checa a conexão com o Bling, não toca em pedido nenhum
+      if (req.query.travados === '1') {
+        const { listarTravados } = await import('./_notasLote.js')
+        return res.status(200).json({ ok: true, travados: await listarTravados(Number(req.query.dias) || 40) })
+      }
+      if (req.query.destravar === '1') {
+        const { destravarPedidos } = await import('./_notasLote.js')
+        return res.status(200).json(await destravarPedidos(Number(req.query.dias) || 40))
+      }
       // sonda so-leitura: ?espiar=/produtos?limite=5
       if (req.query.espiar) {
         const { espiarBling } = await import('./_notasLote.js')
