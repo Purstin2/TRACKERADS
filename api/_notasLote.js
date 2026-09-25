@@ -1051,6 +1051,20 @@ export async function rodarLoteNotas({ dias: diasParam, seco = false, max: maxPa
         continue
       }
 
+      /* Rascunho apagado por estar desatualizado: limpa o id do registro pra
+       * proxima rodada criar do zero, e NAO conta tentativa — o pedido nao
+       * teve culpa, foi o rascunho velho travando a correcao. */
+      if (r.recriar) {
+        await gravarNota({
+          order_id: o.id, produto_key: item.key, produto_nome: item.nome,
+          tipo: pf.tipo, valor: item.valor, bling_id: null, status: 'pendente', erro: r.erro,
+        })
+        resumo.puladas++
+        resumo.detalhes.push({ pedido: o.checkout_id, item: item.nome, status: r.erro })
+        await pausa(700)
+        continue
+      }
+
       /* Gravação do veredito. Se ELA falhar, a rodada para.
          O registro antecipado já garante que a linha existe com o bling_id,
          então dá pra reconciliar depois — mas só se o PEDIDO continuar na

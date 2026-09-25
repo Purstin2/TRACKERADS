@@ -345,7 +345,16 @@ export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = n
     if (!atualizada.ok) {
       // guarda o motivo, mas não interrompe: pior que rascunho desatualizado
       // é não tentar emitir de jeito nenhum
+      /* PUT recusado: o rascunho fica com o conteudo velho, e reenviar so
+       * repete o mesmo erro pra sempre. Apaga o rascunho e devolve um sinal
+       * pra quem chamou recriar do zero com o payload corrigido — e a unica
+       * saida quando o Bling nao deixa editar. */
       base.avisoAtualizacao = erroDoBling(atualizada)
+      await pausa(300)
+      const apagou = await bling(rota + '/' + id, { method: 'DELETE' })
+      if (apagou.ok) {
+        return { ok: false, etapa: 'recriar', recriar: true, erro: 'rascunho desatualizado apagado (PUT recusado: ' + base.avisoAtualizacao + '); proxima rodada cria do zero' }
+      }
     }
     await pausa(400)
   }
