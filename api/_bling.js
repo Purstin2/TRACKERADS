@@ -327,6 +327,26 @@ export async function emitir(tipo, payload, blingIdExistente = null, aoCriar = n
         tpAmb: null, // veio de consulta, não de protocolo: quem sabe é a rodada
       }
     }
+
+    /* RASCUNHO EXISTENTE RECEBE O PAYLOAD ATUAL antes de ser reenviado.
+     *
+     * Sem isto, um rascunho criado com dado ruim nunca conserta: o caminho de
+     * reconciliação pula a criação e vai direto pro `/enviar`, então o que sai
+     * é sempre o conteúdo antigo. Qualquer correção nossa — nome saneado, NCM,
+     * descrição — fica no código sem nunca chegar na nota.
+     *
+     * Foi exatamente o que aconteceu com o pedido 5NR3G4LN: saneei o nome
+     * "DD", subi, e a nota voltou a falhar com o MESMO erro, porque o rascunho
+     * guardado ainda carregava o nome velho.
+     *
+     * Falha aqui não é fatal: se o Bling recusar a atualização, segue e tenta
+     * enviar como está — o veredito da SEFAZ continua sendo a palavra final. */
+    const atualizada = await bling(`${rota}/${id}`, { method: 'PUT', body: payload })
+    if (!atualizada.ok) {
+      // guarda o motivo, mas não interrompe: pior que rascunho desatualizado
+      // é não tentar emitir de jeito nenhum
+      base.avisoAtualizacao = erroDoBling(atualizada)
+    }
     await pausa(400)
   }
 
