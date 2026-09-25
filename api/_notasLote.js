@@ -347,6 +347,26 @@ function nomeParaNota(bruto) {
     .slice(0, 120) // limite do xProd na NF-e
 }
 
+/* Nome do comprador como a SEFAZ aceita.
+ *
+ * O pedido 5NR3G4LN travou com "Nome do destinatário inválido": o comprador
+ * digitou "DD" no checkout. A SEFAZ recusa nome curto demais, e o pedido
+ * queimou as 3 tentativas e saiu da fila — uma venda real deixando de ser
+ * faturada porque alguém foi preguiçoso preenchendo o formulário.
+ *
+ * Quando o nome não serve, usa "CONSUMIDOR", que é o padrão para consumidor
+ * não identificado. Não é perda de informação: quem identifica a pessoa na
+ * nota é o CPF, e esse continua indo. */
+function nomeDestinatario(bruto) {
+  const limpo = String(bruto || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9 .&-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const temLetras = /[A-Za-z]{3}/.test(limpo)
+  return temLetras && limpo.length >= 3 ? limpo.slice(0, 60) : 'CONSUMIDOR'
+}
+
 /** Chave do produto no mesmo formato que a aba Taxas/Notas usa. */
 const chaveProduto = (p, fallbackNome) =>
   p?.id != null ? String(p.id) : 'n:' + String(p?.name || fallbackNome || '').trim().toLowerCase()
@@ -432,7 +452,7 @@ function clienteDoPedido(o, enderecoPadrao) {
   const a = c.address || {}
   const p = enderecoPadrao || {}
   return {
-    nome: o.customer_name || c.name || 'Consumidor',
+    nome: nomeDestinatario(o.customer_name || c.name),
     documento: o.customer_doc || c.document || '',
     endereco: {
       rua: a.street || p.rua || '',
