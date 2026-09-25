@@ -222,7 +222,8 @@ export default async function handler(req, res) {
    * O NOTAS_SECRET e dedicado, forte e nunca esteve em repositorio publico:
    * como credencial ele e mais solido que o geral, nao menos. Os outros jobs
    * seguem exigindo o WEBHOOK_SECRET normalmente. */
-  const ehNotas = (req.query.job || '') === 'notas'
+  // 'saude' tambem: e so leitura, nao dispara nada
+  const ehNotas = ['notas', 'saude'].includes(req.query.job || '')
   const notasOk = !!process.env.NOTAS_SECRET && (req.query.ns || req.headers['x-notas-secret']) === process.env.NOTAS_SECRET
   const geralOk = !!process.env.WEBHOOK_SECRET && secret === process.env.WEBHOOK_SECRET
   if (!isCron && !geralOk && !(ehNotas && notasOk)) {
