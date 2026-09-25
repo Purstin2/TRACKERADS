@@ -229,6 +229,42 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'invalid secret' })
   }
 
+  // ── saude geral (?job=saude): push, WhatsApp e cursores, sem efeito colateral ──
+  if ((req.query.job || '') === 'saude') {
+    const H = sbHeaders(key)
+    const cnt = async (q) => {
+      const r = await fetch(url + '/rest/v1/' + q, { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } })
+      const t = Number((r.headers.get('content-range') || '').split('/')[1])
+      return Number.isFinite(t) ? t : -1
+    }
+    const j1 = async (q) => { try { const r = await fetch(url + '/rest/v1/' + q, { headers: H }); return await r.json() } catch { return null } }
+    const agora = Date.now()
+    const h24 = new Date(agora - 864e5).toISOString()
+    const [subs, cursor, waTot, wa24, ultimasWa, pend] = await Promise.all([
+      j1('push_subscriptions?select=endpoint,created_at&order=created_at.desc'),
+      j1('app_state?key=eq.push_cursor&select=value,updated_at'),
+      cnt('wa_messages?select=id'),
+      cnt('wa_messages?select=id&created_at=gte.' + h24),
+      j1('wa_messages?select=order_id,step,status,created_at&order=created_at.desc&limit=8'),
+      cnt('kirvano_orders?select=id&status=eq.ABANDONED&created_at=gte.' + h24),
+    ])
+    const eps = (subs || []).map((x) => String(x.endpoint || ''))
+    return res.status(200).json({
+      push: {
+        inscricoes: eps.length,
+        duplicadas: eps.length - new Set(eps).size,
+        cursor: cursor && cursor[0] ? cursor[0].value : null,
+        cursorAtualizadoEm: cursor && cursor[0] ? cursor[0].updated_at : null,
+      },
+      whatsapp: {
+        mensagensTotal: waTot,
+        ultimas24h: wa24,
+        abandonados24h: pend,
+        ultimas: ultimasWa,
+      },
+    })
+  }
+
   // ── Tracker Padrão: captura do gasto em anúncios (?job=ads) ──
   // Pega carona aqui porque o Hobby limita a 12 funções serverless e o projeto
   // já está no teto. Sai antes de qualquer lógica de WhatsApp — não interfere.
