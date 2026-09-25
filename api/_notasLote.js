@@ -259,7 +259,7 @@ export async function listarTravados(dias = 40) {
   const { url, headers } = sb()
   const desde = new Date(Date.now() - dias * 864e5).toISOString()
   const q = [
-    'select=id,checkout_id,customer_name,value,ordered_at,nf_erro,nf_tentativas',
+    'select=id,checkout_id,customer_name,customer_doc,value,ordered_at,nf_erro,nf_tentativas',
     'status=eq.APPROVED',
     'ordered_at=gte.' + desde,
     'nf_tentativas=gte.' + MAX_TENTATIVAS,
@@ -274,7 +274,7 @@ export async function listarTravados(dias = 40) {
     notas = (await rn.json().catch(() => [])) || []
   }
   return pedidos.map((p) => ({
-    pedido: p.checkout_id, cliente: p.customer_name, valor: p.value, em: p.ordered_at,
+    pedido: p.checkout_id, cliente: p.customer_name, cpf: p.customer_doc, valor: p.value, em: p.ordered_at,
     tentativas: p.nf_tentativas,
     motivo: (notas.find((n) => n.order_id === p.id && n.status === 'erro') || {}).erro || p.nf_erro || '(sem registro)',
   }))
